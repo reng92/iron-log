@@ -34,7 +34,10 @@ const db = {
   async setPiani(a) { await sb.from("piani_alimentari").delete().neq("id","__x__"); if(a.length)await sb.from("piani_alimentari").insert(a.map(s=>({id:s.id,data:s}))); },
   async getLogDieta() { const {data}=await sb.from("log_dieta").select("*").order("created_at",{ascending:false}); return data?data.map(r=>r.data):[]; },
   async addLogDieta(s) { await sb.from("log_dieta").insert({id:s.id,data:s}); },
-  async delLogDieta(id) { await sb.from("log_dieta").delete().eq("id",id); }
+  async delLogDieta(id) { await sb.from("log_dieta").delete().eq("id",id); },
+  async getBozza() { try{ const {data}=await sb.from("impostazioni").select("*").eq("id","sessione_bozza").single(); return data?.data||null; }catch{return null;} },
+  async saveBozza(b) { await sb.from("impostazioni").upsert({id:"sessione_bozza",data:b}); },
+  async delBozza() { await sb.from("impostazioni").delete().eq("id","sessione_bozza"); }
 };
 
 // ─── CSV EXPORT ───────────────────────────────────────────
