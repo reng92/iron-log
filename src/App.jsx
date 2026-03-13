@@ -28,7 +28,7 @@ const fmtDate = (d) => new Date(d).toLocaleDateString('it-IT',{weekday:'short',d
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@300;400;500;600;700&display=swap');
-:root{--bg:#080808;--sur:#111;--card:#181818;--bdr:#252525;--acc:#D4F000;--acc2:rgba(212,240,0,.14);--dan:#FF3B30;--dan2:rgba(255,59,48,.12);--ok:#30D158;--txt:#F0F0F0;--dim:#888;--mut:#444;}
+:root{--bg:#080808;--sur:#111;--card:#181818;--bdr:#252525;--acc:#1E90FF;--acc2:rgba(30,144,255,.14);--dan:#FF3B30;--dan2:rgba(255,59,48,.12);--ok:#30D158;--txt:#F0F0F0;--dim:#BBBBBB;--mut:#888888;}
 *{box-sizing:border-box;margin:0;padding:0;}
 body{background:var(--bg);color:var(--txt);font-family:'Barlow',sans-serif;}
 .app{max-width:480px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;background:var(--bg);}
@@ -173,7 +173,7 @@ function Home({schede,sessioni,onStart,onGoSchede}) {
   return (
     <>
       <div style={{paddingTop:20,paddingBottom:8,display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
-        <div><h1 className="pt">IRON<br/>LOG</h1><p className="sub">Diario di allenamento</p></div>
+        <div><h1 className="pt">RENATO'S<br/>WORKOUT</h1><p className="sub">Diario di allenamento</p></div>
         <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:12,color:"var(--dim)",textAlign:"right",letterSpacing:".1em"}}>{new Date().toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long'})}</div>
       </div>
       <div className="hg" style={{marginTop:18}}>
