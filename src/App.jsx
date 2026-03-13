@@ -19,6 +19,7 @@ const GIORNI_SHORT = ["", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 
 // ─── MEDIA HELPERS ────────────────────────────────────────
 const cleanName = (n) => n.replace(/\d+\s*g|\d+g|\d+\s*ml|\d+ml|[\d.,]+/gi, '').replace(/\s+/g, ' ').trim();
+const getExFallback = (n) => `https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400&h=250`;
 
 async function fetchMealImg(rawName) {
   const nome = cleanName(rawName);
@@ -55,6 +56,8 @@ async function fetchYoutubeId(rawName) {
 }
 
 function ExerciseMedia({ nome, manualUrl }) {
+  const [ytId, setYtId] = useState(null);
+  const [loading, setLoading] = useState(false);
   const exImg = `https://loremflickr.com/400/250/gym,workout,${encodeURIComponent(cleanName(nome))}/all?lock=${encodeURIComponent(nome)}`;
 
   useEffect(() => {
