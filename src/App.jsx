@@ -1468,72 +1468,91 @@ function DietaLog({piani, logDieta, onAdd, onDelete, onBack}) {
   );
 }
 
-// ─── PDF IMPORT MODAL ─────────────────────────────────────
-const GEMINI_PROMPT = `Sei un assistente nutrizionale. Analizza questo PDF che contiene un piano alimentare settimanale italiano.
-Estrai la struttura per ogni giorno della settimana (Giorno 1=Lunedì, Giorno 2=Martedì, ..., Giorno 7=Domenica).
+// ─── PDF IMPORT MODAL (via Groq + PDF.js) ─────────────────
+const GROQ_PROMPT = `Sei un assistente nutrizionale. L'utente ti fornisce il testo estratto da un PDF di un piano alimentare settimanale italiano.
+Estrai la struttura per ogni giorno (Giorno 1=Lunedì, Giorno 2=Martedì, ..., Giorno 7=Domenica).
 Per ogni giorno identifica i pasti (Colazione, Spuntino Mattina, Pranzo, Spuntino Pomeriggio, Cena, ecc.) e per ogni pasto gli alimenti con grammi e kcal totali per quella porzione.
-Se le kcal non sono specificate nel PDF, stimale ragionevolmente in base ai grammi e al tipo di alimento.
-Se il piano è uguale per tutti i giorni, replicalo per tutti e 7.
-Rispondi SOLO con JSON valido (nessun testo prima o dopo, nessun markdown):
+Se le kcal non sono specificate, stimale ragionevolmente in base ai grammi e al tipo di alimento.
+Se il piano alimentare è uguale per tutti i giorni, replicalo per tutti e 7.
+Rispondi SOLO con JSON valido (nessun testo aggiuntivo, nessun markdown, nessun backtick):
 {"nomePiano":"nome del piano","giorniPasti":{"1":[{"id":"g1p1","nome":"Colazione","alimenti":[{"id":"g1p1a1","nome":"Pane integrale","grammi":"50","kcal":"120"}]}],"2":[...],"3":[...],"4":[...],"5":[...],"6":[...],"7":[...]}}`;
+
+// Carica PDF.js dal CDN la prima volta
+const loadPdfJs = () => new Promise((resolve, reject) => {
+  if (window.pdfjsLib) return resolve(window.pdfjsLib);
+  const script = document.createElement("script");
+  script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+  script.onload = () => {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    resolve(window.pdfjsLib);
+  };
+  script.onerror = () => reject(new Error("Impossibile caricare PDF.js"));
+  document.head.appendChild(script);
+});
+
+const estraiTestoPdf = async (file) => {
+  const pdfjsLib = await loadPdfJs();
+  const buffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({data: buffer}).promise;
+  let testo = "";
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    testo += content.items.map(it => it.str).join(" ") + "\n";
+  }
+  return testo.trim();
+};
 
 function PdfImportModal({onApply, onClose}) {
   const [fase, setFase] = useState(1); // 1=select, 2=loading, 3=preview
-  const [apiKey, setApiKey] = useState(()=>localStorage.getItem("gemini_key")||"");
+  const [apiKey, setApiKey] = useState(()=>localStorage.getItem("groq_key")||"");
   const [file, setFile] = useState(null);
+  const [loadingMsg, setLoadingMsg] = useState("");
   const [errore, setErrore] = useState("");
   const [parsed, setParsed] = useState(null);
 
   const analizza = async () => {
     if (!file) return setErrore("Seleziona un file PDF");
-    if (!apiKey.trim()) return setErrore("Inserisci la tua Gemini API key");
+    if (!apiKey.trim()) return setErrore("Inserisci la tua Groq API key");
     if (!file.name.toLowerCase().endsWith(".pdf")) return setErrore("Il file deve essere un PDF");
     setErrore("");
     setFase(2);
     try {
-      // Leggi file come base64
-      const base64 = await new Promise((res, rej) => {
-        const reader = new FileReader();
-        reader.onload = e => {
-          const arr = new Uint8Array(e.target.result);
-          let bin = "";
-          arr.forEach(b => bin += String.fromCharCode(b));
-          res(btoa(bin));
-        };
-        reader.onerror = rej;
-        reader.readAsArrayBuffer(file);
-      });
+      // Step 1: estrai testo dal PDF con PDF.js
+      setLoadingMsg("Lettura del PDF in corso...");
+      const testoPdf = await estraiTestoPdf(file);
+      if (!testoPdf || testoPdf.length < 50) throw new Error("Non è stato possibile estrarre testo dal PDF. Verifica che non sia un PDF solo-immagine.");
 
-      // Chiama Gemini API
-      const resp = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`,
-        {
-          method: "POST",
-          headers: {"Content-Type":"application/json"},
-          body: JSON.stringify({
-            contents:[{parts:[
-              {inline_data:{mime_type:"application/pdf", data:base64}},
-              {text: GEMINI_PROMPT}
-            ]}],
-            generationConfig:{temperature:0.1, maxOutputTokens:8192}
-          })
-        }
-      );
+      // Step 2: invia testo a Groq
+      setLoadingMsg("Analisi con Groq AI (LLaMA 3)...");
+      const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {"Content-Type":"application/json", "Authorization":`Bearer ${apiKey.trim()}`},
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages: [
+            {role:"system", content: GROQ_PROMPT},
+            {role:"user", content: `Ecco il testo estratto dal PDF del piano alimentare:\n\n${testoPdf.slice(0,12000)}`}
+          ],
+          temperature: 0.1,
+          max_tokens: 8192
+        })
+      });
       if (!resp.ok) {
         const err = await resp.json().catch(()=>({}));
-        throw new Error(err?.error?.message || `Errore API: ${resp.status}`);
+        throw new Error(err?.error?.message || `Errore Groq: ${resp.status}`);
       }
       const data = await resp.json();
-      let testo = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      let testo = data?.choices?.[0]?.message?.content || "";
 
-      // Estrai JSON anche se il modello aggiunge ```json ...```
+      // Estrai JSON (gestisce anche ```json ... ```)
       const match = testo.match(/\{[\s\S]+\}/);
       if (!match) throw new Error("Il modello non ha restituito JSON valido. Riprova.");
       const obj = JSON.parse(match[0]);
       if (!obj.giorniPasti) throw new Error("Struttura JSON non riconosciuta. Riprova.");
 
-      // Salva key se tutto ok
-      localStorage.setItem("gemini_key", apiKey.trim());
+      localStorage.setItem("groq_key", apiKey.trim());
       setParsed(obj);
       setFase(3);
     } catch(e) {
@@ -1544,13 +1563,11 @@ function PdfImportModal({onApply, onClose}) {
 
   const applica = () => {
     if (!parsed) return;
-    // Aggiungi ID univoci a tutti i pasti e alimenti
     const gp = {};
     for (let d = 1; d <= 7; d++) {
       gp[d] = (parsed.giorniPasti[d] || parsed.giorniPasti[String(d)] || []).map(p => ({
-        ...p,
-        id: genId(),
-        alimenti: (p.alimenti||[]).map(a => ({...a, id: genId(), grammi:String(a.grammi||""), kcal:String(a.kcal||"")}))
+        ...p, id: genId(),
+        alimenti: (p.alimenti||[]).map(a => ({...a, id:genId(), grammi:String(a.grammi||""), kcal:String(a.kcal||"")}))
       }));
     }
     onApply({nomePiano: parsed.nomePiano||"", giorniPasti: gp});
@@ -1565,22 +1582,20 @@ function PdfImportModal({onApply, onClose}) {
           <button className="bico" onClick={onClose}><IcClose/></button>
         </div>
 
-        {/* Come funziona */}
-        {fase===1&&(
-          <div style={{marginBottom:16}}>
-            <div className="import-step"><span className="import-num">1</span><span style={{fontSize:13}}>Ottieni la tua API key gratuita su <b>aistudio.google.com</b></span></div>
-            <div className="import-step"><span className="import-num">2</span><span style={{fontSize:13}}>Carica il PDF del tuo piano alimentare</span></div>
-            <div className="import-step"><span className="import-num">3</span><span style={{fontSize:13}}>Gemini AI estrae automaticamente pasti e alimenti per ogni giorno</span></div>
-          </div>
-        )}
-
         {fase===1&&(
           <>
-            <div className="ig">
-              <label className="lbl">Gemini API Key{apiKey&&" ✓ salvata"}</label>
-              <input className="inp" type="password" placeholder="AIza..." value={apiKey} onChange={e=>setApiKey(e.target.value)}/>
-              <div style={{fontSize:11,color:"var(--mut)",marginTop:4}}>La chiave è salvata solo nel tuo browser (localStorage). Non va nel codice né su GitHub.</div>
+            <div style={{marginBottom:16}}>
+              <div className="import-step"><span className="import-num">1</span><span style={{fontSize:13}}>Registrati gratis su <b>console.groq.com</b> (solo email, no carta)</span></div>
+              <div className="import-step"><span className="import-num">2</span><span style={{fontSize:13}}>Vai in <b>API Keys</b> e crea una nuova chiave</span></div>
+              <div className="import-step"><span className="import-num">3</span><span style={{fontSize:13}}>Carica il PDF — Groq AI (LLaMA 3.1) estrae i pasti automaticamente</span></div>
             </div>
+
+            <div className="ig">
+              <label className="lbl">Groq API Key{apiKey&&" ✓ salvata"}</label>
+              <input className="inp" type="password" placeholder="gsk_..." value={apiKey} onChange={e=>setApiKey(e.target.value)}/>
+              <div style={{fontSize:11,color:"var(--mut)",marginTop:4}}>Salvata solo nel tuo browser · Non va su GitHub · Free tier: 14.400 req/giorno</div>
+            </div>
+
             <div className="ig">
               <label className="lbl">File PDF piano alimentare</label>
               <div
@@ -1594,6 +1609,7 @@ function PdfImportModal({onApply, onClose}) {
                 <input id="pdf-input" type="file" accept=".pdf,application/pdf" style={{display:"none"}} onChange={e=>{setFile(e.target.files[0]||null);setErrore("");}}/>
               </div>
             </div>
+
             {errore&&<div style={{color:"var(--dan)",fontSize:13,marginBottom:12,padding:"10px",background:"var(--dan2)",borderRadius:8}}>{errore}</div>}
             <button className="btn btn-p btn-full" onClick={analizza}><IcUpload/> ANALIZZA PDF</button>
           </>
@@ -1601,10 +1617,10 @@ function PdfImportModal({onApply, onClose}) {
 
         {fase===2&&(
           <div style={{textAlign:"center",padding:"32px 16px"}}>
-            <div className="spin" style={{fontSize:32,marginBottom:16}}>⚙️</div>
+            <div className="spin" style={{fontSize:36,marginBottom:16}}>⚙️</div>
             <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:22,letterSpacing:".05em",marginBottom:8}}>ANALISI IN CORSO</div>
-            <div style={{fontSize:13,color:"var(--dim)"}}>Gemini AI sta leggendo il tuo piano alimentare...</div>
-            <div style={{fontSize:11,color:"var(--mut)",marginTop:8}}>Può richiedere 10-20 secondi</div>
+            <div style={{fontSize:13,color:"var(--dim)",marginBottom:4}}>{loadingMsg}</div>
+            <div style={{fontSize:11,color:"var(--mut)"}}>Può richiedere 10-20 secondi</div>
           </div>
         )}
 
@@ -1612,7 +1628,7 @@ function PdfImportModal({onApply, onClose}) {
           <>
             <div style={{background:"rgba(48,209,88,.1)",border:"1px solid #30D158",borderRadius:10,padding:12,marginBottom:16}}>
               <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:16,color:"#30D158",marginBottom:4}}>✓ ESTRATTO CON SUCCESSO</div>
-              {parsed.nomePiano&&<div style={{fontSize:13,fontWeight:600,marginBottom:4}}>{parsed.nomePiano}</div>}
+              {parsed.nomePiano&&<div style={{fontSize:13,fontWeight:600}}>{parsed.nomePiano}</div>}
             </div>
 
             <div className="st" style={{marginBottom:8}}>ANTEPRIMA STRUTTURA</div>
