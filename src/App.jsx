@@ -143,6 +143,33 @@ const exportCSV = (sessioni) => {
   a.download = `renatos-workout-${fmtIso()}.csv`; a.click();
 };
 
+// ─── PDF HELPERS ──────────────────────────────────────────
+const loadPdfJs = () => new Promise((resolve, reject) => {
+  if (window.pdfjsLib) return resolve(window.pdfjsLib);
+  const script = document.createElement("script");
+  script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+  script.onload = () => {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    resolve(window.pdfjsLib);
+  };
+  script.onerror = () => reject(new Error("Impossibile caricare PDF.js"));
+  document.head.appendChild(script);
+});
+
+const estraiTestoPdf = async (file) => {
+  const pdfjsLib = await loadPdfJs();
+  const buffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+  let testo = "";
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    testo += content.items.map(it => it.str).join(" ") + "\n";
+  }
+  return testo.trim();
+};
+
 // ─── CSS ──────────────────────────────────────────────────
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@300;400;500;600;700&display=swap');
@@ -2732,34 +2759,9 @@ GESTIONE ALTERNATIVE (MOLTO IMPORTANTE):
 - Per raggrupparli, assegna a TUTTI i pasti tra loro alternativi lo STESSO 'altGroupId' (es. "pranzo_alt_1").
 - Se un pasto ha un'alternativa, ENTRAMBI (o più) devono avere lo stesso altGroupId. Se non ci sono alternative, usa null.
 
-Rispondi SOLO con JSON valido, nessun testo extra:
-{"nomePiano":"...","giorniPasti":{"1":[{"id":"...","nome":"...","altGroupId":null,"alimenti":[]}],"2":[],"3":[],"4":[],"5":[],"6":[],"7":[]}}`;
+Rispondi SOLO con JSON valido, nessun testo extra o markdown:
+{"nomePiano":"...","giorniPasti":{"1":[{"id":"...","nome":"Pasto","altGroupId":null,"alimenti":[{"id":"...","nome":"Alimento","grammi":"100","kcal":"350"}]}],"2":[...],"3":[...],"4":[...],"5":[...],"6":[...],"7":[...]}}`;
 
-const loadPdfJs = () => new Promise((resolve, reject) => {
-  if (window.pdfjsLib) return resolve(window.pdfjsLib);
-  const script = document.createElement("script");
-  script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-  script.onload = () => {
-    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-    resolve(window.pdfjsLib);
-  };
-  script.onerror = () => reject(new Error("Impossibile caricare PDF.js"));
-  document.head.appendChild(script);
-});
-
-const estraiTestoPdf = async (file) => {
-  const pdfjsLib = await loadPdfJs();
-  const buffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
-  let testo = "";
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    testo += content.items.map(it => it.str).join(" ") + "\n";
-  }
-  return testo.trim();
-};
 
 function PdfImportModal({ onApply, onClose }) {
   const [fase, setFase] = useState(1);
