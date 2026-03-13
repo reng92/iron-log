@@ -413,7 +413,7 @@ export default function App() {
               const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(pinInput));
               const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
               
-              if (hashHex === "39d2ec020e98f79f40884d3b45caeebdc70792160912160359858bb6ff1f89af") { 
+              if (hashHex === "05550bc685f04599b689922632e7baf0719d003649362002c83ace6253b03d49") { 
                 localStorage.setItem("rw_logged", "true");
                 setIsLogged(true);
               } else {
