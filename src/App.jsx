@@ -18,8 +18,16 @@ const GIORNI_LABEL = ["", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Vene
 const GIORNI_SHORT = ["", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 
 // ─── MEDIA HELPERS ────────────────────────────────────────
-const getFoodImg = (nome) => `https://loremflickr.com/120/120/${encodeURIComponent(nome)},food,healthy/all`;
-const getExImg = (nome) => `https://loremflickr.com/400/250/${encodeURIComponent(nome)},gym,workout,fitness/all`;
+const getUnsplashImg = (q, w, h) => `https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&q=80&w=${w}&h=${h}`; // Default healthy food
+const getExFallback = (n) => `https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400&h=250`; // Default gym
+
+async function fetchMealImg(nome) {
+  try {
+    const r = await fetch(`https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(nome)}`);
+    const d = await r.json();
+    return d.meals?.[0]?.strMealThumb || `https://source.unsplash.com/120x120/?${encodeURIComponent(nome)},food,dish`;
+  } catch { return `https://source.unsplash.com/120x120/?${encodeURIComponent(nome)},food,dish`; }
+}
 
 async function fetchYoutubeId(nome) {
   if (!GROQ_KEY) return null;
@@ -28,22 +36,22 @@ async function fetchYoutubeId(nome) {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: [{ role: 'user', content: `Return ONLY the YouTube 11-char ID for a real, professional gym tutorial of the exercise "${nome}" in Italian. DO NOT return Rick Astley (dQw4w9WgXcQ). If you are unsure, return a different real tutorial. No text, no quotes.` }],
+        messages: [{ role: 'user', content: `Return ONLY the YouTube 11-char ID for a real, high-quality, professional gym exercise tutorial for "${nome}" in Italian. Preferred channels: Project Invictus, Umberto Miletto, Team Commando, Danny Lazzarin. DO NOT return Rick Astley (dQw4w9WgXcQ). No text, no quotes.` }],
         temperature: 0.1, max_tokens: 15
       })
     });
     const data = await res.json();
     const id = (data?.choices?.[0]?.message?.content || '').trim();
     const cleanId = id.match(/[a-zA-Z0-9_-]{11}/)?.[0];
-    if (cleanId === "dQw4w9WgXcQ") return null; // Blacklist Rickroll
-    return cleanId || null;
+    if (!cleanId || cleanId === "dQw4w9WgXcQ") return null;
+    return cleanId;
   } catch { return null; }
 }
 
 function ExerciseMedia({ nome, manualUrl }) {
   const [ytId, setYtId] = useState(null);
   const [loading, setLoading] = useState(false);
+  const exImg = `https://source.unsplash.com/400x250/?${encodeURIComponent(nome)},gym,workout,training`;
 
   useEffect(() => {
     if (manualUrl) return;
@@ -72,20 +80,20 @@ function ExerciseMedia({ nome, manualUrl }) {
   return (
     <div style={{ marginBottom: 12 }}>
       {/* Thumbnail */}
-      <div style={{ ...wrapperStyle, marginBottom: 8 }}>
+      <div style={{ ...wrapperStyle, marginBottom: 6 }}>
         <img 
-          src={getExImg(nome)} 
+          src={exImg} 
           style={{ width: "100%", minHeight: 160, maxHeight: 180, objectFit: "cover", display: "block" }} 
-          onError={e => e.target.style.display = 'none'}
+          onError={e => { e.target.src = getExFallback(nome); }}
         />
       </div>
 
       {/* Video */}
       {(ytId || loading) && (
-        <div style={{ ...wrapperStyle, background: "var(--bdr)" }}>
+        <div style={{ ...wrapperStyle, background: "var(--card)", border: "1px solid var(--bdr)" }}>
           {loading ? (
-             <div style={{ padding: "40px 10px", textAlign: "center", fontSize: 13, color: "var(--acc)" }}>
-               <span className="spin">⏳</span> Ricerca video per {nome}...
+             <div style={{ padding: "30px 10px", textAlign: "center", fontSize: 13, color: "var(--dim)" }}>
+               <span className="spin">⏳</span> Cerco tutorial per {nome}...
              </div>
           ) : (
             <div style={{ position: "relative", paddingTop: "56.25%" }}>
@@ -99,12 +107,39 @@ function ExerciseMedia({ nome, manualUrl }) {
           )}
         </div>
       )}
+      
+      {/* YouTube Link Fallback */}
+      <div style={{ textAlign: "right", marginTop: -4, marginBottom: 10 }}>
+        <a 
+          href={`https://www.youtube.com/results?search_query=${encodeURIComponent(nome + " esercizio palestra tutorial")}`} 
+          target="_blank" rel="noopener noreferrer"
+          style={{ fontSize: 10, color: "var(--acc)", textDecoration: "none", opacity: 0.8, fontWeight: 700, letterSpacing: ".02em" }}
+        >
+          NON DISPONIBILE? CERCA SU YOUTUBE ➔
+        </a>
+      </div>
     </div>
   );
 }
 
 function FoodThumb({ nome }) {
-  return <img src={getFoodImg(nome)} style={{ width: 44, height: 44, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} onError={e => e.target.style.display = 'none'} />;
+  const [src, setSrc] = useState(null);
+  
+  useEffect(() => {
+    fetchMealImg(nome).then(setSrc);
+  }, [nome]);
+
+  return (
+    <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", background: "var(--sur)", flexShrink: 0, border: "1px solid var(--bdr)" }}>
+      {src ? (
+        <img 
+          src={src} 
+          style={{ width: "100%", height: "100%", objectFit: "cover" }} 
+          onError={e => { e.target.style.display = 'none'; }}
+        />
+      ) : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🍎</div>}
+    </div>
+  );
 }
 
 // ─── DB ───────────────────────────────────────────────────
