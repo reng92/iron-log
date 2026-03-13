@@ -2749,20 +2749,16 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
 }
 
 // ─── PDF IMPORT MODAL ─────────────────────────────────────
-const GROQ_PROMPT = `Sei un assistente nutrizionale esperto. Estrai il piano alimentare settimanale completo dal testo del PDF.
+const GROQ_PROMPT = `Sei un assistente nutrizionale esperto. Estrai il piano alimentare settimanale da una tabella PDF che ha colonne per i pasti e colonne per le ALTERNATIVE (es. "PRANZO" e "ALT. PRANZO").
 
-ISTRUZIONI DI MAPPING (CRITICO):
-- 1=Lunedì, 2=Martedì, 3=Mercoledì, 4=Giovedì, 5=Venerdì, 6=Sabato, 7=Domenica.
-- IDENTIFICA TUTTI I 7 GIORNI. Se il PDF raggruppa (es. "Dal Lunedì al Venerdì"), espandili in chiavi separate con gli stessi pasti.
-- Presta MASSIMA ATTENZIONE a SABATO E DOMENICA che spesso sono alla fine del testo o in sezioni "Weekend". Non ometterli Mai.
+REGOLE DI ESTRAZIONE:
+1. MAPPING: 1=Lun, 2=Mar, 3=Mer, 4=Gio, 5=Ven, 6=Sab, 7=Dom.
+2. ALTERNATIVE: Se vedi colonne come "ALT. PRANZO", "ALT. CENA" o "ALT. SPUNTINO", estraili come pasti separati ma assegna loro lo STESSO 'altGroupId' del pasto principale corrispondente.
+3. ESTIMAZIONE KCAL (FONDAMENTALE): Se nel testo i valori kcal mancano, DEVI STIMARLI tu basandoti sui grammi e l'alimento (es: 100g riso = 350 kcal, 10g olio = 90 kcal, 200g pollo = 220 kcal). Non lasciare mai kcal a 0.
+4. DETTAGLI: Includi sempre grammi e kcal per ogni singolo alimento.
 
-GESTIONE ALTERNATIVE (MOLTO IMPORTANTE):
-- Cerca pasti alternativi (es: "Pranzo A o Pranzo B", "In alternativa:...", "oppure", "Opzione 1 / 2").
-- Per raggrupparli, assegna a TUTTI i pasti tra loro alternativi lo STESSO 'altGroupId' (es. "pranzo_alt_1").
-- Se un pasto ha un'alternativa, ENTRAMBI (o più) devono avere lo stesso altGroupId. Se non ci sono alternative, usa null.
-
-Rispondi SOLO con JSON valido, nessun testo extra o markdown:
-{"nomePiano":"Nome del piano","giorniPasti":{"1":[{"nome":"Colazione","altGroupId":null,"alimenti":[{"nome":"Fette biscottate","grammi":"30","kcal":"120"},{"nome":"Marmellata","grammi":"20","kcal":"50"}]},{"nome":"Pranzo","altGroupId":null,"alimenti":[{"nome":"Riso","grammi":"100","kcal":"350"}]}],"2":[],"3":[],"4":[],"5":[],"6":[],"7":[]}}`;
+Rispondi SOLO con JSON valido:
+{"nomePiano":"Nome","giorniPasti":{"1":[{"nome":"Pranzo","altGroupId":"p1","alimenti":[{"nome":"Riso","grammi":"80","kcal":"280"}]},{"nome":"Alternativa Pranzo","altGroupId":"p1","alimenti":[{"nome":"Pasta","grammi":"70","kcal":"250"}]}],"2":[],...}}`;
 
 
 function PdfImportModal({ onApply, onClose }) {
