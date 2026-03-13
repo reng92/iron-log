@@ -24,7 +24,17 @@ const db = {
   async addSessione(s) { await sb.from("sessioni").insert({id:s.id,data:s}); },
   async delSessione(id) { await sb.from("sessioni").delete().eq("id",id); },
   async getPeso() { const {data}=await sb.from("peso").select("*").order("data",{ascending:true}); return data||[]; },
-  async addPeso(p) { await sb.from("peso").insert(p); },
+  async addPeso(p) { 
+    const res = await sb.from("peso").insert(p); 
+    if(res.error && res.error.code === 'PGRST204') {
+      const { proteine, proteine_status, metabolismo, metabolismo_status, massa_ossea, massa_ossea_status, ...rest } = p;
+      const res2 = await sb.from("peso").insert(rest);
+      if(res2.error) throw new Error(res2.error.message);
+      alert("ATTENZIONE: Supabase non ha le colonne per Proteine, Metabolismo e Massa Ossea nella tabella 'peso'. Il peso è stato salvato senza questi campi. Aggiungi le colonne in Supabase per salvarli in futuro.");
+    } else if (res.error) {
+      throw new Error(res.error.message);
+    }
+  },
   async delPeso(id) { await sb.from("peso").delete().eq("id",id); },
   async getSettings() { try{ const {data}=await sb.from("impostazioni").select("*").eq("id","settings").single(); return data?.data||{}; }catch{return{};} },
   async saveSettings(s) { await sb.from("impostazioni").upsert({id:"settings",data:s}); },
@@ -250,7 +260,10 @@ export default function App() {
   const saveSchede=async s=>{setSchede(s);await db.setSchede(s);};
   const addSessione=async s=>{setSessioni(p=>[s,...p]);await db.addSessione(s);};
   const delSessione=async id=>{setSessioni(p=>p.filter(s=>s.id!==id));await db.delSessione(id);};
-  const addPeso=async p=>{setPeso(prev=>[...prev,p].sort((a,b)=>a.data.localeCompare(b.data)));await db.addPeso(p);};
+  const addPeso=async p=>{
+    setPeso(prev=>[...prev,p].sort((a,b)=>a.data.localeCompare(b.data)));
+    try { await db.addPeso(p); } catch(e) { alert("Errore salvataggio: "+e.message); setPeso(prev=>prev.filter(x=>x.id!==p.id)); }
+  };
   const delPeso=async id=>{setPeso(p=>p.filter(x=>x.id!==id));await db.delPeso(id);};
   const toggleDark=async()=>{const n={...settings,darkMode:!settings.darkMode};setSettings(n);await db.saveSettings(n);};
   const saveSettings=async n=>{setSettings(n);await db.saveSettings(n);};
