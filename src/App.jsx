@@ -502,6 +502,34 @@ function Schede({schede,onNew,onEdit,onDelete,onStart}) {
   );
 }
 
+// ─── IMAGE COMPRESS ──────────────────────────────────────
+const compressImg = (file, maxPx=800, quality=0.72) => new Promise(res => {
+  const img = new Image(), url = URL.createObjectURL(file);
+  img.onload = () => {
+    const r = Math.min(1, maxPx / Math.max(img.width, img.height));
+    const w = Math.round(img.width * r), h = Math.round(img.height * r);
+    const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+    cv.getContext("2d").drawImage(img, 0, 0, w, h);
+    URL.revokeObjectURL(url);
+    res(cv.toDataURL("image/jpeg", quality));
+  };
+  img.src = url;
+});
+
+const ZEPP_PROMPT = `Analizza questo screenshot dell'app Zepp Life e restituisci SOLO JSON valido con TUTTI i valori numerici e le etichette di stato presenti. Usa null per i campi non trovati. Esempio formato:{"peso":86.8,"punteggio":46,"tipologia":"Robusto","imc":30.3,"imc_status":"Molto alto","massa_grassa":31.3,"massa_grassa_status":"Alto","acqua":49.1,"acqua_status":"Insufficiente","grasso_viscerale":13,"grasso_viscerale_status":"Alto","muscoli":56.62,"muscoli_status":"Buono","proteine":16.2,"proteine_status":"Normale","metabolismo":1753,"metabolismo_status":"Obiettivo raggiunto","massa_ossea":3.04,"massa_ossea_status":"Normale"}`;
+
+const STATUS_OPTS = ["","Molto alto","Alto","Normale","Basso","Molto basso","Insufficiente","Buono","Obiettivo raggiunto"];
+
+function StatusBadge({label}) {
+  if(!label) return null;
+  const l = label.toLowerCase();
+  const [bg, col] = l.includes("molto alto") ? ["rgba(255,59,48,.15)","var(--dan)"] :
+    l.includes("alto") ? ["rgba(255,149,0,.15)","#FF9500"] :
+    l.includes("insufficiente") || l.includes("basso") ? ["rgba(255,59,48,.15)","var(--dan)"] :
+    ["rgba(48,209,88,.15)","var(--ok)"];
+  return <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,background:bg,color:col,letterSpacing:".05em",textTransform:"uppercase",whiteSpace:"nowrap"}}>{label}</span>;
+}
+
 // ─── SCHEDA PDF IMPORT MODAL ──────────────────────────────
 const GROQ_SCHEDA_PROMPT = `Sei un assistente fitness. L'utente ti fornisce il testo estratto da un PDF di una scheda di allenamento in palestra.
 Estrai TUTTI gli elementi della scheda nell'ordine in cui appaiono, inclusi: riscaldamento (warm-up), cardio iniziale, esercizi con i pesi, cardio finale, defaticamento, stretching — qualunque attività presente nel PDF va inclusa.
@@ -1209,17 +1237,89 @@ function CalcRM() {
 
 // ─── PESO CORPOREO ────────────────────────────────────────
 function Peso({peso,onAdd,onDelete}) {
-  const [valore,setValore]=useState("");
-  const [nota,setNota]=useState("");
-  const [data,setData]=useState(fmtIso());
+  const blank = () => ({
+    valore:"", data:fmtIso(), nota:"",
+    punteggio:"", tipologia:"",
+    imc:"", imc_status:"",
+    massa_grassa:"", massa_grassa_status:"",
+    acqua:"", acqua_status:"",
+    grasso_viscerale:"", grasso_viscerale_status:"",
+    muscoli:"", muscoli_status:"",
+    proteine:"", proteine_status:"",
+    metabolismo:"", metabolismo_status:"",
+    massa_ossea:"", massa_ossea_status:"",
+    foto_fronte:null, foto_retro:null
+  });
+  const [form,setForm]=useState(blank);
   const [saving,setSaving]=useState(false);
+  const [showModal,setShowModal]=useState(false);
+  const [expanded,setExpanded]=useState(null);
+  const [lightbox,setLightbox]=useState(null);
+  const [scanning,setScanning]=useState(false);
+  const apiKey=localStorage.getItem("groq_key")||"";
+
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const handlePhoto=async(key,file)=>{if(!file)return;set(key,await compressImg(file));};
+
+  const scanZepp=async(file)=>{
+    if(!apiKey){alert("Configura prima la Groq API key (sezione Import Scheda PDF)");return;}
+    setScanning(true);
+    try{
+      const b64=await compressImg(file,1200,0.85);
+      const resp=await fetch("https://api.groq.com/openai/v1/chat/completions",{
+        method:"POST",
+        headers:{"Authorization":`Bearer ${apiKey}`,"Content-Type":"application/json"},
+        body:JSON.stringify({
+          model:"meta-llama/llama-4-scout-17b-16e-instruct",
+          messages:[{role:"user",content:[
+            {type:"image_url",image_url:{url:b64}},
+            {type:"text",text:ZEPP_PROMPT}
+          ]}],
+          temperature:0,max_tokens:512
+        })
+      });
+      const json=await resp.json();
+      const text=json.choices?.[0]?.message?.content||"";
+      const match=text.match(/\{[\s\S]*\}/);
+      if(match){
+        const d=JSON.parse(match[0]);
+        setForm(f=>({
+          ...f,
+          valore:d.peso!=null?String(d.peso):f.valore,
+          punteggio:d.punteggio!=null?String(d.punteggio):f.punteggio,
+          tipologia:d.tipologia||f.tipologia,
+          imc:d.imc!=null?String(d.imc):f.imc, imc_status:d.imc_status||f.imc_status,
+          massa_grassa:d.massa_grassa!=null?String(d.massa_grassa):f.massa_grassa, massa_grassa_status:d.massa_grassa_status||f.massa_grassa_status,
+          acqua:d.acqua!=null?String(d.acqua):f.acqua, acqua_status:d.acqua_status||f.acqua_status,
+          grasso_viscerale:d.grasso_viscerale!=null?String(d.grasso_viscerale):f.grasso_viscerale, grasso_viscerale_status:d.grasso_viscerale_status||f.grasso_viscerale_status,
+          muscoli:d.muscoli!=null?String(d.muscoli):f.muscoli, muscoli_status:d.muscoli_status||f.muscoli_status,
+          proteine:d.proteine!=null?String(d.proteine):f.proteine, proteine_status:d.proteine_status||f.proteine_status,
+          metabolismo:d.metabolismo!=null?String(d.metabolismo):f.metabolismo, metabolismo_status:d.metabolismo_status||f.metabolismo_status,
+          massa_ossea:d.massa_ossea!=null?String(d.massa_ossea):f.massa_ossea, massa_ossea_status:d.massa_ossea_status||f.massa_ossea_status,
+        }));
+      }else{alert("Nessun dato trovato nello screenshot.");}
+    }catch(e){alert("Errore scan: "+e.message);}
+    setScanning(false);
+  };
 
   const handleAdd=async()=>{
-    if(!valore)return;
+    if(!form.valore)return;
     setSaving(true);
-    await onAdd({id:genId(),valore:+valore,nota,data});
-    setValore(""); setNota(""); setData(fmtIso());
-    setSaving(false);
+    const n=v=>v!==""&&v!=null?+v:null;
+    await onAdd({
+      id:genId(),valore:+form.valore,data:form.data,nota:form.nota,
+      punteggio:n(form.punteggio),tipologia:form.tipologia||null,
+      imc:n(form.imc),imc_status:form.imc_status||null,
+      massa_grassa:n(form.massa_grassa),massa_grassa_status:form.massa_grassa_status||null,
+      acqua:n(form.acqua),acqua_status:form.acqua_status||null,
+      grasso_viscerale:n(form.grasso_viscerale),grasso_viscerale_status:form.grasso_viscerale_status||null,
+      muscoli:n(form.muscoli),muscoli_status:form.muscoli_status||null,
+      proteine:n(form.proteine),proteine_status:form.proteine_status||null,
+      metabolismo:n(form.metabolismo),metabolismo_status:form.metabolismo_status||null,
+      massa_ossea:n(form.massa_ossea),massa_ossea_status:form.massa_ossea_status||null,
+      foto_fronte:form.foto_fronte||null,foto_retro:form.foto_retro||null,
+    });
+    setForm(blank());setSaving(false);setShowModal(false);
   };
 
   const vals=peso.map(p=>+p.valore);
@@ -1229,12 +1329,38 @@ function Peso({peso,onAdd,onDelete}) {
   const ultimo=vals[vals.length-1]||0;
   const delta=primo?Math.round((ultimo-primo)*10)/10:0;
   const chartData=peso.map(p=>({y:+p.valore,label:fmtShort(p.data)}));
+  const hasBody=p=>p.imc!=null||p.massa_grassa!=null||p.acqua!=null||p.muscoli!=null||p.grasso_viscerale!=null||p.proteine!=null||p.metabolismo!=null||p.massa_ossea!=null;
+
+  const MR=({icon,label,value,unit,badge})=>(
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid var(--bdr)"}}>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <span style={{fontSize:15}}>{icon}</span>
+        <div>
+          <div style={{fontSize:10,color:"var(--dim)",textTransform:"uppercase",letterSpacing:".06em",fontWeight:700}}>{label}</div>
+          <div style={{fontSize:17,fontWeight:700}}>{value}<span style={{fontSize:11,color:"var(--dim)",marginLeft:3}}>{unit}</span></div>
+        </div>
+      </div>
+      <StatusBadge label={badge}/>
+    </div>
+  );
+
+  const MI=({label,fk,sk,ph,step="0.1"})=>(
+    <div style={{marginBottom:10}}>
+      <label className="lbl">{label}</label>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 130px",gap:6}}>
+        <input className="inp" type="number" step={step} placeholder={ph} value={form[fk]} onChange={e=>set(fk,e.target.value)}/>
+        <select className="inp" style={{fontSize:11,padding:"10px 6px"}} value={form[sk]} onChange={e=>set(sk,e.target.value)}>
+          {STATUS_OPTS.map(o=><option key={o} value={o}>{o||"— stato"}</option>)}
+        </select>
+      </div>
+    </div>
+  );
 
   return (
     <>
       <div style={{paddingTop:20,paddingBottom:16}}>
         <h1 className="pt">PESO<br/>CORPOREO</h1>
-        <p className="sub">Traccia il tuo andamento nel tempo</p>
+        <p className="sub">Traccia peso e composizione corporea</p>
       </div>
 
       {peso.length>=2&&(
@@ -1252,32 +1378,156 @@ function Peso({peso,onAdd,onDelete}) {
         </>
       )}
 
-      <div className="card">
-        <div className="st" style={{marginBottom:12}}>AGGIUNGI RILEVAZIONE</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-          <div><label className="lbl">Peso (kg)</label><input className="inp" type="number" step="0.1" min="30" placeholder="75.5" value={valore} onChange={e=>setValore(e.target.value)}/></div>
-          <div><label className="lbl">Data</label><input className="inp" type="date" value={data} onChange={e=>setData(e.target.value)}/></div>
-        </div>
-        <div className="ig"><label className="lbl">Nota (opzionale)</label><input className="inp" placeholder="es. mattina a digiuno" value={nota} onChange={e=>setNota(e.target.value)}/></div>
-        <button className="btn btn-p btn-full" onClick={handleAdd} disabled={!valore||saving}><IcPlus/> {saving?"SALVATAGGIO…":"AGGIUNGI"}</button>
-      </div>
+      <button className="btn btn-p btn-full" style={{marginBottom:16}} onClick={()=>setShowModal(true)}><IcPlus/> NUOVA RILEVAZIONE</button>
 
       {peso.length>0&&(
         <>
-          <div className="st" style={{marginTop:4}}>STORICO ({peso.length} rilevazioni)</div>
-          {[...peso].reverse().map(p=>(
-            <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid var(--bdr)"}}>
-              <div>
-                <div style={{fontWeight:700,fontSize:15}}>{p.valore} kg</div>
-                {p.nota&&<div style={{fontSize:12,color:"var(--dim)",marginTop:1}}>{p.nota}</div>}
+          <div className="st">STORICO ({peso.length} rilevazioni)</div>
+          {[...peso].reverse().map(p=>{
+            const isExp=expanded===p.id;
+            return (
+              <div key={p.id} className="card" style={{marginBottom:10}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}} onClick={()=>setExpanded(isExp?null:p.id)}>
+                  <div style={{display:"flex",alignItems:"center",gap:12,flex:1,minWidth:0}}>
+                    <div>
+                      <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:28,color:"var(--acc)",lineHeight:1}}>{p.valore} <span style={{fontSize:13,color:"var(--dim)",fontFamily:"'Barlow',sans-serif",fontWeight:400}}>kg</span></div>
+                      <div style={{fontSize:11,color:"var(--dim)",marginTop:1}}>{fmtDate(p.data)}</div>
+                    </div>
+                    {p.punteggio!=null&&<div style={{background:"var(--acc2)",borderRadius:10,padding:"4px 10px",textAlign:"center",flexShrink:0}}>
+                      <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:22,color:"var(--acc)",lineHeight:1}}>{p.punteggio}</div>
+                      <div style={{fontSize:9,color:"var(--dim)",textTransform:"uppercase",letterSpacing:".06em"}}>score</div>
+                    </div>}
+                    {p.tipologia&&<span style={{fontSize:11,fontWeight:700,background:"var(--bdr)",padding:"3px 9px",borderRadius:20,flexShrink:0}}>{p.tipologia}</span>}
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                    {(p.foto_fronte||p.foto_retro)&&<span style={{fontSize:12}}>📷</span>}
+                    {hasBody(p)&&<span style={{fontSize:12}}>📊</span>}
+                    <span style={{color:"var(--dim)",fontSize:11}}>{isExp?"▲":"▼"}</span>
+                  </div>
+                </div>
+
+                {isExp&&(
+                  <div style={{marginTop:12,borderTop:"1px solid var(--bdr)",paddingTop:12}}>
+                    {p.nota&&<div style={{fontSize:13,color:"var(--dim)",marginBottom:10,fontStyle:"italic"}}>"{p.nota}"</div>}
+
+                    {(p.foto_fronte||p.foto_retro)&&(
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+                        {p.foto_fronte&&<div>
+                          <div className="st" style={{fontSize:9,marginBottom:4}}>FRONTE</div>
+                          <img src={p.foto_fronte} alt="Fronte" style={{width:"100%",borderRadius:8,cursor:"pointer",objectFit:"cover",maxHeight:200}} onClick={()=>setLightbox(p.foto_fronte)}/>
+                        </div>}
+                        {p.foto_retro&&<div>
+                          <div className="st" style={{fontSize:9,marginBottom:4}}>RETRO</div>
+                          <img src={p.foto_retro} alt="Retro" style={{width:"100%",borderRadius:8,cursor:"pointer",objectFit:"cover",maxHeight:200}} onClick={()=>setLightbox(p.foto_retro)}/>
+                        </div>}
+                      </div>
+                    )}
+
+                    {hasBody(p)&&(
+                      <div style={{marginBottom:8}}>
+                        <div className="st" style={{marginBottom:4}}>COMPOSIZIONE CORPOREA</div>
+                        {p.imc!=null&&<MR icon="⚖️" label="IMC" value={p.imc} badge={p.imc_status}/>}
+                        {p.massa_grassa!=null&&<MR icon="🔸" label="Massa grassa" value={p.massa_grassa} unit="%" badge={p.massa_grassa_status}/>}
+                        {p.acqua!=null&&<MR icon="💧" label="Acqua" value={p.acqua} unit="%" badge={p.acqua_status}/>}
+                        {p.grasso_viscerale!=null&&<MR icon="🔶" label="Grasso viscerale" value={p.grasso_viscerale} badge={p.grasso_viscerale_status}/>}
+                        {p.muscoli!=null&&<MR icon="💪" label="Muscoli" value={p.muscoli} unit="kg" badge={p.muscoli_status}/>}
+                        {p.proteine!=null&&<MR icon="🥩" label="Proteine" value={p.proteine} unit="%" badge={p.proteine_status}/>}
+                        {p.metabolismo!=null&&<MR icon="🔥" label="Metabolismo basale" value={p.metabolismo} unit="kcal" badge={p.metabolismo_status}/>}
+                        {p.massa_ossea!=null&&<MR icon="🦴" label="Massa ossea" value={p.massa_ossea} unit="kg" badge={p.massa_ossea_status}/>}
+                      </div>
+                    )}
+
+                    <button className="btn" style={{marginTop:6,fontSize:12,padding:"7px 14px",color:"var(--dan)",border:"1px solid rgba(255,59,48,.25)",background:"rgba(255,59,48,.07)"}} onClick={()=>{if(window.confirm("Eliminare?"))onDelete(p.id);}}>
+                      <IcTrash/> Elimina
+                    </button>
+                  </div>
+                )}
+
+                {!isExp&&<div style={{display:"flex",justifyContent:"flex-end",marginTop:6}}>
+                  <button className="bico d" onClick={e=>{e.stopPropagation();if(window.confirm("Eliminare questa rilevazione?"))onDelete(p.id);}}><IcTrash/></button>
+                </div>}
               </div>
-              <div style={{display:"flex",alignItems:"center",gap:10}}>
-                <div style={{fontSize:12,color:"var(--dim)"}}>{fmtDate(p.data)}</div>
-                <button className="bico d" onClick={()=>{if(window.confirm("Eliminare questa rilevazione?"))onDelete(p.id);}}><IcTrash/></button>
+            );
+          })}
+        </>
+      )}
+
+      {lightbox&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.96)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setLightbox(null)}>
+          <img src={lightbox} alt="foto" style={{maxWidth:"95%",maxHeight:"95vh",objectFit:"contain",borderRadius:8}}/>
+          <button style={{position:"absolute",top:16,right:16,background:"rgba(255,255,255,.15)",border:"none",color:"#fff",borderRadius:"50%",width:36,height:36,cursor:"pointer",fontSize:18}} onClick={()=>setLightbox(null)}>✕</button>
+        </div>
+      )}
+
+      {showModal&&(
+        <div className="mov" onClick={e=>{if(e.target===e.currentTarget)setShowModal(false);}}>
+          <div className="mod">
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <div className="wt">NUOVA RILEVAZIONE</div>
+              <button className="bico" onClick={()=>setShowModal(false)}>✕</button>
+            </div>
+
+            {/* Zepp Life scan */}
+            <div style={{marginBottom:16}}>
+              <label className="lbl" style={{marginBottom:6}}>SCAN ZEPP LIFE — AI COMPILA TUTTO AUTOMATICAMENTE</label>
+              <label style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",border:"1px dashed var(--bdr)",borderRadius:10,cursor:"pointer",color:scanning?"var(--acc)":"var(--dim)",fontSize:13,transition:"all .15s",background:scanning?"var(--acc2)":"transparent"}}>
+                <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>e.target.files[0]&&scanZepp(e.target.files[0])}/>
+                <span style={{fontSize:20}}>{scanning?"⏳":"📊"}</span>
+                <div>
+                  <div style={{fontWeight:700}}>{scanning?"Analisi in corso…":"Carica screenshot Zepp Life"}</div>
+                  <div style={{fontSize:11,color:"var(--mut)",marginTop:1}}>Il modello AI legge tutti i valori e li compila</div>
+                </div>
+              </label>
+            </div>
+
+            <div className="st">PESO E DATA</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+              <div><label className="lbl">Peso (kg)</label><input className="inp" type="number" step="0.1" min="30" placeholder="86.5" value={form.valore} onChange={e=>set("valore",e.target.value)}/></div>
+              <div><label className="lbl">Data</label><input className="inp" type="date" value={form.data} onChange={e=>set("data",e.target.value)}/></div>
+            </div>
+
+            <div className="st" style={{marginBottom:8}}>COMPOSIZIONE CORPOREA <span style={{fontSize:10,color:"var(--mut)"}}>(OPZIONALE)</span></div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+              <div><label className="lbl">Punteggio corpo</label><input className="inp" type="number" placeholder="46" value={form.punteggio} onChange={e=>set("punteggio",e.target.value)}/></div>
+              <div><label className="lbl">Tipologia corporea</label>
+                <select className="inp" value={form.tipologia} onChange={e=>set("tipologia",e.target.value)}>
+                  <option value="">—</option>
+                  {["Magro","Magro muscoloso","Normale","Muscoloso","Robusto","Sovrappeso","Obeso"].map(t=><option key={t}>{t}</option>)}
+                </select>
               </div>
             </div>
-          ))}
-        </>
+            <MI label="IMC" fk="imc" sk="imc_status" ph="30.3"/>
+            <MI label="Massa grassa (%)" fk="massa_grassa" sk="massa_grassa_status" ph="31.3"/>
+            <MI label="Acqua (%)" fk="acqua" sk="acqua_status" ph="49.1"/>
+            <MI label="Grasso viscerale" fk="grasso_viscerale" sk="grasso_viscerale_status" ph="13" step="1"/>
+            <MI label="Muscoli (kg)" fk="muscoli" sk="muscoli_status" ph="56.62" step="0.01"/>
+            <MI label="Proteine (%)" fk="proteine" sk="proteine_status" ph="16.2"/>
+            <MI label="Metabolismo basale (kcal)" fk="metabolismo" sk="metabolismo_status" ph="1753" step="1"/>
+            <MI label="Massa ossea (kg)" fk="massa_ossea" sk="massa_ossea_status" ph="3.04" step="0.01"/>
+
+            <div className="st" style={{marginTop:4,marginBottom:8}}>FOTO CORPOREE <span style={{fontSize:10,color:"var(--mut)"}}>(OPZIONALE)</span></div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+              {[["foto_fronte","FRONTE"],["foto_retro","RETRO"]].map(([key,lab])=>(
+                <div key={key}>
+                  <label className="lbl">{lab}</label>
+                  <label style={{display:"flex",alignItems:"center",justifyContent:"center",border:"1px dashed var(--bdr)",borderRadius:8,cursor:"pointer",overflow:"hidden",minHeight:90,background:"var(--sur)"}}>
+                    <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>e.target.files[0]&&handlePhoto(key,e.target.files[0])}/>
+                    {form[key]?<img src={form[key]} alt={key} style={{width:"100%",maxHeight:130,objectFit:"cover"}}/>:<span style={{fontSize:26,color:"var(--mut)"}}>+</span>}
+                  </label>
+                </div>
+              ))}
+            </div>
+
+            <div style={{marginBottom:14}}>
+              <label className="lbl">Nota (opzionale)</label>
+              <input className="inp" placeholder="es. mattina a digiuno" value={form.nota} onChange={e=>set("nota",e.target.value)}/>
+            </div>
+
+            <button className="btn btn-p btn-full" onClick={handleAdd} disabled={!form.valore||saving}>
+              <IcPlus/> {saving?"SALVATAGGIO…":"SALVA RILEVAZIONE"}
+            </button>
+          </div>
+        </div>
       )}
     </>
   );
