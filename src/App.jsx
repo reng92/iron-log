@@ -18,26 +18,32 @@ const GIORNI_LABEL = ["", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Vene
 const GIORNI_SHORT = ["", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 
 // ─── MEDIA HELPERS ────────────────────────────────────────
-const getUnsplashImg = (q, w, h) => `https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&q=80&w=${w}&h=${h}`; // Default healthy food
-const getExFallback = (n) => `https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400&h=250`; // Default gym
+const cleanName = (n) => n.replace(/\d+\s*g|\d+g|\d+\s*ml|\d+ml|[\d.,]+/gi, '').replace(/\s+/g, ' ').trim();
 
-async function fetchMealImg(nome) {
+async function fetchMealImg(rawName) {
+  const nome = cleanName(rawName);
   try {
     const r = await fetch(`https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(nome)}`);
     const d = await r.json();
-    return d.meals?.[0]?.strMealThumb || `https://source.unsplash.com/120x120/?${encodeURIComponent(nome)},food,dish`;
-  } catch { return `https://source.unsplash.com/120x120/?${encodeURIComponent(nome)},food,dish`; }
+    if (d.meals?.[0]?.strMealThumb) return d.meals[0].strMealThumb;
+    // Fallback search-based image (LoremFlickr is better than Unsplash Source now)
+    return `https://loremflickr.com/120/120/food,dish,${encodeURIComponent(nome)}/all?lock=${encodeURIComponent(nome)}`;
+  } catch { 
+    return `https://loremflickr.com/120/120/food,dish,${encodeURIComponent(nome)}/all?lock=${encodeURIComponent(nome)}`;
+  }
 }
 
-async function fetchYoutubeId(nome) {
+async function fetchYoutubeId(rawName) {
   if (!GROQ_KEY) return null;
+  const nome = cleanName(rawName);
   try {
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        messages: [{ role: 'user', content: `Return ONLY the YouTube 11-char ID for a real, high-quality, professional gym exercise tutorial for "${nome}" in Italian. Preferred channels: Project Invictus, Umberto Miletto, Team Commando, Danny Lazzarin. DO NOT return Rick Astley (dQw4w9WgXcQ). No text, no quotes.` }],
-        temperature: 0.1, max_tokens: 15
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'user', content: `Sei un esperto di fitness. Trova il vero ID YouTube del PRIMO risultato per il tutorial dell'esercizio "${nome}" in italiano. Rispondi SOLO con l'ID di 11 caratteri. Niente commenti.` }],
+        temperature: 0, max_tokens: 15
       })
     });
     const data = await res.json();
@@ -49,12 +55,11 @@ async function fetchYoutubeId(nome) {
 }
 
 function ExerciseMedia({ nome, manualUrl }) {
-  const [ytId, setYtId] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const exImg = `https://source.unsplash.com/400x250/?${encodeURIComponent(nome)},gym,workout,training`;
+  const exImg = `https://loremflickr.com/400/250/gym,workout,${encodeURIComponent(cleanName(nome))}/all?lock=${encodeURIComponent(nome)}`;
 
   useEffect(() => {
     if (manualUrl) return;
+    setYtId(null); // Reset when name changes
     (async () => {
       setLoading(true);
       const id = await fetchYoutubeId(nome);
@@ -81,9 +86,9 @@ function ExerciseMedia({ nome, manualUrl }) {
     <div style={{ marginBottom: 12 }}>
       {/* Thumbnail */}
       <div style={{ ...wrapperStyle, marginBottom: 6 }}>
-        <img 
-          src={exImg} 
-          style={{ width: "100%", minHeight: 160, maxHeight: 180, objectFit: "cover", display: "block" }} 
+        <img
+          src={exImg}
+          style={{ width: "100%", minHeight: 160, maxHeight: 180, objectFit: "cover", display: "block" }}
           onError={e => { e.target.src = getExFallback(nome); }}
         />
       </div>
@@ -92,9 +97,9 @@ function ExerciseMedia({ nome, manualUrl }) {
       {(ytId || loading) && (
         <div style={{ ...wrapperStyle, background: "var(--card)", border: "1px solid var(--bdr)" }}>
           {loading ? (
-             <div style={{ padding: "30px 10px", textAlign: "center", fontSize: 13, color: "var(--dim)" }}>
-               <span className="spin">⏳</span> Cerco tutorial per {nome}...
-             </div>
+            <div style={{ padding: "30px 10px", textAlign: "center", fontSize: 13, color: "var(--dim)" }}>
+              <span className="spin">⏳</span> Cerco tutorial per {nome}...
+            </div>
           ) : (
             <div style={{ position: "relative", paddingTop: "56.25%" }}>
               <iframe
@@ -107,11 +112,11 @@ function ExerciseMedia({ nome, manualUrl }) {
           )}
         </div>
       )}
-      
+
       {/* YouTube Link Fallback */}
       <div style={{ textAlign: "right", marginTop: -4, marginBottom: 10 }}>
-        <a 
-          href={`https://www.youtube.com/results?search_query=${encodeURIComponent(nome + " esercizio palestra tutorial")}`} 
+        <a
+          href={`https://www.youtube.com/results?search_query=${encodeURIComponent(nome + " esercizio palestra tutorial")}`}
           target="_blank" rel="noopener noreferrer"
           style={{ fontSize: 10, color: "var(--acc)", textDecoration: "none", opacity: 0.8, fontWeight: 700, letterSpacing: ".02em" }}
         >
@@ -124,7 +129,7 @@ function ExerciseMedia({ nome, manualUrl }) {
 
 function FoodThumb({ nome }) {
   const [src, setSrc] = useState(null);
-  
+
   useEffect(() => {
     fetchMealImg(nome).then(setSrc);
   }, [nome]);
@@ -132,9 +137,9 @@ function FoodThumb({ nome }) {
   return (
     <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", background: "var(--sur)", flexShrink: 0, border: "1px solid var(--bdr)" }}>
       {src ? (
-        <img 
-          src={src} 
-          style={{ width: "100%", height: "100%", objectFit: "cover" }} 
+        <img
+          src={src}
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
           onError={e => { e.target.style.display = 'none'; }}
         />
       ) : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🍎</div>}
