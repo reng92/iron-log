@@ -71,8 +71,29 @@ async function fetchMealImg(rawName) {
   return request;
 }
 
-// ─── EXERCISE MEDIA (icon + youtube) ─────────────────────
+// ─── EXERCISE MEDIA ───────────────────────────────────────
 const exMediaCache = {};
+
+const INVIDIOUS = [
+  'https://inv.tux.pizza',
+  'https://invidious.nerdvpn.de',
+  'https://yt.artemislena.eu',
+];
+
+async function getYtId(query) {
+  for (const base of INVIDIOUS) {
+    try {
+      const r = await fetch(
+        `${base}/api/v1/search?q=${encodeURIComponent(query)}&type=video&fields=videoId,title`,
+        { signal: AbortSignal.timeout(4000) }
+      );
+      if (!r.ok) continue;
+      const data = await r.json();
+      if (Array.isArray(data) && data[0]?.videoId) return data[0].videoId;
+    } catch {}
+  }
+  return null;
+}
 
 async function resolveExerciseMedia(name) {
   if (exMediaCache[name]) return exMediaCache[name];
@@ -82,7 +103,7 @@ async function resolveExerciseMedia(name) {
   let iconUrl = null;
   let ytId = null;
 
-  // Groq: traduce il nome E restituisce video ID in un'unica chiamata
+  // 1. Traduzione in inglese via Groq (solo nome, niente ID)
   if (key) {
     try {
       const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -92,49 +113,40 @@ async function resolveExerciseMedia(name) {
           model: 'llama-3.1-8b-instant',
           messages: [{
             role: 'user',
-            content: `Gym exercise: "${name}"
-Reply with EXACTLY 2 lines:
-ENGLISH: [English exercise name]
-YTID: [11-char YouTube ID of the most popular tutorial video for this exact exercise]`
+            content: `Translate this gym exercise name to English. Return ONLY the English name, nothing else: "${name}"`
           }],
-          temperature: 0, max_tokens: 40
+          temperature: 0, max_tokens: 15
         })
       });
-      const data = await res.json();
-      const text = data?.choices?.[0]?.message?.content || '';
-      const em = text.match(/ENGLISH:\s*(.+)/i);
-      const ym = text.match(/YTID:\s*([a-zA-Z0-9_\-]{11})/i);
-      if (em) englishName = em[1].trim();
-      if (ym) ytId = ym[1].trim();
+      const d = await res.json();
+      const t = d?.choices?.[0]?.message?.content?.trim();
+      if (t && t.length < 60) englishName = t;
     } catch {}
   }
 
-  // Valida il video ID
-  if (ytId) {
-    const valid = await new Promise(resolve => {
-      const img = new Image();
-      img.onload = () => resolve(img.naturalWidth > 120);
-      img.onerror = () => resolve(false);
-      img.src = `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`;
-    });
-    if (!valid) ytId = null;
-  }
-
-  // wger.de: illustrazioni stilizzate esercizi
+  // 2. wger: immagine esercizio — usa SOLO se count > 0 (fix "sempre crunches")
   try {
     const r = await fetch(
       `https://wger.de/api/v2/exercise/?format=json&language=2&name=${encodeURIComponent(englishName)}&limit=5`
     );
     const d = await r.json();
-    if (d.results?.length > 0) {
-      const baseId = d.results[0].exercise_base;
+    if (d.count > 0 && d.results?.length > 0) {
+      // Prendi il risultato con nome più simile
+      const best = d.results.find(ex =>
+        ex.name?.toLowerCase().includes(englishName.toLowerCase().split(' ')[0])
+      ) || d.results[0];
+
+      const baseId = best.exercise_base;
       const ir = await fetch(
-        `https://wger.de/api/v2/exerciseimage/?format=json&exercise_base=${baseId}&limit=1`
+        `https://wger.de/api/v2/exerciseimage/?format=json&exercise_base=${baseId}&is_main=True&limit=2`
       );
       const id2 = await ir.json();
       iconUrl = id2.results?.[0]?.image || null;
     }
   } catch {}
+
+  // 3. YouTube ID reale via Invidious (nessuna API key)
+  ytId = await getYtId(`${englishName} exercise tutorial proper form`);
 
   const result = { iconUrl, ytId, englishName };
   exMediaCache[name] = result;
@@ -149,59 +161,76 @@ function ExerciseMediaCard({ name }) {
     resolveExerciseMedia(name).then(setMedia);
   }, [name]);
 
-  const ytSearchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent((media?.englishName || name) + ' tutorial proper form')}`;
+  const englishName = media?.englishName || name;
 
   return (
     <div style={{ marginBottom: 12 }}>
+      {/* Riga: icona + bottone video */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+
+        {/* Icona wger */}
         <div style={{
-          width: 54, height: 54, borderRadius: 10, flexShrink: 0,
+          width: 56, height: 56, borderRadius: 10, flexShrink: 0,
           background: 'var(--sur)', border: '1px solid var(--bdr)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden'
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          overflow: 'hidden'
         }}>
-          {media?.iconUrl ? (
+          {!media ? (
+            <span className="pls" style={{ fontSize: 20 }}>🏋️</span>
+          ) : media.iconUrl ? (
             <img
               src={media.iconUrl}
               className="ex-icon"
-              style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 6 }}
-              onError={e => { e.target.style.display = 'none'; }}
+              style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 5 }}
+              onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
             />
           ) : (
-            <span className={!media ? 'pls' : ''} style={{ fontSize: 22 }}>🏋️</span>
+            <span style={{ fontSize: 22 }}>🏋️</span>
           )}
         </div>
-        <div style={{ flex: 1 }}>
+
+        {/* Bottone video */}
+        <div>
           {!media ? (
-            <span style={{ fontSize: 11, color: 'var(--mut)' }} className="pls">ricerca media…</span>
+            <span style={{ fontSize: 11, color: 'var(--mut)' }} className="pls">caricamento…</span>
           ) : media.ytId ? (
             <button
               className="btn btn-s"
-              style={{ fontSize: 11, padding: '7px 12px', gap: 5 }}
+              style={{ fontSize: 11, padding: '7px 12px', gap: 5,
+                background: showVideo ? 'var(--dan2)' : 'var(--card)',
+                borderColor: showVideo ? 'var(--dan)' : 'var(--bdr)',
+                color: showVideo ? 'var(--dan)' : 'var(--txt)' }}
               onClick={() => setShowVideo(v => !v)}
             >
-              🎬 {showVideo ? 'CHIUDI VIDEO' : 'VIDEO TUTORIAL'}
+              {showVideo ? '✕ CHIUDI VIDEO' : '▶ VIDEO TUTORIAL'}
             </button>
           ) : (
-            <a href={ytSearchUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
-              <button className="btn btn-s" style={{ fontSize: 11, padding: '7px 12px', gap: 5 }}>
-                🔍 CERCA TUTORIAL
+            <a
+              href={`https://www.youtube.com/results?search_query=${encodeURIComponent(englishName + ' tutorial proper form')}`}
+              target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}
+            >
+              <button className="btn btn-s" style={{ fontSize: 11, padding: '7px 12px' }}>
+                🔍 CERCA SU YOUTUBE
               </button>
             </a>
           )}
         </div>
       </div>
+
+      {/* Embed YouTube 16:9 */}
       {showVideo && media?.ytId && (
         <div style={{
-          marginTop: 8, borderRadius: 10, overflow: 'hidden',
-          border: '1px solid var(--bdr)', background: '#000',
+          marginTop: 10, borderRadius: 10, overflow: 'hidden',
+          border: '1px solid var(--bdr)',
           position: 'relative', paddingTop: '56.25%'
         }}>
           <iframe
             key={media.ytId}
-            src={`https://www.youtube-nocookie.com/embed/${media.ytId}?modestbranding=1&rel=0`}
+            src={`https://www.youtube-nocookie.com/embed/${media.ytId}?modestbranding=1&rel=0&autoplay=1`}
             style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
+            title={`Tutorial: ${name}`}
           />
         </div>
       )}
