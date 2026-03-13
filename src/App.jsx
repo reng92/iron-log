@@ -194,8 +194,13 @@ export default function App() {
 
   useEffect(()=>{
     (async()=>{
-      const [sc,ss,ps,st]=await Promise.all([db.getSchede(),db.getSessioni(),db.getPeso(),db.getSettings()]);
-      setSchede(sc||[]); setSessioni(ss||[]); setPeso(ps||[]); setSettings({darkMode:true,...st}); setLoaded(true);
+    const [sc,ss,ps,st]=await Promise.all([
+  db.getSchede().catch(()=>[]),
+  db.getSessioni().catch(()=>[]),
+  db.getPeso().catch(()=>[]),
+  db.getSettings().catch(()=>({}))
+]);
+setSchede(sc||[]); setSessioni(ss||[]); setPeso(ps||[]); setSettings({darkMode:true,...st}); setLoaded(true);
     })();
   },[]);
 
