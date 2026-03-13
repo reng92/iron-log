@@ -18,8 +18,8 @@ const GIORNI_LABEL = ["", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Vene
 const GIORNI_SHORT = ["", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 
 // ─── MEDIA HELPERS ────────────────────────────────────────
-const getFoodImg = (nome) => `https://source.unsplash.com/120x120/?${encodeURIComponent(nome)},food,healthy`;
-const getExImg = (nome) => `https://source.unsplash.com/400x250/?${encodeURIComponent(nome)},fitness,gym,workout,professional`;
+const getFoodImg = (nome) => `https://loremflickr.com/120/120/${encodeURIComponent(nome)},food,healthy/all`;
+const getExImg = (nome) => `https://loremflickr.com/400/250/${encodeURIComponent(nome)},gym,workout,fitness/all`;
 
 async function fetchYoutubeId(nome) {
   if (!GROQ_KEY) return null;
@@ -29,13 +29,15 @@ async function fetchYoutubeId(nome) {
       headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'llama-3.3-70b-versatile',
-        messages: [{ role: 'user', content: `Return ONLY the YouTube 11-char ID for a high-quality gym tutorial of "${nome}" in Italian. No text, no quotes.` }],
-        temperature: 0, max_tokens: 15
+        messages: [{ role: 'user', content: `Return ONLY the YouTube 11-char ID for a real, professional gym tutorial of the exercise "${nome}" in Italian. DO NOT return Rick Astley (dQw4w9WgXcQ). If you are unsure, return a different real tutorial. No text, no quotes.` }],
+        temperature: 0.1, max_tokens: 15
       })
     });
     const data = await res.json();
     const id = (data?.choices?.[0]?.message?.content || '').trim();
-    return id.length === 11 ? id : null;
+    const cleanId = id.match(/[a-zA-Z0-9_-]{11}/)?.[0];
+    if (cleanId === "dQw4w9WgXcQ") return null; // Blacklist Rickroll
+    return cleanId || null;
   } catch { return null; }
 }
 
@@ -53,9 +55,11 @@ function ExerciseMedia({ nome, manualUrl }) {
     })();
   }, [nome, manualUrl]);
 
+  const wrapperStyle = { marginBottom: 12, borderRadius: 12, overflow: "hidden", border: "1px solid var(--bdr)", background: "var(--card)" };
+
   if (manualUrl) {
     return (
-      <div style={{ marginBottom: 10, borderRadius: 12, overflow: "hidden" }}>
+      <div style={wrapperStyle}>
         {manualUrl.includes("youtube.com") || manualUrl.includes("youtu.be") ? (
           <div style={{ position: "relative", paddingTop: "56.25%" }}>
             <iframe src={manualUrl.replace("watch?v=", "embed/").split("&")[0]} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" }} allowFullScreen />
@@ -67,23 +71,34 @@ function ExerciseMedia({ nome, manualUrl }) {
 
   return (
     <div style={{ marginBottom: 12 }}>
-      <div style={{ borderRadius: 12, overflow: "hidden", background: "var(--bdr)", position: "relative", border: "1px solid var(--bdr)" }}>
-        {ytId ? (
-          <div style={{ position: "relative", paddingTop: "56.25%" }}>
-            <iframe
-              src={`https://www.youtube-nocookie.com/embed/${ytId}?rel=0`}
-              style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" }}
-              title={nome}
-              allowFullScreen
-            />
-          </div>
-        ) : (
-          <>
-            <img src={getExImg(nome)} style={{ width: "100%", minHeight: 180, objectFit: "cover", display: "block", opacity: loading ? 0.3 : 1 }} />
-            {loading && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "var(--acc)" }}><span className="spin">⏳</span> Caricamento video...</div>}
-          </>
-        )}
+      {/* Thumbnail */}
+      <div style={{ ...wrapperStyle, marginBottom: 8 }}>
+        <img 
+          src={getExImg(nome)} 
+          style={{ width: "100%", minHeight: 160, maxHeight: 180, objectFit: "cover", display: "block" }} 
+          onError={e => e.target.style.display = 'none'}
+        />
       </div>
+
+      {/* Video */}
+      {(ytId || loading) && (
+        <div style={{ ...wrapperStyle, background: "var(--bdr)" }}>
+          {loading ? (
+             <div style={{ padding: "40px 10px", textAlign: "center", fontSize: 13, color: "var(--acc)" }}>
+               <span className="spin">⏳</span> Ricerca video per {nome}...
+             </div>
+          ) : (
+            <div style={{ position: "relative", paddingTop: "56.25%" }}>
+              <iframe
+                src={`https://www.youtube-nocookie.com/embed/${ytId}?rel=0`}
+                style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" }}
+                title={nome}
+                allowFullScreen
+              />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
