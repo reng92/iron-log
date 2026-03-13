@@ -173,6 +173,7 @@ const IcCalc=()=><Ico d={["M5 4a2 2 0 012-2h10a2 2 0 012 2v16a2 2 0 01-2 2H7a2 2
 const IcArrowUp=(props)=><Ico {...props} d="M18 15l-6-6-6 6"/>;
 const IcArrowDown=(props)=><Ico {...props} d="M6 9l6 6 6-6"/>;
 const IcApple=()=><Ico d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 2V6" />;
+const IcUser=()=><Ico d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2 M12 11a4 4 0 100-8 4 4 0 000 8z"/>;
 const IcFile=()=><Ico d={["M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z","M14 2v6h6","M16 13H8M16 17H8M10 9H8"]}/>;
 const IcUpload=()=><Ico d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>;
 
@@ -252,6 +253,7 @@ export default function App() {
   const addPeso=async p=>{setPeso(prev=>[...prev,p].sort((a,b)=>a.data.localeCompare(b.data)));await db.addPeso(p);};
   const delPeso=async id=>{setPeso(p=>p.filter(x=>x.id!==id));await db.delPeso(id);};
   const toggleDark=async()=>{const n={...settings,darkMode:!settings.darkMode};setSettings(n);await db.saveSettings(n);};
+  const saveSettings=async n=>{setSettings(n);await db.saveSettings(n);};
   
   // -- Nuove funzioni salvataggio Dieta --
   const savePiani=async p=>{setPiani(p);await db.setPiani(p);};
@@ -365,9 +367,10 @@ export default function App() {
         {tab==="storico"&&<Storico sessioni={sessioni} onDetail={s=>setSubview({type:"sessione",data:s})} onDelete={delSessione}/>}
         {tab==="stats"&&<Stats sessioni={sessioni}/>}
         {tab==="peso"&&<Peso peso={peso} onAdd={addPeso} onDelete={delPeso}/>}
+        {tab==="profilo"&&<Profilo settings={settings} peso={peso} onSave={saveSettings}/>}
       </div>
       <nav className="nav">
-        {[["home","HOME",<IcHome/>],["schede","SCHEDE",<IcBook/>],["dieta","DIETA",<IcApple/>],["storico","LOG",<IcHistory/>],["stats","STATS",<IcChart/>],["peso","PESO",<IcWeight/>]].map(([t,l,ic])=>(
+        {[["home","HOME",<IcHome/>],["schede","SCHEDE",<IcBook/>],["dieta","DIETA",<IcApple/>],["storico","LOG",<IcHistory/>],["stats","STATS",<IcChart/>],["peso","PESO",<IcWeight/>],["profilo","IO",<IcUser/>]].map(([t,l,ic])=>(
           <button key={t} className={`nb${tab===t?" on":""}`} onClick={()=>setTab(t)}>{ic}<span>{l}</span></button>
         ))}
       </nav>
@@ -1525,6 +1528,265 @@ function Peso({peso,onAdd,onDelete}) {
 
             <button className="btn btn-p btn-full" onClick={handleAdd} disabled={!form.valore||saving}>
               <IcPlus/> {saving?"SALVATAGGIO…":"SALVA RILEVAZIONE"}
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ─── PROFILO PERSONALE ────────────────────────────────────
+function Profilo({settings, peso, onSave}) {
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [lightbox, setLightbox] = useState(null);
+
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const openEdit = () => {
+    setForm({
+      nome: settings.nome||"",
+      sesso: settings.sesso||"",
+      eta: settings.eta||"",
+      altezza: settings.altezza||"",
+      foto_profilo: settings.foto_profilo||null,
+    });
+    setEditing(true);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onSave({...settings, ...form, eta: form.eta?+form.eta:null, altezza: form.altezza?+form.altezza:null});
+    setSaving(false);
+    setEditing(false);
+  };
+
+  const handleFotoProfilo = async (file) => {
+    if(!file) return;
+    const b64 = await compressImg(file, 400, 0.8);
+    set("foto_profilo", b64);
+  };
+
+  // Ultimo peso con dati corpo
+  const ultimoPeso = [...peso].reverse().find(p =>
+    p.valore != null && (p.imc != null || p.massa_grassa != null || p.punteggio != null)
+  ) || [...peso].reverse()[0] || null;
+
+  // Ultime foto corporee
+  const ultimeFoto = [...peso].reverse().find(p => p.foto_fronte || p.foto_retro);
+
+  // Bollino salute
+  const computeHealth = (p) => {
+    if(!p) return null;
+    if(p.punteggio != null) {
+      const s = +p.punteggio;
+      if(s >= 70) return {color:"var(--ok)", bg:"rgba(48,209,88,.12)", label:"Ottimo", score:s};
+      if(s >= 55) return {color:"#FF9500", bg:"rgba(255,149,0,.12)", label:"Nella media", score:s};
+      return {color:"var(--dan)", bg:"rgba(255,59,48,.12)", label:"Da migliorare", score:s};
+    }
+    const BAD = ["molto alto","insufficiente","molto basso"];
+    const WARN = ["alto","basso"];
+    const FIELDS = ["imc_status","massa_grassa_status","acqua_status","grasso_viscerale_status"];
+    let bad=0, warn=0;
+    FIELDS.forEach(f=>{
+      const v=(p[f]||"").toLowerCase();
+      if(BAD.some(b=>v.includes(b))) bad++;
+      else if(WARN.some(w=>v===w)) warn++;
+    });
+    if(bad>=2) return {color:"var(--dan)", bg:"rgba(255,59,48,.12)", label:"Da migliorare", score:null};
+    if(bad===1||warn>=2) return {color:"#FF9500", bg:"rgba(255,149,0,.12)", label:"Attenzione", score:null};
+    if(bad===0&&warn===0&&(p.imc_status||p.massa_grassa_status)) return {color:"var(--ok)", bg:"rgba(48,209,88,.12)", label:"Buono", score:null};
+    return null;
+  };
+  const health = computeHealth(ultimoPeso);
+
+  const altezza = settings.altezza;
+  const eta = settings.eta;
+  const sesso = settings.sesso;
+  const nome = settings.nome;
+
+  // Metriche rilevanti dell'ultimo tracciamento
+  const METRICHE = [
+    {icon:"⚖️", label:"IMC", vk:"imc", sk:"imc_status", unit:""},
+    {icon:"🔸", label:"Massa grassa", vk:"massa_grassa", sk:"massa_grassa_status", unit:"%"},
+    {icon:"💧", label:"Acqua", vk:"acqua", sk:"acqua_status", unit:"%"},
+    {icon:"🔶", label:"Grasso viscerale", vk:"grasso_viscerale", sk:"grasso_viscerale_status", unit:""},
+    {icon:"💪", label:"Muscoli", vk:"muscoli", sk:"muscoli_status", unit:"kg"},
+    {icon:"🔥", label:"Metabolismo", vk:"metabolismo", sk:"metabolismo_status", unit:"kcal"},
+  ];
+
+  return (
+    <>
+      <div style={{paddingTop:20,paddingBottom:16,display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
+        <div>
+          <h1 className="pt">PROFILO<br/>PERSONALE</h1>
+          <p className="sub">Il tuo stato di forma attuale</p>
+        </div>
+        <button className="bico" onClick={openEdit}><IcEdit/></button>
+      </div>
+
+      {/* CARD PROFILO */}
+      <div className="card" style={{marginBottom:12}}>
+        <div style={{display:"flex",gap:16,alignItems:"center"}}>
+          {/* Avatar */}
+          <div style={{width:72,height:72,borderRadius:"50%",overflow:"hidden",border:"2px solid var(--acc)",flexShrink:0,background:"var(--sur)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,color:"var(--mut)"}}>
+            {settings.foto_profilo
+              ? <img src={settings.foto_profilo} alt="profilo" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+              : "👤"}
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:24,letterSpacing:".05em",lineHeight:1,marginBottom:4}}>
+              {nome||"Il tuo profilo"}
+            </div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {sesso&&<span style={{fontSize:11,fontWeight:700,background:"var(--bdr)",padding:"2px 8px",borderRadius:20}}>{sesso==="M"?"♂ Uomo":sesso==="F"?"♀ Donna":sesso}</span>}
+              {eta&&<span style={{fontSize:11,fontWeight:700,background:"var(--bdr)",padding:"2px 8px",borderRadius:20}}>{eta} anni</span>}
+              {altezza&&<span style={{fontSize:11,fontWeight:700,background:"var(--bdr)",padding:"2px 8px",borderRadius:20}}>{altezza} cm</span>}
+            </div>
+          </div>
+        </div>
+
+        {/* Dati mancanti prompt */}
+        {(!nome||!sesso||!eta||!altezza)&&(
+          <div style={{marginTop:12,padding:"10px 12px",borderRadius:8,background:"var(--acc2)",border:"1px solid var(--acc)",fontSize:12,color:"var(--dim)"}}>
+            ✏️ Completa il profilo con <b style={{color:"var(--txt)"}}>{[!nome&&"nome",!sesso&&"sesso",!eta&&"età",!altezza&&"altezza"].filter(Boolean).join(", ")}</b>
+          </div>
+        )}
+      </div>
+
+      {/* BOLLINO SALUTE */}
+      {ultimoPeso&&(
+        <div style={{marginBottom:12,padding:16,borderRadius:12,border:`1px solid ${health?.color||"var(--bdr)"}`,background:health?.bg||"var(--card)"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+            <div>
+              <div className="st" style={{marginBottom:2}}>STATO DI SALUTE</div>
+              <div style={{fontSize:11,color:"var(--dim)"}}>Basato sull'ultima rilevazione · {fmtDate(ultimoPeso.data)}</div>
+            </div>
+            {health&&(
+              <div style={{textAlign:"center"}}>
+                {health.score!=null&&<div style={{fontFamily:"'Bebas Neue',cursive",fontSize:36,color:health.color,lineHeight:1}}>{health.score}</div>}
+                <div style={{fontSize:11,fontWeight:700,color:health.color,textTransform:"uppercase",letterSpacing:".08em",padding:"3px 10px",borderRadius:20,background:`${health.color}22`,marginTop:2}}>{health.label}</div>
+              </div>
+            )}
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderTop:"1px solid var(--bdr)"}}>
+            <div>
+              <div style={{fontSize:10,color:"var(--dim)",textTransform:"uppercase",letterSpacing:".06em",fontWeight:700}}>Peso attuale</div>
+              <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:28,color:"var(--acc)",lineHeight:1}}>{ultimoPeso.valore} <span style={{fontSize:13,color:"var(--dim)",fontFamily:"'Barlow',sans-serif",fontWeight:400}}>kg</span></div>
+            </div>
+            {ultimoPeso.tipologia&&<span style={{fontSize:12,fontWeight:700,background:"var(--bdr)",padding:"4px 12px",borderRadius:20}}>{ultimoPeso.tipologia}</span>}
+            {altezza&&ultimoPeso.imc==null&&(()=>{
+              const bmi = Math.round(ultimoPeso.valore/(altezza/100)**2*10)/10;
+              return <div style={{textAlign:"right"}}><div style={{fontSize:10,color:"var(--dim)",textTransform:"uppercase",letterSpacing:".06em",fontWeight:700}}>BMI calc.</div><div style={{fontFamily:"'Bebas Neue',cursive",fontSize:22,color:"var(--acc)"}}>{bmi}</div></div>;
+            })()}
+          </div>
+
+          {/* Metriche grid */}
+          {METRICHE.some(m=>ultimoPeso[m.vk]!=null)&&(
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}>
+              {METRICHE.filter(m=>ultimoPeso[m.vk]!=null).map(m=>(
+                <div key={m.vk} style={{background:"var(--card)",borderRadius:8,padding:"8px 10px",border:"1px solid var(--bdr)"}}>
+                  <div style={{fontSize:10,color:"var(--dim)",fontWeight:700,textTransform:"uppercase",letterSpacing:".06em",marginBottom:2}}>{m.icon} {m.label}</div>
+                  <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",gap:4}}>
+                    <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:20,color:"var(--txt)"}}>{ultimoPeso[m.vk]}<span style={{fontSize:10,color:"var(--dim)",marginLeft:2}}>{m.unit}</span></div>
+                    <StatusBadge label={ultimoPeso[m.sk]}/>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TREND PESO */}
+      {peso.length>=2&&(()=>{
+        const sorted=[...peso].sort((a,b)=>a.data.localeCompare(b.data));
+        const first=sorted[0], last=sorted[sorted.length-1];
+        const diff=Math.round((+last.valore - +first.valore)*10)/10;
+        const good=diff<0;
+        return (
+          <div className="card" style={{marginBottom:12}}>
+            <div className="st" style={{marginBottom:8}}>ANDAMENTO PESO</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+              {[[`${first.valore} kg`,"Inizio",null],[`${last.valore} kg`,"Attuale","var(--acc)"],[`${diff>0?"+":""}${diff} kg`,"Variazione",good?"var(--ok)":"var(--dan)"]].map(([v,l,c])=>(
+                <div key={l} style={{textAlign:"center"}}>
+                  <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:22,color:c||"var(--txt)",lineHeight:1}}>{v}</div>
+                  <div style={{fontSize:10,color:"var(--mut)",textTransform:"uppercase",letterSpacing:".07em",marginTop:2}}>{l}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* FOTO PROGRESSO */}
+      {ultimeFoto&&(
+        <div className="card" style={{marginBottom:12}}>
+          <div className="st" style={{marginBottom:8}}>ULTIME FOTO CORPOREE · {fmtDate(ultimeFoto.data)}</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            {ultimeFoto.foto_fronte&&<div>
+              <div style={{fontSize:10,color:"var(--dim)",fontWeight:700,textTransform:"uppercase",letterSpacing:".06em",marginBottom:4}}>FRONTE</div>
+              <img src={ultimeFoto.foto_fronte} alt="Fronte" style={{width:"100%",borderRadius:8,cursor:"pointer",objectFit:"cover",maxHeight:220}} onClick={()=>setLightbox(ultimeFoto.foto_fronte)}/>
+            </div>}
+            {ultimeFoto.foto_retro&&<div>
+              <div style={{fontSize:10,color:"var(--dim)",fontWeight:700,textTransform:"uppercase",letterSpacing:".06em",marginBottom:4}}>RETRO</div>
+              <img src={ultimeFoto.foto_retro} alt="Retro" style={{width:"100%",borderRadius:8,cursor:"pointer",objectFit:"cover",maxHeight:220}} onClick={()=>setLightbox(ultimeFoto.foto_retro)}/>
+            </div>}
+          </div>
+        </div>
+      )}
+
+      {!ultimoPeso&&(
+        <div className="emp"><div className="emp-ic">📊</div><div className="emp-t">Nessuna rilevazione</div><div style={{fontSize:13,color:"var(--mut)"}}>Aggiungi una rilevazione nel tab PESO per vedere il tuo stato di salute.</div></div>
+      )}
+
+      {/* LIGHTBOX */}
+      {lightbox&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.96)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setLightbox(null)}>
+          <img src={lightbox} alt="foto" style={{maxWidth:"95%",maxHeight:"95vh",objectFit:"contain",borderRadius:8}}/>
+          <button style={{position:"absolute",top:16,right:16,background:"rgba(255,255,255,.15)",border:"none",color:"#fff",borderRadius:"50%",width:36,height:36,cursor:"pointer",fontSize:18}} onClick={()=>setLightbox(null)}>✕</button>
+        </div>
+      )}
+
+      {/* EDIT MODAL */}
+      {editing&&(
+        <div className="mov" onClick={e=>{if(e.target===e.currentTarget)setEditing(false);}}>
+          <div className="mod">
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <div className="wt">MODIFICA PROFILO</div>
+              <button className="bico" onClick={()=>setEditing(false)}>✕</button>
+            </div>
+
+            {/* Foto profilo */}
+            <div style={{display:"flex",justifyContent:"center",marginBottom:16}}>
+              <label style={{cursor:"pointer",position:"relative"}}>
+                <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>e.target.files[0]&&handleFotoProfilo(e.target.files[0])}/>
+                <div style={{width:80,height:80,borderRadius:"50%",overflow:"hidden",border:"2px dashed var(--acc)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,color:"var(--mut)",background:"var(--sur)"}}>
+                  {form.foto_profilo?<img src={form.foto_profilo} alt="profilo" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:"👤"}
+                </div>
+                <div style={{position:"absolute",bottom:0,right:0,background:"var(--acc)",borderRadius:"50%",width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12}}>✏️</div>
+              </label>
+            </div>
+
+            <div className="ig"><label className="lbl">Nome</label><input className="inp" placeholder="Il tuo nome" value={form.nome} onChange={e=>set("nome",e.target.value)}/></div>
+
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
+              <div>
+                <label className="lbl">Sesso</label>
+                <select className="inp" value={form.sesso} onChange={e=>set("sesso",e.target.value)}>
+                  <option value="">—</option>
+                  <option value="M">♂ Uomo</option>
+                  <option value="F">♀ Donna</option>
+                </select>
+              </div>
+              <div><label className="lbl">Età</label><input className="inp" type="number" min="10" max="100" placeholder="30" value={form.eta} onChange={e=>set("eta",e.target.value)}/></div>
+              <div><label className="lbl">Altezza (cm)</label><input className="inp" type="number" min="100" max="250" placeholder="175" value={form.altezza} onChange={e=>set("altezza",e.target.value)}/></div>
+            </div>
+
+            <button className="btn btn-p btn-full" onClick={handleSave} disabled={saving}>
+              <IcCheck/> {saving?"SALVATAGGIO…":"SALVA PROFILO"}
             </button>
           </div>
         </div>
