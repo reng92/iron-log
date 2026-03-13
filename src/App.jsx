@@ -661,7 +661,8 @@ function SchedaPdfImportModal({ onApply, onClose }) {
 
   const analizza = async () => {
     if (!file) return setErrore("Seleziona un file PDF");
-    if (!apiKey.trim()) return setErrore("Inserisci la tua Groq API key (console.groq.com)");
+    const activeKey = GROQ_KEY || apiKey.trim();
+    if (!activeKey) return setErrore("Inserisci la tua Groq API key (console.groq.com)");
     if (!file.name.toLowerCase().endsWith(".pdf")) return setErrore("Il file deve essere un PDF");
     setErrore(""); setFase(2);
     try {
@@ -672,7 +673,7 @@ function SchedaPdfImportModal({ onApply, onClose }) {
       setLoadingMsg("Analisi con Groq AI...");
       const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey.trim()}` },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${activeKey}` },
         body: JSON.stringify({
           model: "llama-3.3-70b-versatile",
           messages: [
@@ -1376,13 +1377,14 @@ function Peso({ peso, onAdd, onDelete }) {
   const handlePhoto = async (key, file) => { if (!file) return; set(key, await compressImg(file)); };
 
   const scanZepp = async (file) => {
-    if (!apiKey) { alert("Configura prima la Groq API key (sezione Import Scheda PDF)"); return; }
+    const activeKey = GROQ_KEY || apiKey;
+    if (!activeKey) { alert("Configura prima la Groq API key (sezione Import Scheda PDF)"); return; }
     setScanning(true);
     try {
       const b64 = await compressImg(file, 1200, 0.85);
       const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
-        headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        headers: { "Authorization": `Bearer ${activeKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "meta-llama/llama-4-scout-17b-16e-instruct",
           messages: [{
@@ -2297,7 +2299,8 @@ function PdfImportModal({ onApply, onClose }) {
 
   const analizza = async () => {
     if (!file) return setErrore("Seleziona un file PDF");
-    if (!apiKey.trim()) return setErrore("Inserisci la tua Groq API key");
+    const activeKey = GROQ_KEY || apiKey.trim();
+    if (!activeKey) return setErrore("Inserisci la tua Groq API key");
     if (!file.name.toLowerCase().endsWith(".pdf")) return setErrore("Il file deve essere un PDF");
     setErrore("");
     setFase(2);
@@ -2311,7 +2314,7 @@ function PdfImportModal({ onApply, onClose }) {
       setLoadingMsg("Analisi con Groq AI (LLaMA 3)...");
       const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey.trim()}` },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${activeKey}` },
         body: JSON.stringify({
           model: "llama-3.3-70b-versatile",
           messages: [
@@ -2368,16 +2371,18 @@ function PdfImportModal({ onApply, onClose }) {
         {fase === 1 && (
           <>
             <div style={{ marginBottom: 16 }}>
-              <div className="import-step"><span className="import-num">1</span><span style={{ fontSize: 13 }}>Registrati gratis su <b>console.groq.com</b> (solo email, no carta)</span></div>
-              <div className="import-step"><span className="import-num">2</span><span style={{ fontSize: 13 }}>Vai in <b>API Keys</b> e crea una nuova chiave</span></div>
-              <div className="import-step"><span className="import-num">3</span><span style={{ fontSize: 13 }}>Carica il PDF — Groq AI (LLaMA 3.1) estrae i pasti automaticamente</span></div>
+              {!GROQ_KEY && <div className="import-step"><span className="import-num">1</span><span style={{ fontSize: 13 }}>Registrati gratis su <b>console.groq.com</b> (solo email, no carta)</span></div>}
+              <div className="import-step"><span className="import-num">{GROQ_KEY ? "1" : "2"}</span><span style={{ fontSize: 13 }}>Vai in <b>API Keys</b> e crea una nuova chiave</span></div>
+              <div className="import-step"><span className="import-num">{GROQ_KEY ? "2" : "3"}</span><span style={{ fontSize: 13 }}>Carica il PDF — Groq AI (LLaMA 3.1) estrae i pasti automaticamente</span></div>
             </div>
 
-            <div className="ig">
-              <label className="lbl">Groq API Key{apiKey && " ✓ salvata"}</label>
-              <input className="inp" type="password" placeholder="gsk_..." value={apiKey} onChange={e => setApiKey(e.target.value)} />
-              <div style={{ fontSize: 11, color: "var(--mut)", marginTop: 4 }}>Salvata solo nel tuo browser · Non va su GitHub · Free tier: 14.400 req/giorno</div>
-            </div>
+            {!GROQ_KEY && (
+              <div className="ig">
+                <label className="lbl">Groq API Key{apiKey && " ✓ salvata"}</label>
+                <input className="inp" type="password" placeholder="gsk_..." value={apiKey} onChange={e => setApiKey(e.target.value)} />
+                <div style={{ fontSize: 11, color: "var(--mut)", marginTop: 4 }}>Salvata solo nel tuo browser · Non va su GitHub · Free tier: 14.400 req/giorno</div>
+              </div>
+            )}
 
             <div className="ig">
               <label className="lbl">File PDF piano alimentare</label>
