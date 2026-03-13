@@ -139,6 +139,10 @@ textarea.inp{resize:vertical;min-height:64px;}
 .kcal-sum{background:rgba(48,209,88,.1);border:1px solid rgba(48,209,88,.3);border-radius:10px;padding:12px;margin:12px 0;}
 .kcal-bar{height:6px;background:var(--bdr);border-radius:3px;overflow:hidden;margin-top:8px;}
 .kcal-fill{height:100%;background:#30D158;border-radius:3px;transition:width .4s;}
+.import-step{display:flex;align-items:center;gap:8px;padding:10px;border-radius:8px;background:var(--sur);border:1px solid var(--bdr);margin-bottom:8px;}
+.import-num{width:24px;height:24px;border-radius:50%;background:var(--acc2);color:var(--acc);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.spin{display:inline-block;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
 `;
 
 // ─── ICONS ────────────────────────────────────────────────
@@ -169,6 +173,8 @@ const IcCalc=()=><Ico d={["M5 4a2 2 0 012-2h10a2 2 0 012 2v16a2 2 0 01-2 2H7a2 2
 const IcArrowUp=(props)=><Ico {...props} d="M18 15l-6-6-6 6"/>;
 const IcArrowDown=(props)=><Ico {...props} d="M6 9l6 6 6-6"/>;
 const IcApple=()=><Ico d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 2V6" />;
+const IcFile=()=><Ico d={["M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z","M14 2v6h6","M16 13H8M16 17H8M10 9H8"]}/>;
+const IcUpload=()=><Ico d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>;
 
 // ─── LINE CHART ───────────────────────────────────────────
 function LineChart({ data, color = "#1E90FF", height = 110 }) {
@@ -1185,6 +1191,7 @@ function PianoEdit({piano:init, onSave, onBack}) {
   const [nome,setNome]=useState(init.nome||"");
   const [giorno,setGiorno]=useState(1);
   const [alModal,setAlModal]=useState(null);
+  const [pdfModal,setPdfModal]=useState(false);
 
   // Inizializza giorniPasti: migra vecchio formato o usa giorniPasti esistente
   const initGP=()=>{
@@ -1233,7 +1240,10 @@ function PianoEdit({piano:init, onSave, onBack}) {
     <>
       <div className="content fi">
         <button className="bb" onClick={onBack}><IcChevL/> Indietro</button>
-        <h1 className="pt" style={{marginBottom:18}}>{init.id?"MODIFICA":"NUOVO"}<br/>PIANO</h1>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
+          <h1 className="pt">{init.id?"MODIFICA":"NUOVO"}<br/>PIANO</h1>
+          <button className="btn btn-s" style={{marginTop:6,fontSize:11,gap:5}} onClick={()=>setPdfModal(true)}><IcFile size={14}/> PDF</button>
+        </div>
 
         <div className="ig"><label className="lbl">Nome del piano</label><input className="inp" placeholder="es. Massa Invernale, Definizione..." value={nome} onChange={e=>setNome(e.target.value)}/></div>
 
@@ -1302,6 +1312,15 @@ function PianoEdit({piano:init, onSave, onBack}) {
         }}><IcCheck/> SALVA PIANO</button>
       </div>
       {alModal&&<AlimentoModal init={alModal.data} mode={alModal.mode} onSave={saveAlimento} onClose={()=>setAlModal(null)}/>}
+      {pdfModal&&<PdfImportModal
+        onApply={({nomePiano,giorniPasti:gp})=>{
+          if(nomePiano&&!nome.trim()) setNome(nomePiano);
+          else if(nomePiano) setNome(nomePiano);
+          setGiorniPasti(gp);
+          setGiorno(1);
+        }}
+        onClose={()=>setPdfModal(false)}
+      />}
     </>
   );
 }
@@ -1445,6 +1464,179 @@ function DietaLog({piani, logDieta, onAdd, onDelete, onBack}) {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+// ─── PDF IMPORT MODAL ─────────────────────────────────────
+const GEMINI_PROMPT = `Sei un assistente nutrizionale. Analizza questo PDF che contiene un piano alimentare settimanale italiano.
+Estrai la struttura per ogni giorno della settimana (Giorno 1=Lunedì, Giorno 2=Martedì, ..., Giorno 7=Domenica).
+Per ogni giorno identifica i pasti (Colazione, Spuntino Mattina, Pranzo, Spuntino Pomeriggio, Cena, ecc.) e per ogni pasto gli alimenti con grammi e kcal totali per quella porzione.
+Se le kcal non sono specificate nel PDF, stimale ragionevolmente in base ai grammi e al tipo di alimento.
+Se il piano è uguale per tutti i giorni, replicalo per tutti e 7.
+Rispondi SOLO con JSON valido (nessun testo prima o dopo, nessun markdown):
+{"nomePiano":"nome del piano","giorniPasti":{"1":[{"id":"g1p1","nome":"Colazione","alimenti":[{"id":"g1p1a1","nome":"Pane integrale","grammi":"50","kcal":"120"}]}],"2":[...],"3":[...],"4":[...],"5":[...],"6":[...],"7":[...]}}`;
+
+function PdfImportModal({onApply, onClose}) {
+  const [fase, setFase] = useState(1); // 1=select, 2=loading, 3=preview
+  const [apiKey, setApiKey] = useState(()=>localStorage.getItem("gemini_key")||"");
+  const [file, setFile] = useState(null);
+  const [errore, setErrore] = useState("");
+  const [parsed, setParsed] = useState(null);
+
+  const analizza = async () => {
+    if (!file) return setErrore("Seleziona un file PDF");
+    if (!apiKey.trim()) return setErrore("Inserisci la tua Gemini API key");
+    if (!file.name.toLowerCase().endsWith(".pdf")) return setErrore("Il file deve essere un PDF");
+    setErrore("");
+    setFase(2);
+    try {
+      // Leggi file come base64
+      const base64 = await new Promise((res, rej) => {
+        const reader = new FileReader();
+        reader.onload = e => {
+          const arr = new Uint8Array(e.target.result);
+          let bin = "";
+          arr.forEach(b => bin += String.fromCharCode(b));
+          res(btoa(bin));
+        };
+        reader.onerror = rej;
+        reader.readAsArrayBuffer(file);
+      });
+
+      // Chiama Gemini API
+      const resp = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`,
+        {
+          method: "POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({
+            contents:[{parts:[
+              {inline_data:{mime_type:"application/pdf", data:base64}},
+              {text: GEMINI_PROMPT}
+            ]}],
+            generationConfig:{temperature:0.1, maxOutputTokens:8192}
+          })
+        }
+      );
+      if (!resp.ok) {
+        const err = await resp.json().catch(()=>({}));
+        throw new Error(err?.error?.message || `Errore API: ${resp.status}`);
+      }
+      const data = await resp.json();
+      let testo = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+      // Estrai JSON anche se il modello aggiunge ```json ...```
+      const match = testo.match(/\{[\s\S]+\}/);
+      if (!match) throw new Error("Il modello non ha restituito JSON valido. Riprova.");
+      const obj = JSON.parse(match[0]);
+      if (!obj.giorniPasti) throw new Error("Struttura JSON non riconosciuta. Riprova.");
+
+      // Salva key se tutto ok
+      localStorage.setItem("gemini_key", apiKey.trim());
+      setParsed(obj);
+      setFase(3);
+    } catch(e) {
+      setErrore(e.message || "Errore sconosciuto");
+      setFase(1);
+    }
+  };
+
+  const applica = () => {
+    if (!parsed) return;
+    // Aggiungi ID univoci a tutti i pasti e alimenti
+    const gp = {};
+    for (let d = 1; d <= 7; d++) {
+      gp[d] = (parsed.giorniPasti[d] || parsed.giorniPasti[String(d)] || []).map(p => ({
+        ...p,
+        id: genId(),
+        alimenti: (p.alimenti||[]).map(a => ({...a, id: genId(), grammi:String(a.grammi||""), kcal:String(a.kcal||"")}))
+      }));
+    }
+    onApply({nomePiano: parsed.nomePiano||"", giorniPasti: gp});
+    onClose();
+  };
+
+  return (
+    <div className="mov" onClick={onClose}>
+      <div className="mod" onClick={e=>e.stopPropagation()} style={{maxHeight:"90vh"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+          <span style={{fontFamily:"'Bebas Neue',cursive",fontSize:22,letterSpacing:".05em"}}>IMPORTA DA PDF</span>
+          <button className="bico" onClick={onClose}><IcClose/></button>
+        </div>
+
+        {/* Come funziona */}
+        {fase===1&&(
+          <div style={{marginBottom:16}}>
+            <div className="import-step"><span className="import-num">1</span><span style={{fontSize:13}}>Ottieni la tua API key gratuita su <b>aistudio.google.com</b></span></div>
+            <div className="import-step"><span className="import-num">2</span><span style={{fontSize:13}}>Carica il PDF del tuo piano alimentare</span></div>
+            <div className="import-step"><span className="import-num">3</span><span style={{fontSize:13}}>Gemini AI estrae automaticamente pasti e alimenti per ogni giorno</span></div>
+          </div>
+        )}
+
+        {fase===1&&(
+          <>
+            <div className="ig">
+              <label className="lbl">Gemini API Key{apiKey&&" ✓ salvata"}</label>
+              <input className="inp" type="password" placeholder="AIza..." value={apiKey} onChange={e=>setApiKey(e.target.value)}/>
+              <div style={{fontSize:11,color:"var(--mut)",marginTop:4}}>La chiave è salvata solo nel tuo browser (localStorage). Non va nel codice né su GitHub.</div>
+            </div>
+            <div className="ig">
+              <label className="lbl">File PDF piano alimentare</label>
+              <div
+                style={{border:"2px dashed var(--bdr)",borderRadius:10,padding:"18px",textAlign:"center",cursor:"pointer",transition:"all .15s",background:file?"var(--acc2)":"none",borderColor:file?"var(--acc)":"var(--bdr)"}}
+                onClick={()=>document.getElementById("pdf-input").click()}
+              >
+                {file
+                  ? <><IcFile/><div style={{fontSize:13,fontWeight:600,marginTop:6,color:"var(--acc)"}}>{file.name}</div><div style={{fontSize:11,color:"var(--dim)",marginTop:2}}>{(file.size/1024).toFixed(0)} KB</div></>
+                  : <><IcUpload/><div style={{fontSize:13,color:"var(--dim)",marginTop:6}}>Tocca per selezionare il PDF</div></>
+                }
+                <input id="pdf-input" type="file" accept=".pdf,application/pdf" style={{display:"none"}} onChange={e=>{setFile(e.target.files[0]||null);setErrore("");}}/>
+              </div>
+            </div>
+            {errore&&<div style={{color:"var(--dan)",fontSize:13,marginBottom:12,padding:"10px",background:"var(--dan2)",borderRadius:8}}>{errore}</div>}
+            <button className="btn btn-p btn-full" onClick={analizza}><IcUpload/> ANALIZZA PDF</button>
+          </>
+        )}
+
+        {fase===2&&(
+          <div style={{textAlign:"center",padding:"32px 16px"}}>
+            <div className="spin" style={{fontSize:32,marginBottom:16}}>⚙️</div>
+            <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:22,letterSpacing:".05em",marginBottom:8}}>ANALISI IN CORSO</div>
+            <div style={{fontSize:13,color:"var(--dim)"}}>Gemini AI sta leggendo il tuo piano alimentare...</div>
+            <div style={{fontSize:11,color:"var(--mut)",marginTop:8}}>Può richiedere 10-20 secondi</div>
+          </div>
+        )}
+
+        {fase===3&&parsed&&(
+          <>
+            <div style={{background:"rgba(48,209,88,.1)",border:"1px solid #30D158",borderRadius:10,padding:12,marginBottom:16}}>
+              <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:16,color:"#30D158",marginBottom:4}}>✓ ESTRATTO CON SUCCESSO</div>
+              {parsed.nomePiano&&<div style={{fontSize:13,fontWeight:600,marginBottom:4}}>{parsed.nomePiano}</div>}
+            </div>
+
+            <div className="st" style={{marginBottom:8}}>ANTEPRIMA STRUTTURA</div>
+            {[1,2,3,4,5,6,7].map(d=>{
+              const pasti = parsed.giorniPasti[d] || parsed.giorniPasti[String(d)] || [];
+              const kcal = pasti.reduce((a,p)=>a+p.alimenti.reduce((b,al)=>b+(+al.kcal||0),0),0);
+              return (
+                <div key={d} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid var(--bdr)"}}>
+                  <div style={{fontSize:13,fontWeight:600}}>{GIORNI_LABEL[d]}</div>
+                  <div style={{display:"flex",gap:12,alignItems:"center"}}>
+                    <span style={{fontSize:11,color:"var(--dim)"}}>{pasti.length} pasti</span>
+                    <span style={{fontFamily:"'Bebas Neue',cursive",fontSize:16,color:"#30D158"}}>{kcal>0?`${kcal} kcal`:"—"}</span>
+                  </div>
+                </div>
+              );
+            })}
+
+            <div style={{marginTop:16,display:"flex",gap:8}}>
+              <button className="btn btn-s" style={{flex:1}} onClick={()=>{setParsed(null);setFase(1);}}>RIPROVA</button>
+              <button className="btn btn-p" style={{flex:2,background:"#30D158"}} onClick={applica}><IcCheck/> APPLICA AL PIANO</button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
