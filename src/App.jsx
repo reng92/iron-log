@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = "https://ilvlyocxcbmdwrvnhynp.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlsdmx5b2N4Y2JtZHdydm5oeW5wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzODY0NjMsImV4cCI6MjA4ODk2MjQ2M30.KXUtvvIrml3oZyHy6g_zeSK8dt2APXNWqK_4-BUN4To";
-const sb = createClient(SUPABASE_URL, SUPABASE_KEY); 
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ─── UTILS ────────────────────────────────────────────────
 const genId = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -308,14 +308,17 @@ export default function App() {
     </div>
   );
   
-  // -- Placeholder per i prossimi step della dieta --
   if(subview?.type==="piano-edit") return (
     <div className={cls}><style>{CSS}</style>
-      <div className="content fi">
-        <button className="bb" onClick={()=>setSubview(null)}><IcChevL/> Indietro</button>
-        <h1 className="pt" style={{marginBottom:18}}>CREA PIANO<br/>ALIMENTARE</h1>
-        <p className="sub">Interfaccia in arrivo nello Step 2!</p>
-      </div>
+      <PianoEdit 
+        piano={subview.data} 
+        onSave={p=>{
+          const n=p.id ? piani.map(x=>x.id===p.id?p:x) : [...piani,{...p,id:genId()}];
+          savePiani(n);
+          setSubview(null);
+        }} 
+        onBack={()=>setSubview(null)}
+      />
     </div>
   );
   if(subview?.type==="dieta-log") return (
@@ -323,7 +326,7 @@ export default function App() {
       <div className="content fi">
         <button className="bb" onClick={()=>setSubview(null)}><IcChevL/> Indietro</button>
         <h1 className="pt" style={{marginBottom:18}}>TRACKING<br/>PASTI</h1>
-        <p className="sub">Interfaccia in arrivo nello Step 2!</p>
+        <p className="sub">Interfaccia in arrivo nello Step 3!</p>
       </div>
     </div>
   );
@@ -1138,5 +1141,122 @@ function PianiAlimentari({piani, logDieta, onNew, onEdit, onDelete, onLog}) {
         </div>
       ))}
     </>
+  );
+}
+
+// ─── PIANO EDIT (CREAZIONE DIETA) ─────────────────────────
+function PianoEdit({piano:init, onSave, onBack}) {
+  const [nome,setNome]=useState(init.nome||"");
+  const [durataGiorni,setDurataGiorni]=useState(init.durataGiorni||56);
+  const [pasti,setPasti]=useState(init.pasti||[]);
+  const [alModal,setAlModal]=useState(null);
+
+  const addPasto=()=>{
+    const n=prompt("Nome del pasto? (es. Colazione, Spuntino, Pranzo...)");
+    if(n&&n.trim()) setPasti(p=>[...p,{id:genId(),nome:n.trim(),alimenti:[]}]);
+  };
+  const movePasto=(i,dir)=>{const a=[...pasti],j=i+dir;if(j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];setPasti(a);};
+  const delPasto=i=>{if(window.confirm("Eliminare intero pasto?"))setPasti(p=>p.filter((_,j)=>j!==i));};
+
+  const saveAlimento=al=>{
+    if(!al.nome.trim())return alert("Inserisci il nome dell'alimento");
+    if(alModal.mode==="new") {
+      setPasti(p=>p.map((pst,i)=>i===alModal.pIdx?{...pst,alimenti:[...pst.alimenti,{...al,id:genId()}]}:pst));
+    } else {
+      setPasti(p=>p.map((pst,i)=>i===alModal.pIdx?{...pst,alimenti:pst.alimenti.map((a,j)=>j===alModal.aIdx?{...al}:a)}:pst));
+    }
+    setAlModal(null);
+  };
+  const delAlim=(pi,ai)=>{setPasti(p=>p.map((pst,i)=>i===pi?{...pst,alimenti:pst.alimenti.filter((_,j)=>j!==ai)}:pst));};
+
+  // Somma matematica delle kcal
+  const totKcal=pasti.reduce((a,p)=>a+p.alimenti.reduce((b,al)=>b+(+al.kcal||0),0),0);
+
+  return (
+    <>
+      <div className="content fi">
+        <button className="bb" onClick={onBack}><IcChevL/> Indietro</button>
+        <h1 className="pt" style={{marginBottom:18}}>{init.id?"MODIFICA":"NUOVO"}<br/>PIANO</h1>
+        
+        <div className="ig"><label className="lbl">Nome del piano</label><input className="inp" placeholder="es. Massa Invernale, Definizione..." value={nome} onChange={e=>setNome(e.target.value)}/></div>
+        <div className="ig"><label className="lbl">Durata (Giorni)</label><input className="inp" type="number" min="1" value={durataGiorni} onChange={e=>setDurataGiorni(+e.target.value)}/></div>
+        
+        <div className="wh" style={{borderColor:"#30D158", background:"rgba(48, 209, 88, 0.1)"}}>
+          <div className="wt" style={{color:"#30D158"}}>TARGET CALORICO GIORNALIERO</div>
+          <div className="wlv" style={{color:"#30D158"}}>{totKcal} kcal</div>
+          <div style={{fontSize:12,color:"var(--dim)",marginTop:4}}>{pasti.length} pasti inseriti</div>
+        </div>
+
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div className="st" style={{margin:0}}>STRUTTURA GIORNATA</div>
+          <button className="btn btn-s" onClick={addPasto}><IcPlus/> PASTO</button>
+        </div>
+
+        {pasti.length===0?<div className="emp" style={{padding:"20px 0"}}><div style={{fontSize:13,color:"var(--dim)"}}>Inizia aggiungendo la Colazione o il Pranzo</div></div>:null}
+
+        {pasti.map((p,pi)=>(
+          <div key={p.id} className="card" style={{padding:"12px",marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,borderBottom:"1px solid var(--bdr)",paddingBottom:8}}>
+              <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:20,letterSpacing:".05em",color:"#30D158"}}>{p.nome}</div>
+              <div style={{display:"flex",gap:4}}>
+                <button className="bico" style={{padding:5}} onClick={()=>movePasto(pi,-1)} disabled={pi===0}><IcArrowUp size={14}/></button>
+                <button className="bico" style={{padding:5}} onClick={()=>movePasto(pi,1)} disabled={pi===pasti.length-1}><IcArrowDown size={14}/></button>
+                <button className="bico d" style={{padding:5}} onClick={()=>delPasto(pi)}><IcTrash size={14}/></button>
+              </div>
+            </div>
+
+            {p.alimenti.length===0?<div style={{fontSize:12,color:"var(--mut)",marginBottom:10,fontStyle:"italic"}}>Nessun alimento.</div>:null}
+
+            {p.alimenti.map((al,ai)=>(
+              <div key={al.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--sur)",padding:"8px 10px",borderRadius:8,marginBottom:6}}>
+                <div>
+                  <div style={{fontWeight:600,fontSize:14}}>{al.nome}</div>
+                  <div style={{fontSize:11,color:"var(--dim)",marginTop:2}}>{al.grammi}g · {al.kcal} kcal</div>
+                </div>
+                <div style={{display:"flex",gap:4}}>
+                  <button className="bico" style={{padding:5,border:"none"}} onClick={()=>setAlModal({mode:"edit",pIdx:pi,aIdx:ai,data:{...al}})}><IcEdit size={14}/></button>
+                  <button className="bico d" style={{padding:5,border:"none"}} onClick={()=>delAlim(pi,ai)}><IcTrash size={14}/></button>
+                </div>
+              </div>
+            ))}
+            <button className="btn btn-s btn-full" style={{marginTop:6,fontSize:11,padding:"8px"}} onClick={()=>setAlModal({mode:"new",pIdx:pi,data:{nome:"",grammi:"",kcal:""}})}><IcPlus/> AGGIUNGI ALIMENTO</button>
+          </div>
+        ))}
+
+        <div className="div"/>
+        <button className="btn btn-p btn-full" style={{background:"#30D158"}} onClick={()=>{if(!nome.trim())return alert("Dai un nome al tuo piano");onSave({...init,nome:nome.trim(),durataGiorni,pasti});}}><IcCheck/> SALVA PIANO</button>
+      </div>
+      {alModal&&<AlimentoModal init={alModal.data} mode={alModal.mode} onSave={saveAlimento} onClose={()=>setAlModal(null)}/>}
+    </>
+  );
+}
+
+// ─── ALIMENTO MODAL (POPUP INSERIMENTO CIBO) ──────────────
+function AlimentoModal({init,mode,onSave,onClose}) {
+  const [d,setD]=useState({...init});
+  const upd=(k,v)=>setD(p=>({...p,[k]:v}));
+  
+  return (
+    <div className="mov" onClick={onClose}>
+      <div className="mod" onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+          <span style={{fontFamily:"'Bebas Neue',cursive",fontSize:22,letterSpacing:".05em", color:"#30D158"}}>{mode==="new"?"NUOVO ALIMENTO":"MODIFICA"}</span>
+          <button className="bico" onClick={onClose}><IcClose/></button>
+        </div>
+        
+        <div className="ig"><label className="lbl">Nome alimento *</label><input className="inp" placeholder="es. Pollo, Riso Basmati, Uova..." value={d.nome} onChange={e=>upd("nome",e.target.value)}/></div>
+        
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+          <div><label className="lbl">Grammi / Qtà</label><input className="inp" type="number" min="0" placeholder="es. 100" value={d.grammi} onChange={e=>upd("grammi",e.target.value)}/></div>
+          <div><label className="lbl">Kcal Totali</label><input className="inp" type="number" min="0" placeholder="es. 350" value={d.kcal} onChange={e=>upd("kcal",e.target.value)}/></div>
+        </div>
+        
+        <p style={{fontSize:11, color:"var(--mut)", marginBottom: 18, fontStyle:"italic"}}>
+          Inserisci le Kcal totali relative alla porzione che hai indicato. 
+        </p>
+        
+        <button className="btn btn-p btn-full" style={{background:"#30D158"}} onClick={()=>onSave(d)}><IcCheck/> {mode==="new"?"AGGIUNGI":"SALVA"}</button>
+      </div>
+    </div>
   );
 }
