@@ -13,6 +13,8 @@ const fmtShort = d => new Date(d).toLocaleDateString('it-IT',{day:'numeric',mont
 const fmtIso = (d=new Date()) => { const dt=d instanceof Date?d:new Date(d); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`; };
 const epley = (kg,reps) => +reps===1?+kg:Math.round(+kg*(1+(+reps/30))*10)/10;
 const GG = ["Lun","Mar","Mer","Gio","Ven","Sab","Dom"];
+const GIORNI_LABEL = ["","Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato","Domenica"];
+const GIORNI_SHORT = ["","Lun","Mar","Mer","Gio","Ven","Sab","Dom"];
 
 // ─── DB ───────────────────────────────────────────────────
 const db = {
@@ -126,6 +128,17 @@ textarea.inp{resize:vertical;min-height:64px;}
 ::-webkit-scrollbar{width:3px;}::-webkit-scrollbar-thumb{background:var(--bdr);}
 @keyframes fi{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}.fi{animation:fi .25s ease;}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}.pls{animation:pulse 1.5s infinite;}
+.day-pill{display:flex;gap:5px;overflow-x:auto;margin-bottom:16px;padding-bottom:4px;}
+.dpb{min-width:42px;padding:7px 6px;border-radius:8px;border:1px solid var(--bdr);background:none;color:var(--dim);font-family:'Barlow',sans-serif;font-size:10px;font-weight:700;cursor:pointer;transition:all .15s;text-align:center;white-space:nowrap;flex-shrink:0;}
+.dpb.on{background:rgba(48,209,88,.15);border-color:#30D158;color:#30D158;}
+.dpb.log{background:rgba(48,209,88,.06);border-color:rgba(48,209,88,.4);color:#30D158;}
+.frow{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--bdr);gap:10px;}
+.frow:last-child{border-bottom:none;}
+.fck{width:26px;height:26px;border-radius:50%;border:2px solid var(--bdr);background:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0;}
+.fck.ok{background:#30D158;border-color:#30D158;}
+.kcal-sum{background:rgba(48,209,88,.1);border:1px solid rgba(48,209,88,.3);border-radius:10px;padding:12px;margin:12px 0;}
+.kcal-bar{height:6px;background:var(--bdr);border-radius:3px;overflow:hidden;margin-top:8px;}
+.kcal-fill{height:100%;background:#30D158;border-radius:3px;transition:width .4s;}
 `;
 
 // ─── ICONS ────────────────────────────────────────────────
@@ -323,11 +336,13 @@ export default function App() {
   );
   if(subview?.type==="dieta-log") return (
     <div className={cls}><style>{CSS}</style>
-      <div className="content fi">
-        <button className="bb" onClick={()=>setSubview(null)}><IcChevL/> Indietro</button>
-        <h1 className="pt" style={{marginBottom:18}}>TRACKING<br/>PASTI</h1>
-        <p className="sub">Interfaccia in arrivo nello Step 3!</p>
-      </div>
+      <DietaLog
+        piani={piani}
+        logDieta={logDieta}
+        onAdd={handleAddLogDieta}
+        onDelete={handleDelLogDieta}
+        onBack={()=>setSubview(null)}
+      />
     </div>
   );
 
@@ -1125,88 +1140,145 @@ function PianiAlimentari({piani, logDieta, onNew, onEdit, onDelete, onLog}) {
       {piani.length === 0 ? (
         <div className="emp"><div className="emp-ic">🍎</div><div className="emp-t">Nessun piano</div>
         <button className="btn btn-p" style={{marginTop:16}} onClick={onNew}><IcPlus/> CREA PIANO</button></div>
-      ) : piani.map(p => (
-        <div key={p.id} className="card" style={{borderLeft:"3px solid #30D158"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-            <div style={{flex:1}}>
-              <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:24,letterSpacing:".05em"}}>{p.nome}</div>
-              <div style={{fontSize:12,color:"var(--dim)",marginTop:5}}>{p.durataGiorni} giorni totali</div>
+      ) : piani.map(p => {
+        // Calcola kcal per giorno se struttura settimanale
+        const hasWeekly=p.giorniPasti&&Object.keys(p.giorniPasti).length>0;
+        const kcalPerGiorno=hasWeekly
+          ?[1,2,3,4,5,6,7].map(d=>(p.giorniPasti[d]||[]).reduce((a,pst)=>a+pst.alimenti.reduce((b,al)=>b+(+al.kcal||0),0),0))
+          :[];
+        const maxKcal=kcalPerGiorno.length>0?Math.max(...kcalPerGiorno,1):1;
+        return (
+          <div key={p.id} className="card" style={{borderLeft:"3px solid #30D158"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+              <div style={{flex:1}}>
+                <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:24,letterSpacing:".05em"}}>{p.nome}</div>
+                <div style={{fontSize:12,color:"var(--dim)",marginTop:5}}>Piano settimanale · 7 giorni</div>
+              </div>
+              <div style={{display:"flex",gap:7}}>
+                <button className="bico" onClick={()=>onEdit(p)}><IcEdit/></button>
+                <button className="bico d" onClick={()=>{if(window.confirm(`Eliminare "${p.nome}"?`))onDelete(p.id);}}><IcTrash/></button>
+              </div>
             </div>
-            <div style={{display:"flex",gap:7}}>
-              <button className="bico" onClick={()=>onEdit(p)}><IcEdit/></button>
-              <button className="bico d" onClick={()=>{if(window.confirm(`Eliminare "${p.nome}"?`))onDelete(p.id);}}><IcTrash/></button>
-            </div>
+            {hasWeekly&&(
+              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,marginTop:12}}>
+                {[1,2,3,4,5,6,7].map((d,i)=>(
+                  <div key={d} style={{textAlign:"center"}}>
+                    <div style={{fontSize:9,color:"var(--mut)",fontWeight:700,marginBottom:4}}>{GIORNI_SHORT[d]}</div>
+                    <div style={{height:32,background:"var(--bdr)",borderRadius:4,overflow:"hidden",display:"flex",alignItems:"flex-end"}}>
+                      <div style={{width:"100%",height:`${Math.round(kcalPerGiorno[i]/maxKcal*100)}%`,background:"#30D158",opacity:.8,borderRadius:4,minHeight:kcalPerGiorno[i]>0?3:0,transition:"height .3s"}}/>
+                    </div>
+                    <div style={{fontSize:8,color:"var(--dim)",marginTop:3}}>{kcalPerGiorno[i]>0?kcalPerGiorno[i]+"k":"-"}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {!hasWeekly&&p.pasti?.length>0&&<div style={{marginTop:10,display:"flex",flexWrap:"wrap",gap:6}}>{p.pasti.map((pasto,i)=><span key={i} className="tag tag-m">{pasto.nome}</span>)}</div>}
           </div>
-          {p.pasti?.length > 0 && <div style={{marginTop:10,display:"flex",flexWrap:"wrap",gap:6}}>{p.pasti.map((pasto, i)=><span key={i} className="tag tag-m">{pasto.nome}</span>)}</div>}
-        </div>
-      ))}
+        );
+      })}
     </>
   );
 }
 
-// ─── PIANO EDIT (CREAZIONE DIETA) ─────────────────────────
+// ─── PIANO EDIT (CREAZIONE DIETA SETTIMANALE) ─────────────
 function PianoEdit({piano:init, onSave, onBack}) {
   const [nome,setNome]=useState(init.nome||"");
-  const [durataGiorni,setDurataGiorni]=useState(init.durataGiorni||56);
-  const [pasti,setPasti]=useState(init.pasti||[]);
+  const [giorno,setGiorno]=useState(1);
   const [alModal,setAlModal]=useState(null);
+
+  // Inizializza giorniPasti: migra vecchio formato o usa giorniPasti esistente
+  const initGP=()=>{
+    if(init.giorniPasti) return JSON.parse(JSON.stringify(init.giorniPasti));
+    const gp={};
+    for(let i=1;i<=7;i++) gp[i]=(i===1&&init.pasti?.length>0)?JSON.parse(JSON.stringify(init.pasti)):[];
+    return gp;
+  };
+  const [giorniPasti,setGiorniPasti]=useState(initGP);
+
+  const pastiCorrente=giorniPasti[giorno]||[];
+  const setPC=newPasti=>setGiorniPasti(prev=>({...prev,[giorno]:newPasti}));
 
   const addPasto=()=>{
     const n=prompt("Nome del pasto? (es. Colazione, Spuntino, Pranzo...)");
-    if(n&&n.trim()) setPasti(p=>[...p,{id:genId(),nome:n.trim(),alimenti:[]}]);
+    if(n&&n.trim()) setPC([...pastiCorrente,{id:genId(),nome:n.trim(),alimenti:[]}]);
   };
-  const movePasto=(i,dir)=>{const a=[...pasti],j=i+dir;if(j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];setPasti(a);};
-  const delPasto=i=>{if(window.confirm("Eliminare intero pasto?"))setPasti(p=>p.filter((_,j)=>j!==i));};
+  const movePasto=(i,dir)=>{const a=[...pastiCorrente],j=i+dir;if(j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];setPC(a);};
+  const delPasto=i=>{if(window.confirm("Eliminare intero pasto?"))setPC(pastiCorrente.filter((_,j)=>j!==i));};
+  const copyFromPrev=()=>{
+    if(giorno<=1)return;
+    const prev=giorniPasti[giorno-1];
+    if(!prev||prev.length===0)return alert("Il giorno precedente non ha pasti da copiare");
+    if(window.confirm(`Copiare i pasti del Giorno ${giorno-1}?`)){
+      setPC(JSON.parse(JSON.stringify(prev)).map(p=>({...p,id:genId(),alimenti:p.alimenti.map(a=>({...a,id:genId()}))})));
+    }
+  };
 
   const saveAlimento=al=>{
     if(!al.nome.trim())return alert("Inserisci il nome dell'alimento");
-    if(alModal.mode==="new") {
-      setPasti(p=>p.map((pst,i)=>i===alModal.pIdx?{...pst,alimenti:[...pst.alimenti,{...al,id:genId()}]}:pst));
+    let np=[...pastiCorrente];
+    if(alModal.mode==="new"){
+      np=np.map((pst,i)=>i===alModal.pIdx?{...pst,alimenti:[...pst.alimenti,{...al,id:genId()}]}:pst);
     } else {
-      setPasti(p=>p.map((pst,i)=>i===alModal.pIdx?{...pst,alimenti:pst.alimenti.map((a,j)=>j===alModal.aIdx?{...al}:a)}:pst));
+      np=np.map((pst,i)=>i===alModal.pIdx?{...pst,alimenti:pst.alimenti.map((a,j)=>j===alModal.aIdx?{...al}:a)}:pst);
     }
+    setPC(np);
     setAlModal(null);
   };
-  const delAlim=(pi,ai)=>{setPasti(p=>p.map((pst,i)=>i===pi?{...pst,alimenti:pst.alimenti.filter((_,j)=>j!==ai)}:pst));};
+  const delAlim=(pi,ai)=>setPC(pastiCorrente.map((pst,i)=>i===pi?{...pst,alimenti:pst.alimenti.filter((_,j)=>j!==ai)}:pst));
 
-  // Somma matematica delle kcal
-  const totKcal=pasti.reduce((a,p)=>a+p.alimenti.reduce((b,al)=>b+(+al.kcal||0),0),0);
+  const totKcalGiorno=pastiCorrente.reduce((a,p)=>a+p.alimenti.reduce((b,al)=>b+(+al.kcal||0),0),0);
+  const totKcalSett=Object.values(giorniPasti).reduce((a,pasti)=>a+pasti.reduce((b,p)=>b+p.alimenti.reduce((c,al)=>c+(+al.kcal||0),0),0),0);
 
   return (
     <>
       <div className="content fi">
         <button className="bb" onClick={onBack}><IcChevL/> Indietro</button>
         <h1 className="pt" style={{marginBottom:18}}>{init.id?"MODIFICA":"NUOVO"}<br/>PIANO</h1>
-        
+
         <div className="ig"><label className="lbl">Nome del piano</label><input className="inp" placeholder="es. Massa Invernale, Definizione..." value={nome} onChange={e=>setNome(e.target.value)}/></div>
-        <div className="ig"><label className="lbl">Durata (Giorni)</label><input className="inp" type="number" min="1" value={durataGiorni} onChange={e=>setDurataGiorni(+e.target.value)}/></div>
-        
-        <div className="wh" style={{borderColor:"#30D158", background:"rgba(48, 209, 88, 0.1)"}}>
-          <div className="wt" style={{color:"#30D158"}}>TARGET CALORICO GIORNALIERO</div>
-          <div className="wlv" style={{color:"#30D158"}}>{totKcal} kcal</div>
-          <div style={{fontSize:12,color:"var(--dim)",marginTop:4}}>{pasti.length} pasti inseriti</div>
+
+        <div className="wh" style={{borderColor:"#30D158",background:"rgba(48,209,88,.1)"}}>
+          <div className="wt" style={{color:"#30D158"}}>TARGET — {GIORNI_LABEL[giorno].toUpperCase()}</div>
+          <div className="wlv" style={{color:"#30D158"}}>{totKcalGiorno} kcal</div>
+          <div style={{fontSize:12,color:"var(--dim)",marginTop:4}}>{pastiCorrente.length} pasti · {totKcalSett} kcal totali settimana</div>
+        </div>
+
+        <div className="st">GIORNO DELLA SETTIMANA</div>
+        <div className="day-pill">
+          {[1,2,3,4,5,6,7].map(d=>(
+            <button key={d} className={`dpb${giorno===d?" on":""}${giorniPasti[d]?.length>0&&giorno!==d?" log":""}`} onClick={()=>setGiorno(d)}>
+              <div>{GIORNI_SHORT[d]}</div>
+              <div style={{fontSize:8,marginTop:2}}>G{d}</div>
+            </button>
+          ))}
         </div>
 
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-          <div className="st" style={{margin:0}}>STRUTTURA GIORNATA</div>
-          <button className="btn btn-s" onClick={addPasto}><IcPlus/> PASTO</button>
+          <div className="st" style={{margin:0}}>PASTI — {GIORNI_LABEL[giorno].toUpperCase()}</div>
+          <div style={{display:"flex",gap:6}}>
+            {giorno>1&&<button className="btn btn-s" style={{fontSize:11,padding:"7px 10px"}} onClick={copyFromPrev}>Copia G{giorno-1}</button>}
+            <button className="btn btn-s" onClick={addPasto}><IcPlus/> PASTO</button>
+          </div>
         </div>
 
-        {pasti.length===0?<div className="emp" style={{padding:"20px 0"}}><div style={{fontSize:13,color:"var(--dim)"}}>Inizia aggiungendo la Colazione o il Pranzo</div></div>:null}
+        {pastiCorrente.length===0&&(
+          <div className="emp" style={{padding:"20px 0"}}>
+            <div style={{fontSize:13,color:"var(--dim)"}}>Nessun pasto per {GIORNI_LABEL[giorno]}</div>
+            <div style={{fontSize:11,color:"var(--mut)",marginTop:4}}>Aggiungi pasti o copia dal giorno precedente</div>
+          </div>
+        )}
 
-        {pasti.map((p,pi)=>(
+        {pastiCorrente.map((p,pi)=>(
           <div key={p.id} className="card" style={{padding:"12px",marginBottom:12}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,borderBottom:"1px solid var(--bdr)",paddingBottom:8}}>
               <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:20,letterSpacing:".05em",color:"#30D158"}}>{p.nome}</div>
               <div style={{display:"flex",gap:4}}>
                 <button className="bico" style={{padding:5}} onClick={()=>movePasto(pi,-1)} disabled={pi===0}><IcArrowUp size={14}/></button>
-                <button className="bico" style={{padding:5}} onClick={()=>movePasto(pi,1)} disabled={pi===pasti.length-1}><IcArrowDown size={14}/></button>
+                <button className="bico" style={{padding:5}} onClick={()=>movePasto(pi,1)} disabled={pi===pastiCorrente.length-1}><IcArrowDown size={14}/></button>
                 <button className="bico d" style={{padding:5}} onClick={()=>delPasto(pi)}><IcTrash size={14}/></button>
               </div>
             </div>
-
-            {p.alimenti.length===0?<div style={{fontSize:12,color:"var(--mut)",marginBottom:10,fontStyle:"italic"}}>Nessun alimento.</div>:null}
-
+            {p.alimenti.length===0&&<div style={{fontSize:12,color:"var(--mut)",marginBottom:10,fontStyle:"italic"}}>Nessun alimento.</div>}
             {p.alimenti.map((al,ai)=>(
               <div key={al.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--sur)",padding:"8px 10px",borderRadius:8,marginBottom:6}}>
                 <div>
@@ -1224,10 +1296,156 @@ function PianoEdit({piano:init, onSave, onBack}) {
         ))}
 
         <div className="div"/>
-        <button className="btn btn-p btn-full" style={{background:"#30D158"}} onClick={()=>{if(!nome.trim())return alert("Dai un nome al tuo piano");onSave({...init,nome:nome.trim(),durataGiorni,pasti});}}><IcCheck/> SALVA PIANO</button>
+        <button className="btn btn-p btn-full" style={{background:"#30D158"}} onClick={()=>{
+          if(!nome.trim())return alert("Dai un nome al tuo piano");
+          onSave({...init,nome:nome.trim(),durataGiorni:7,pasti:giorniPasti[1]||[],giorniPasti});
+        }}><IcCheck/> SALVA PIANO</button>
       </div>
       {alModal&&<AlimentoModal init={alModal.data} mode={alModal.mode} onSave={saveAlimento} onClose={()=>setAlModal(null)}/>}
     </>
+  );
+}
+
+// ─── DIETA LOG (TRACKING GIORNALIERO) ─────────────────────
+function DietaLog({piani, logDieta, onAdd, onDelete, onBack}) {
+  const todayDow=((new Date().getDay()+6)%7)+1; // 1=Lun ... 7=Dom
+  const todayIso=fmtIso();
+  const [selectedDay,setSelectedDay]=useState(todayDow);
+  const [selectedPianoId,setSelectedPianoId]=useState(piani[0]?.id||"");
+  const [mangiato,setMangiato]=useState({});
+  const [saved,setSaved]=useState(false);
+
+  const piano=piani.find(p=>p.id===selectedPianoId);
+  const pastiGiorno=useMemo(()=>{
+    if(!piano)return[];
+    return piano.giorniPasti?.[selectedDay]||piano.pasti||[];
+  },[piano,selectedDay]);
+
+  const existingLog=useMemo(()=>
+    logDieta.find(l=>l.data===todayIso&&l.pianoId===selectedPianoId&&l.giornoNumero===selectedDay),
+    [logDieta,todayIso,selectedPianoId,selectedDay]
+  );
+
+  useEffect(()=>{
+    if(existingLog){
+      const m={};
+      existingLog.pastiLog?.forEach((pasto,pi)=>pasto.alimenti?.forEach((al,ai)=>{if(al.mangiato)m[`${pi}_${ai}`]=true;}));
+      setMangiato(m);
+    } else {
+      setMangiato({});
+    }
+  },[existingLog]);
+
+  const toggleFood=(pi,ai)=>{const key=`${pi}_${ai}`;setMangiato(prev=>({...prev,[key]:!prev[key]}));};
+
+  const totPreviste=pastiGiorno.reduce((a,p)=>a+p.alimenti.reduce((b,al)=>b+(+al.kcal||0),0),0);
+  const totConsumate=pastiGiorno.reduce((a,p,pi)=>a+p.alimenti.reduce((b,al,ai)=>b+(mangiato[`${pi}_${ai}`]?(+al.kcal||0):0),0),0);
+  const perc=totPreviste>0?Math.min(100,Math.round(totConsumate/totPreviste*100)):0;
+
+  const daysWithLog=useMemo(()=>{
+    const s=new Set();
+    logDieta.filter(l=>l.data===todayIso&&l.pianoId===selectedPianoId).forEach(l=>s.add(l.giornoNumero));
+    return s;
+  },[logDieta,todayIso,selectedPianoId]);
+
+  const handleSave=async()=>{
+    if(!piano)return;
+    if(existingLog)await onDelete(existingLog.id);
+    const log={
+      id:genId(),data:todayIso,pianoId:piano.id,pianoNome:piano.nome,
+      giornoNumero:selectedDay,totKcalPreviste:totPreviste,totKcalConsumate:totConsumate,
+      pastiLog:pastiGiorno.map((p,pi)=>({nome:p.nome,alimenti:p.alimenti.map((al,ai)=>({...al,mangiato:!!mangiato[`${pi}_${ai}`]}))}))
+    };
+    await onAdd(log);
+    setSaved(true);
+    setTimeout(()=>setSaved(false),2000);
+  };
+
+  return (
+    <div className="content fi">
+      <button className="bb" onClick={onBack}><IcChevL/> Indietro</button>
+      <h1 className="pt" style={{marginBottom:6}}>TRACKING<br/>DIETA</h1>
+      <p className="sub" style={{marginBottom:16}}>{new Date().toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long'})}</p>
+
+      {piani.length===0?(
+        <div className="emp"><div className="emp-ic">🍎</div><div className="emp-t">Nessun piano creato</div><div style={{fontSize:13,color:"var(--dim)"}}>Crea prima un piano alimentare</div></div>
+      ):(
+        <>
+          {piani.length>1&&(
+            <div className="ig">
+              <label className="lbl">Piano alimentare</label>
+              <select className="inp" value={selectedPianoId} onChange={e=>{setSelectedPianoId(e.target.value);setMangiato({});}}>
+                {piani.map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}
+              </select>
+            </div>
+          )}
+
+          <div className="st">GIORNO DELLA SETTIMANA</div>
+          <div className="day-pill">
+            {[1,2,3,4,5,6,7].map(d=>(
+              <button key={d} className={`dpb${selectedDay===d?" on":""}${daysWithLog.has(d)&&selectedDay!==d?" log":""}`} onClick={()=>{setSelectedDay(d);setMangiato({});}}>
+                <div>{GIORNI_SHORT[d]}</div>
+                <div style={{fontSize:8,marginTop:2}}>G{d}</div>
+              </button>
+            ))}
+          </div>
+
+          {totPreviste>0&&(
+            <div className="kcal-sum">
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <span style={{fontSize:12,fontWeight:700,color:"#30D158",textTransform:"uppercase",letterSpacing:".07em"}}>Calorie {GIORNI_LABEL[selectedDay]}</span>
+                <span style={{fontFamily:"'Bebas Neue',cursive",fontSize:18,color:"#30D158"}}>{totConsumate} / {totPreviste} kcal</span>
+              </div>
+              <div className="kcal-bar"><div className="kcal-fill" style={{width:perc+"%"}}/></div>
+              <div style={{fontSize:11,color:"var(--dim)",marginTop:4}}>{perc}% del target giornaliero</div>
+            </div>
+          )}
+
+          {pastiGiorno.length===0?(
+            <div className="emp" style={{padding:"24px 0"}}>
+              <div className="emp-ic">📅</div>
+              <div style={{fontSize:13,color:"var(--dim)"}}>Nessun pasto pianificato per {GIORNI_LABEL[selectedDay]}</div>
+              <div style={{fontSize:11,color:"var(--mut)",marginTop:4}}>Modifica il piano per aggiungere pasti a questo giorno</div>
+            </div>
+          ):(
+            <>
+              <div className="st" style={{marginBottom:10}}>PASTI — {GIORNI_LABEL[selectedDay].toUpperCase()}</div>
+              {pastiGiorno.map((pasto,pi)=>{
+                const pastoKcal=pasto.alimenti.reduce((a,al)=>a+(+al.kcal||0),0);
+                const pastoEaten=pasto.alimenti.reduce((a,al,ai)=>a+(mangiato[`${pi}_${ai}`]?(+al.kcal||0):0),0);
+                const tuttiMangiati=pasto.alimenti.length>0&&pasto.alimenti.every((_,ai)=>mangiato[`${pi}_${ai}`]);
+                return (
+                  <div key={pasto.id||pi} style={{background:"var(--sur)",border:`1px solid ${tuttiMangiati?"#30D158":"var(--bdr)"}`,borderRadius:10,padding:12,marginBottom:10,transition:"border-color .2s"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,borderBottom:"1px solid var(--bdr)",paddingBottom:8}}>
+                      <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:18,letterSpacing:".05em",color:tuttiMangiati?"#30D158":"var(--txt)"}}>{pasto.nome}{tuttiMangiati&&" ✓"}</div>
+                      <div style={{fontSize:11,color:"var(--dim)"}}>{pastoEaten>0?`${pastoEaten} / `:""}{pastoKcal} kcal</div>
+                    </div>
+                    {pasto.alimenti.map((al,ai)=>{
+                      const eaten=!!mangiato[`${pi}_${ai}`];
+                      return (
+                        <div key={al.id||ai} className="frow">
+                          <div style={{flex:1,opacity:eaten?.55:1,transition:"opacity .15s"}}>
+                            <div style={{fontWeight:600,fontSize:13,textDecoration:eaten?"line-through":"none"}}>{al.nome}</div>
+                            <div style={{fontSize:11,color:"var(--dim)",marginTop:1}}>{al.grammi}g · {al.kcal} kcal</div>
+                          </div>
+                          <button className={`fck${eaten?" ok":""}`} onClick={()=>toggleFood(pi,ai)}>
+                            {eaten&&<Ico d="M20 6L9 17l-5-5" size={12} stroke="#fff" sw={2.5}/>}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+              <button className="btn btn-p btn-full" style={{background:saved?"#059669":"#30D158",marginTop:8,transition:"background .3s"}} onClick={handleSave}>
+                {saved?<><Ico d="M20 6L9 17l-5-5" size={16} stroke="#fff" sw={2.5}/> SALVATO!</>:<><IcApple/> SALVA LOG GIORNATA</>}
+              </button>
+              {existingLog&&<div style={{textAlign:"center",fontSize:11,color:"#30D158",marginTop:8}}>✓ Log già salvato per oggi — il salvataggio sovrascriverà il precedente</div>}
+            </>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
