@@ -141,7 +141,7 @@ export default function App() {
   if (!loaded) return (
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:"#080808"}}>
       <style>{CSS}</style>
-      <div className="pls" style={{fontFamily:"'Bebas Neue',cursive",fontSize:32,color:"#D4F000",letterSpacing:".1em"}}>CARICAMENTO...</div>
+      <div className="pls" style={{fontFamily:"'Bebas Neue',cursive",fontSize:32,color:"#1E90FF",letterSpacing:".1em"}}>CARICAMENTO...</div>
     </div>
   );
 
