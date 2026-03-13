@@ -18,116 +18,35 @@ const GIORNI_LABEL = ["", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Vene
 const GIORNI_SHORT = ["", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 
 // ─── MEDIA HELPERS ────────────────────────────────────────
-const cleanName = (n) => n.replace(/\d+\s*g|\d+g|\d+\s*ml|\d+ml|[\d.,]+/gi, '').replace(/\s+/g, ' ').trim();
-const getExFallback = (n) => `https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400&h=250`;
-
 async function fetchMealImg(rawName) {
-  const nome = cleanName(rawName);
+  const nomePulito = rawName.replace(/\d+\s*g|\d+g|\d+\s*ml|\d+ml|[\d.,]+/gi, '').replace(/\s+/g, ' ').trim();
+  let searchName = nomePulito;
+
+  if (GROQ_KEY) {
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'llama-3.1-8b-instant',
+          messages: [{ role: 'user', content: `Translate "${nomePulito}" to English. Return ONLY the translated food name. No punctuation.` }],
+          temperature: 0, max_tokens: 10
+        })
+      });
+      const data = await res.json();
+      const translated = data?.choices?.[0]?.message?.content?.trim();
+      if (translated) searchName = translated;
+    } catch (e) { console.error("Translation error", e); }
+  }
+
   try {
-    const r = await fetch(`https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(nome)}`);
+    const r = await fetch(`https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(searchName)}`);
     const d = await r.json();
     if (d.meals?.[0]?.strMealThumb) return d.meals[0].strMealThumb;
-    // Fallback search-based image (LoremFlickr is better than Unsplash Source now)
-    return `https://loremflickr.com/120/120/food,dish,${encodeURIComponent(nome)}/all?lock=${encodeURIComponent(nome)}`;
-  } catch { 
-    return `https://loremflickr.com/120/120/food,dish,${encodeURIComponent(nome)}/all?lock=${encodeURIComponent(nome)}`;
+    return `https://loremflickr.com/120/120/food,dish,${encodeURIComponent(searchName)}/all?lock=${encodeURIComponent(rawName)}`;
+  } catch {
+    return `https://loremflickr.com/120/120/food,dish,${encodeURIComponent(searchName)}/all?lock=${encodeURIComponent(rawName)}`;
   }
-}
-
-async function fetchYoutubeId(rawName) {
-  if (!GROQ_KEY) return null;
-  const nome = cleanName(rawName);
-  try {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: [{ role: 'user', content: `Sei un esperto di fitness. Trova il vero ID YouTube del PRIMO risultato per il tutorial dell'esercizio "${nome}" in italiano. Rispondi SOLO con l'ID di 11 caratteri. Niente commenti.` }],
-        temperature: 0, max_tokens: 15
-      })
-    });
-    const data = await res.json();
-    const id = (data?.choices?.[0]?.message?.content || '').trim();
-    const cleanId = id.match(/[a-zA-Z0-9_-]{11}/)?.[0];
-    if (!cleanId || cleanId === "dQw4w9WgXcQ") return null;
-    return cleanId;
-  } catch { return null; }
-}
-
-function ExerciseMedia({ nome, manualUrl }) {
-  const [ytId, setYtId] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const exImg = `https://loremflickr.com/400/250/gym,workout,${encodeURIComponent(cleanName(nome))}/all?lock=${encodeURIComponent(nome)}`;
-
-  useEffect(() => {
-    if (manualUrl) return;
-    setYtId(null); // Reset when name changes
-    (async () => {
-      setLoading(true);
-      const id = await fetchYoutubeId(nome);
-      if (id) setYtId(id);
-      setLoading(false);
-    })();
-  }, [nome, manualUrl]);
-
-  const wrapperStyle = { marginBottom: 12, borderRadius: 12, overflow: "hidden", border: "1px solid var(--bdr)", background: "var(--card)" };
-
-  if (manualUrl) {
-    return (
-      <div style={wrapperStyle}>
-        {manualUrl.includes("youtube.com") || manualUrl.includes("youtu.be") ? (
-          <div style={{ position: "relative", paddingTop: "56.25%" }}>
-            <iframe src={manualUrl.replace("watch?v=", "embed/").split("&")[0]} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" }} allowFullScreen />
-          </div>
-        ) : <img src={manualUrl} style={{ width: "100%", display: "block" }} />}
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ marginBottom: 12 }}>
-      {/* Thumbnail */}
-      <div style={{ ...wrapperStyle, marginBottom: 6 }}>
-        <img
-          src={exImg}
-          style={{ width: "100%", minHeight: 160, maxHeight: 180, objectFit: "cover", display: "block" }}
-          onError={e => { e.target.src = getExFallback(nome); }}
-        />
-      </div>
-
-      {/* Video */}
-      {(ytId || loading) && (
-        <div style={{ ...wrapperStyle, background: "var(--card)", border: "1px solid var(--bdr)" }}>
-          {loading ? (
-            <div style={{ padding: "30px 10px", textAlign: "center", fontSize: 13, color: "var(--dim)" }}>
-              <span className="spin">⏳</span> Cerco tutorial per {nome}...
-            </div>
-          ) : (
-            <div style={{ position: "relative", paddingTop: "56.25%" }}>
-              <iframe
-                src={`https://www.youtube-nocookie.com/embed/${ytId}?rel=0`}
-                style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" }}
-                title={nome}
-                allowFullScreen
-              />
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* YouTube Link Fallback */}
-      <div style={{ textAlign: "right", marginTop: -4, marginBottom: 10 }}>
-        <a
-          href={`https://www.youtube.com/results?search_query=${encodeURIComponent(nome + " esercizio palestra tutorial")}`}
-          target="_blank" rel="noopener noreferrer"
-          style={{ fontSize: 10, color: "var(--acc)", textDecoration: "none", opacity: 0.8, fontWeight: 700, letterSpacing: ".02em" }}
-        >
-          NON DISPONIBILE? CERCA SU YOUTUBE ➔
-        </a>
-      </div>
-    </div>
-  );
 }
 
 function FoodThumb({ nome }) {
@@ -868,7 +787,6 @@ function SchedaEdit({ scheda: init, onSave, onBack }) {
           ? <div className="emp" style={{ padding: "20px 0" }}><div style={{ fontSize: 13, color: "var(--dim)" }}>Nessun esercizio ancora</div></div>
           : esercizi.map((e, i) => (
             <div key={e.id} style={{ background: "var(--sur)", border: "1px solid var(--bdr)", borderRadius: 10, padding: 14, marginBottom: 9 }}>
-              <ExerciseMedia nome={e.nome} manualUrl={e.mediaUrl} />
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div style={{ flex: 1 }}>
                   <div className="exn">{e.nome}</div>
@@ -1021,7 +939,6 @@ function Allenamento({ scheda, sessioni, onComplete, onBack }) {
 
         {sets.map((ex, ei) => (
           <div key={ex.esercizioId} className="card" style={{ marginBottom: 12 }}>
-            <ExerciseMedia nome={ex.nome} manualUrl={ex.mediaUrl} />
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
               <div>
                 <div className="exn">{ex.nome}</div>
