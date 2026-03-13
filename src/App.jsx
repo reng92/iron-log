@@ -133,9 +133,9 @@ async function resolveExerciseMedia(name) {
       { signal: AbortSignal.timeout(5000) }
     );
     const d = await r.json();
-    const hit = d?.suggestions?.find(s => s?.data?.image_thumbnail);
-    if (hit?.data?.image_thumbnail) {
-      const raw = hit.data.image_thumbnail;
+    const hit = d?.suggestions?.find(s => s?.data?.image);
+    if (hit?.data?.image) {
+      const raw = hit.data.image;
       iconUrl = raw.startsWith('http') ? raw : `https://wger.de${raw}`;
     }
   } catch {}
