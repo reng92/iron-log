@@ -18,53 +18,77 @@ const GIORNI_LABEL = ["", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Vene
 const GIORNI_SHORT = ["", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 
 // ─── MEDIA HELPERS ────────────────────────────────────────
+const foodCache = {};
+const pendingFoodRequests = {};
+
 async function fetchMealImg(rawName) {
   const nomePulito = rawName.replace(/\d+\s*g|\d+g|\d+\s*ml|\d+ml|[\d.,]+/gi, '').replace(/\s+/g, ' ').trim();
-  let searchName = nomePulito;
+  if (foodCache[nomePulito]) return foodCache[nomePulito];
+  if (pendingFoodRequests[nomePulito]) return pendingFoodRequests[nomePulito];
 
-  if (GROQ_KEY) {
+  const request = (async () => {
+    let searchName = nomePulito;
+    if (GROQ_KEY) {
+      try {
+        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'llama-3.1-8b-instant',
+            messages: [{ role: 'user', content: `Translate "${nomePulito}" to English. Return ONLY the translated food name. No punctuation.` }],
+            temperature: 0, max_tokens: 10
+          })
+        });
+        const data = await res.json();
+        const translated = data?.choices?.[0]?.message?.content?.trim();
+        if (translated) searchName = translated;
+      } catch (e) { console.error("Translation error", e); }
+    }
+
     try {
-      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'llama-3.1-8b-instant',
-          messages: [{ role: 'user', content: `Translate "${nomePulito}" to English. Return ONLY the translated food name. No punctuation.` }],
-          temperature: 0, max_tokens: 10
-        })
-      });
-      const data = await res.json();
-      const translated = data?.choices?.[0]?.message?.content?.trim();
-      if (translated) searchName = translated;
-    } catch (e) { console.error("Translation error", e); }
-  }
+      const r = await fetch(`https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(searchName)}`);
+      const d = await r.json();
+      const url = d.meals?.[0]?.strMealThumb || `https://loremflickr.com/120/120/food,dish,${encodeURIComponent(searchName)}/all?lock=${encodeURIComponent(rawName)}`;
+      foodCache[nomePulito] = url;
+      return url;
+    } catch {
+      const url = `https://loremflickr.com/120/120/food,dish,${encodeURIComponent(searchName)}/all?lock=${encodeURIComponent(rawName)}`;
+      foodCache[nomePulito] = url;
+      return url;
+    } finally {
+      delete pendingFoodRequests[nomePulito];
+    }
+  })();
 
-  try {
-    const r = await fetch(`https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(searchName)}`);
-    const d = await r.json();
-    if (d.meals?.[0]?.strMealThumb) return d.meals[0].strMealThumb;
-    return `https://loremflickr.com/120/120/food,dish,${encodeURIComponent(searchName)}/all?lock=${encodeURIComponent(rawName)}`;
-  } catch {
-    return `https://loremflickr.com/120/120/food,dish,${encodeURIComponent(searchName)}/all?lock=${encodeURIComponent(rawName)}`;
-  }
+  pendingFoodRequests[nomePulito] = request;
+  return request;
 }
 
 function FoodThumb({ nome }) {
   const [src, setSrc] = useState(null);
+  const [err, setErr] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchMealImg(nome).then(setSrc);
+    let active = true;
+    setLoading(true);
+    fetchMealImg(nome).then(u => {
+      if (active) { setSrc(u); setLoading(false); }
+    });
+    return () => { active = false; };
   }, [nome]);
 
   return (
-    <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", background: "var(--sur)", flexShrink: 0, border: "1px solid var(--bdr)" }}>
-      {src ? (
+    <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", background: "var(--sur)", flexShrink: 0, border: "1px solid var(--bdr)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      {loading ? (
+        <span style={{ fontSize: 10, opacity: 0.5 }}>...</span>
+      ) : (src && !err) ? (
         <img
           src={src}
           style={{ width: "100%", height: "100%", objectFit: "cover" }}
-          onError={e => { e.target.style.display = 'none'; }}
+          onError={() => setErr(true)}
         />
-      ) : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🍎</div>}
+      ) : <div style={{ fontSize: 16 }}>🍎</div>}
     </div>
   );
 }
