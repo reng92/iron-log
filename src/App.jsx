@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = "https://ilvlyocxcbmdwrvnhynp.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlsdmx5b2N4Y2JtZHdydm5oeW5wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzODY0NjMsImV4cCI6MjA4ODk2MjQ2M30.KXUtvvIrml3oZyHy6g_zeSK8dt2APXNWqK_4-BUN4To";
+const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL;
+const SUPABASE_KEY = process.env.REACT_APP_SUPABASE_KEY;
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ─── UTILS ────────────────────────────────────────────────
@@ -299,8 +299,13 @@ export default function App() {
           <button 
             className="btn btn-p"
             style={{ width: "160px", padding: "14px" }}
-            onClick={() => {
-              if (pinInput === "3103") {
+            onClick={async () => {
+              // Obfuscated PIN check using a simple SHA-256 hash instead of plaintext
+              const encoder = new TextEncoder();
+              const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(pinInput));
+              const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+              
+              if (hashHex === "39d2ec020e98f79f40884d3b45caeebdc70792160912160359858bb6ff1f89af") { 
                 localStorage.setItem("rw_logged", "true");
                 setIsLogged(true);
               } else {
