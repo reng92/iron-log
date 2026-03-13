@@ -22,7 +22,9 @@ const foodCache = {};
 const pendingFoodRequests = {};
 
 async function fetchMealImg(rawName) {
+  if (!rawName || typeof rawName !== 'string') return null;
   const nomePulito = rawName.replace(/\d+\s*g|\d+g|\d+\s*ml|\d+ml|[\d.,]+/gi, '').replace(/\s+/g, ' ').trim();
+  if (!nomePulito) return null;
   if (foodCache[nomePulito]) return foodCache[nomePulito];
   if (pendingFoodRequests[nomePulito]) return pendingFoodRequests[nomePulito];
 
@@ -2760,7 +2762,7 @@ GESTIONE ALTERNATIVE (MOLTO IMPORTANTE):
 - Se un pasto ha un'alternativa, ENTRAMBI (o più) devono avere lo stesso altGroupId. Se non ci sono alternative, usa null.
 
 Rispondi SOLO con JSON valido, nessun testo extra o markdown:
-{"nomePiano":"...","giorniPasti":{"1":[{"id":"...","nome":"Pasto","altGroupId":null,"alimenti":[{"id":"...","nome":"Alimento","grammi":"100","kcal":"350"}]}],"2":[...],"3":[...],"4":[...],"5":[...],"6":[...],"7":[...]}}`;
+{"nomePiano":"Nome del piano","giorniPasti":{"1":[{"nome":"Colazione","altGroupId":null,"alimenti":[{"nome":"Fette biscottate","grammi":"30","kcal":"120"},{"nome":"Marmellata","grammi":"20","kcal":"50"}]},{"nome":"Pranzo","altGroupId":null,"alimenti":[{"nome":"Riso","grammi":"100","kcal":"350"}]}],"2":[],"3":[],"4":[],"5":[],"6":[],"7":[]}}`;
 
 
 function PdfImportModal({ onApply, onClose }) {
@@ -2817,7 +2819,12 @@ function PdfImportModal({ onApply, onClose }) {
       gp[d] = (parsed.giorniPasti[d] || parsed.giorniPasti[String(d)] || []).map(p => ({
         ...p, id: genId(),
         altGroupId: p.altGroupId || null,
-        alimenti: (p.alimenti || []).map(a => ({ ...a, id: genId(), grammi: String(a.grammi || ""), kcal: String(a.kcal || "") }))
+        alimenti: (p.alimenti || []).map(a => {
+          const name = a.nome || a.alimento || a.food || a.name || "";
+          const qty = a.grammi || a.peso || a.weight || a.qta || a.amount || "";
+          const cal = a.kcal || a.calorie || a.calories || a.cal || "";
+          return { ...a, id: genId(), nome: String(name), grammi: String(qty), kcal: String(cal) };
+        })
       }));
     }
     onApply({ nomePiano: parsed.nomePiano || "", giorniPasti: gp });
