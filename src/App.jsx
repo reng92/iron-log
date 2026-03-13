@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = "https://ilvlyocxcbmdwrvnhynp.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlsdmx5b2N4Y2JtZHdydm5oeW5wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzODY0NjMsImV4cCI6MjA4ODk2MjQ2M30.KXUtvvIrml3oZyHy6g_zeSK8dt2APXNWqK_4-BUN4To";
-const sb = createClient(SUPABASE_URL, SUPABASE_KEY); // <-- Cambiato "supabase" in "sb"
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY); 
 
 // ─── UTILS ────────────────────────────────────────────────
 const genId = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -25,7 +25,14 @@ const db = {
   async addPeso(p) { await sb.from("peso").insert(p); },
   async delPeso(id) { await sb.from("peso").delete().eq("id",id); },
   async getSettings() { try{ const {data}=await sb.from("impostazioni").select("*").eq("id","settings").single(); return data?.data||{}; }catch{return{};} },
-  async saveSettings(s) { await sb.from("impostazioni").upsert({id:"settings",data:s}); }
+  async saveSettings(s) { await sb.from("impostazioni").upsert({id:"settings",data:s}); },
+  
+  // -- NUOVE CHIAMATE PER LA DIETA --
+  async getPiani() { const {data}=await sb.from("piani_alimentari").select("*"); return data?data.map(r=>r.data):[]; },
+  async setPiani(a) { await sb.from("piani_alimentari").delete().neq("id","__x__"); if(a.length)await sb.from("piani_alimentari").insert(a.map(s=>({id:s.id,data:s}))); },
+  async getLogDieta() { const {data}=await sb.from("log_dieta").select("*").order("created_at",{ascending:false}); return data?data.map(r=>r.data):[]; },
+  async addLogDieta(s) { await sb.from("log_dieta").insert({id:s.id,data:s}); },
+  async delLogDieta(id) { await sb.from("log_dieta").delete().eq("id",id); }
 };
 
 // ─── CSV EXPORT ───────────────────────────────────────────
@@ -148,6 +155,7 @@ const IcDownload=()=><Ico d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-
 const IcCalc=()=><Ico d={["M5 4a2 2 0 012-2h10a2 2 0 012 2v16a2 2 0 01-2 2H7a2 2 0 01-2-2V4z","M9 9h6M9 13h3M9 17h1"]}/>;
 const IcArrowUp=(props)=><Ico {...props} d="M18 15l-6-6-6 6"/>;
 const IcArrowDown=(props)=><Ico {...props} d="M6 9l6 6 6-6"/>;
+const IcApple=()=><Ico d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 2V6" />;
 
 // ─── LINE CHART ───────────────────────────────────────────
 function LineChart({ data, color = "#1E90FF", height = 110 }) {
@@ -194,18 +202,28 @@ export default function App() {
   const [sessioni,setSessioni]=useState([]);
   const [peso,setPeso]=useState([]);
   const [settings,setSettings]=useState({darkMode:true});
+  
+  // -- Nuovi stati per la dieta --
+  const [piani, setPiani] = useState([]);
+  const [logDieta, setLogDieta] = useState([]);
+
   const [subview,setSubview]=useState(null);
   const [loaded,setLoaded]=useState(false);
 
   useEffect(()=>{
     (async()=>{
-    const [sc,ss,ps,st]=await Promise.all([
+    const [sc,ss,ps,st,pa,ld]=await Promise.all([
       db.getSchede().catch(()=>[]),
       db.getSessioni().catch(()=>[]),
       db.getPeso().catch(()=>[]),
-      db.getSettings().catch(()=>({}))
+      db.getSettings().catch(()=>({})),
+      db.getPiani().catch(()=>[]),
+      db.getLogDieta().catch(()=>[])
     ]);
-    setSchede(sc||[]); setSessioni(ss||[]); setPeso(ps||[]); setSettings({darkMode:true,...st}); setLoaded(true);
+    setSchede(sc||[]); setSessioni(ss||[]); setPeso(ps||[]); 
+    setSettings({darkMode:true,...st}); 
+    setPiani(pa||[]); setLogDieta(ld||[]);
+    setLoaded(true);
     })();
   },[]);
 
@@ -215,6 +233,11 @@ export default function App() {
   const addPeso=async p=>{setPeso(prev=>[...prev,p].sort((a,b)=>a.data.localeCompare(b.data)));await db.addPeso(p);};
   const delPeso=async id=>{setPeso(p=>p.filter(x=>x.id!==id));await db.delPeso(id);};
   const toggleDark=async()=>{const n={...settings,darkMode:!settings.darkMode};setSettings(n);await db.saveSettings(n);};
+  
+  // -- Nuove funzioni salvataggio Dieta --
+  const savePiani=async p=>{setPiani(p);await db.setPiani(p);};
+  const handleAddLogDieta=async l=>{setLogDieta(prev=>[l,...prev]);await db.addLogDieta(l);};
+  const handleDelLogDieta=async id=>{setLogDieta(p=>p.filter(x=>x.id!==id));await db.delLogDieta(id);};
 
   const dark=settings.darkMode!==false;
   const cls=`app${dark?"":" light"}`;
@@ -243,11 +266,7 @@ export default function App() {
             className="btn btn-p"
             style={{ width: "160px", padding: "14px" }}
             onClick={() => {
-              
-              // 👇 👇 👇 👇 👇 👇 👇 👇 👇 👇 👇 👇 👇 👇 👇 👇
-              if (pinInput === "3103") { // <--- CAMBIA QUI IL TUO PIN! SOSTITUISCI "1234" CON IL TUO NUMERO
-              // 👆 👆 👆 👆 👆 👆 👆 👆 👆 👆 👆 👆 👆 👆 👆 👆
-                
+              if (pinInput === "3103") {
                 localStorage.setItem("rw_logged", "true");
                 setIsLogged(true);
               } else {
@@ -288,6 +307,26 @@ export default function App() {
       <SessioneDetail sessione={subview.data} sessioni={sessioni} onBack={()=>setSubview(null)}/>
     </div>
   );
+  
+  // -- Placeholder per i prossimi step della dieta --
+  if(subview?.type==="piano-edit") return (
+    <div className={cls}><style>{CSS}</style>
+      <div className="content fi">
+        <button className="bb" onClick={()=>setSubview(null)}><IcChevL/> Indietro</button>
+        <h1 className="pt" style={{marginBottom:18}}>CREA PIANO<br/>ALIMENTARE</h1>
+        <p className="sub">Interfaccia in arrivo nello Step 2!</p>
+      </div>
+    </div>
+  );
+  if(subview?.type==="dieta-log") return (
+    <div className={cls}><style>{CSS}</style>
+      <div className="content fi">
+        <button className="bb" onClick={()=>setSubview(null)}><IcChevL/> Indietro</button>
+        <h1 className="pt" style={{marginBottom:18}}>TRACKING<br/>PASTI</h1>
+        <p className="sub">Interfaccia in arrivo nello Step 2!</p>
+      </div>
+    </div>
+  );
 
   return (
     <div className={cls}>
@@ -295,12 +334,16 @@ export default function App() {
       <div className="content fi">
         {tab==="home"&&<Home schede={schede} sessioni={sessioni} dark={dark} onToggleDark={toggleDark} onStart={sc=>setSubview({type:"allenamento",data:sc})} onGoSchede={()=>setTab("schede")}/>}
         {tab==="schede"&&<Schede schede={schede} onNew={()=>setSubview({type:"scheda-edit",data:{nome:"",giorni:[],esercizi:[]}})} onEdit={sc=>setSubview({type:"scheda-edit",data:sc})} onDelete={id=>saveSchede(schede.filter(s=>s.id!==id))} onStart={sc=>setSubview({type:"allenamento",data:sc})}/>}
+        
+        {/* -- Nuova Tab Dieta -- */}
+        {tab==="dieta"&&<PianiAlimentari piani={piani} logDieta={logDieta} onNew={()=>setSubview({type:"piano-edit",data:{nome:"",durataGiorni:56,pasti:[]}})} onEdit={p=>setSubview({type:"piano-edit",data:p})} onDelete={id=>savePiani(piani.filter(p=>p.id!==id))} onLog={()=>setSubview({type:"dieta-log", data:null})} />}
+        
         {tab==="storico"&&<Storico sessioni={sessioni} onDetail={s=>setSubview({type:"sessione",data:s})} onDelete={delSessione}/>}
         {tab==="stats"&&<Stats sessioni={sessioni}/>}
         {tab==="peso"&&<Peso peso={peso} onAdd={addPeso} onDelete={delPeso}/>}
       </div>
       <nav className="nav">
-        {[["home","HOME",<IcHome/>],["schede","SCHEDE",<IcBook/>],["storico","LOG",<IcHistory/>],["stats","STATS",<IcChart/>],["peso","PESO",<IcWeight/>]].map(([t,l,ic])=>(
+        {[["home","HOME",<IcHome/>],["schede","SCHEDE",<IcBook/>],["dieta","DIETA",<IcApple/>],["storico","LOG",<IcHistory/>],["stats","STATS",<IcChart/>],["peso","PESO",<IcWeight/>]].map(([t,l,ic])=>(
           <button key={t} className={`nb${tab===t?" on":""}`} onClick={()=>setTab(t)}>{ic}<span>{l}</span></button>
         ))}
       </nav>
@@ -1057,6 +1100,43 @@ function Peso({peso,onAdd,onDelete}) {
           ))}
         </>
       )}
+    </>
+  );
+}
+
+// ─── DIETA: PIANI ALIMENTARI ──────────────────────────────
+function PianiAlimentari({piani, logDieta, onNew, onEdit, onDelete, onLog}) {
+  return (
+    <>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",paddingTop:20,paddingBottom:16}}>
+        <div><h1 className="pt">I MIEI<br/>PIANI</h1><p className="sub">{piani.length} piani alimentari</p></div>
+        <button className="btn btn-p" onClick={onNew}><IcPlus/> NUOVO</button>
+      </div>
+      
+      {piani.length > 0 && (
+        <button className="btn btn-p btn-full" style={{fontSize:15,padding:"14px",marginBottom:14, background:"#30D158"}} onClick={onLog}>
+          <IcApple/> TRACCIA PASTI DI OGGI
+        </button>
+      )}
+
+      {piani.length === 0 ? (
+        <div className="emp"><div className="emp-ic">🍎</div><div className="emp-t">Nessun piano</div>
+        <button className="btn btn-p" style={{marginTop:16}} onClick={onNew}><IcPlus/> CREA PIANO</button></div>
+      ) : piani.map(p => (
+        <div key={p.id} className="card" style={{borderLeft:"3px solid #30D158"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:24,letterSpacing:".05em"}}>{p.nome}</div>
+              <div style={{fontSize:12,color:"var(--dim)",marginTop:5}}>{p.durataGiorni} giorni totali</div>
+            </div>
+            <div style={{display:"flex",gap:7}}>
+              <button className="bico" onClick={()=>onEdit(p)}><IcEdit/></button>
+              <button className="bico d" onClick={()=>{if(window.confirm(`Eliminare "${p.nome}"?`))onDelete(p.id);}}><IcTrash/></button>
+            </div>
+          </div>
+          {p.pasti?.length > 0 && <div style={{marginTop:10,display:"flex",flexWrap:"wrap",gap:6}}>{p.pasti.map((pasto, i)=><span key={i} className="tag tag-m">{pasto.nome}</span>)}</div>}
+        </div>
+      ))}
     </>
   );
 }
