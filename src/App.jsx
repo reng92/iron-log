@@ -74,22 +74,27 @@ async function fetchMealImg(rawName) {
 // ─── EXERCISE MEDIA ───────────────────────────────────────
 const exMediaCache = {};
 
-const INVIDIOUS = [
-  'https://inv.tux.pizza',
-  'https://invidious.nerdvpn.de',
-  'https://yt.artemislena.eu',
+const PIPED_INSTANCES = [
+  'https://pipedapi.kavin.rocks',
+  'https://pipedapi.tokhmi.xyz',
+  'https://pipedapi.moomoo.me',
 ];
 
-async function getYtId(query) {
-  for (const base of INVIDIOUS) {
+async function searchYouTubeId(query) {
+  for (const base of PIPED_INSTANCES) {
     try {
       const r = await fetch(
-        `${base}/api/v1/search?q=${encodeURIComponent(query)}&type=video&fields=videoId,title`,
-        { signal: AbortSignal.timeout(4000) }
+        `${base}/search?q=${encodeURIComponent(query)}&filter=videos`,
+        { signal: AbortSignal.timeout(5000) }
       );
       if (!r.ok) continue;
       const data = await r.json();
-      if (Array.isArray(data) && data[0]?.videoId) return data[0].videoId;
+      // items[].url è tipo "/watch?v=dQw4w9WgXcQ"
+      const first = data?.items?.find(i => i.url?.startsWith('/watch?v='));
+      if (first) {
+        const id = new URLSearchParams(first.url.split('?')[1]).get('v');
+        if (id?.length === 11) return id;
+      }
     } catch {}
   }
   return null;
@@ -103,7 +108,7 @@ async function resolveExerciseMedia(name) {
   let iconUrl = null;
   let ytId = null;
 
-  // 1. Traduzione in inglese via Groq (solo nome, niente ID)
+  // 1. Traduzione
   if (key) {
     try {
       const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -111,11 +116,8 @@ async function resolveExerciseMedia(name) {
         headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'llama-3.1-8b-instant',
-          messages: [{
-            role: 'user',
-            content: `Translate this gym exercise name to English. Return ONLY the English name, nothing else: "${name}"`
-          }],
-          temperature: 0, max_tokens: 15
+          messages: [{ role: 'user', content: `Translate this gym exercise to English, return ONLY the name: "${name}"` }],
+          temperature: 0, max_tokens: 12
         })
       });
       const d = await res.json();
@@ -124,29 +126,22 @@ async function resolveExerciseMedia(name) {
     } catch {}
   }
 
-  // 2. wger: immagine esercizio — usa SOLO se count > 0 (fix "sempre crunches")
+  // 2. Icona wger
   try {
     const r = await fetch(
-      `https://wger.de/api/v2/exercise/?format=json&language=2&name=${encodeURIComponent(englishName)}&limit=5`
+      `https://wger.de/api/v2/exercise/search/?term=${encodeURIComponent(englishName)}&language=english&format=json`,
+      { signal: AbortSignal.timeout(5000) }
     );
     const d = await r.json();
-    if (d.count > 0 && d.results?.length > 0) {
-      // Prendi il risultato con nome più simile
-      const best = d.results.find(ex =>
-        ex.name?.toLowerCase().includes(englishName.toLowerCase().split(' ')[0])
-      ) || d.results[0];
-
-      const baseId = best.exercise_base;
-      const ir = await fetch(
-        `https://wger.de/api/v2/exerciseimage/?format=json&exercise_base=${baseId}&is_main=True&limit=2`
-      );
-      const id2 = await ir.json();
-      iconUrl = id2.results?.[0]?.image || null;
+    const hit = d?.suggestions?.find(s => s?.data?.image_thumbnail);
+    if (hit?.data?.image_thumbnail) {
+      const raw = hit.data.image_thumbnail;
+      iconUrl = raw.startsWith('http') ? raw : `https://wger.de${raw}`;
     }
   } catch {}
 
-  // 3. YouTube ID reale via Invidious (nessuna API key)
-  ytId = await getYtId(`${englishName} exercise tutorial proper form`);
+  // 3. Video ID reale via Piped
+  ytId = await searchYouTubeId(`${englishName} exercise tutorial proper form`);
 
   const result = { iconUrl, ytId, englishName };
   exMediaCache[name] = result;
@@ -161,11 +156,8 @@ function ExerciseMediaCard({ name }) {
     resolveExerciseMedia(name).then(setMedia);
   }, [name]);
 
-  const englishName = media?.englishName || name;
-
   return (
     <div style={{ marginBottom: 12 }}>
-      {/* Riga: icona + bottone video */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
 
         {/* Icona wger */}
@@ -175,49 +167,49 @@ function ExerciseMediaCard({ name }) {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           overflow: 'hidden'
         }}>
-          {!media ? (
-            <span className="pls" style={{ fontSize: 20 }}>🏋️</span>
-          ) : media.iconUrl ? (
-            <img
-              src={media.iconUrl}
-              className="ex-icon"
-              style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 5 }}
-              onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-            />
-          ) : (
-            <span style={{ fontSize: 22 }}>🏋️</span>
-          )}
+          {!media
+            ? <span className="pls" style={{ fontSize: 22 }}>🏋️</span>
+            : media.iconUrl
+              ? <img
+                  src={media.iconUrl}
+                  className="ex-icon"
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 4 }}
+                  onError={e => { e.target.style.display = 'none'; }}
+                />
+              : <span style={{ fontSize: 22 }}>🏋️</span>
+          }
         </div>
 
-        {/* Bottone video */}
-        <div>
-          {!media ? (
-            <span style={{ fontSize: 11, color: 'var(--mut)' }} className="pls">caricamento…</span>
-          ) : media.ytId ? (
-            <button
-              className="btn btn-s"
-              style={{ fontSize: 11, padding: '7px 12px', gap: 5,
-                background: showVideo ? 'var(--dan2)' : 'var(--card)',
-                borderColor: showVideo ? 'var(--dan)' : 'var(--bdr)',
-                color: showVideo ? 'var(--dan)' : 'var(--txt)' }}
-              onClick={() => setShowVideo(v => !v)}
-            >
-              {showVideo ? '✕ CHIUDI VIDEO' : '▶ VIDEO TUTORIAL'}
-            </button>
-          ) : (
-            <a
-              href={`https://www.youtube.com/results?search_query=${encodeURIComponent(englishName + ' tutorial proper form')}`}
-              target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}
-            >
-              <button className="btn btn-s" style={{ fontSize: 11, padding: '7px 12px' }}>
-                🔍 CERCA SU YOUTUBE
+        {/* Bottone — aspetta il video ID prima di mostrarlo */}
+        {!media
+          ? <span className="pls" style={{ fontSize: 11, color: 'var(--mut)' }}>caricamento…</span>
+          : media.ytId
+            ? <button
+                className="btn btn-s"
+                style={{
+                  fontSize: 11, padding: '7px 12px', gap: 5,
+                  background: showVideo ? 'rgba(255,59,48,.1)' : 'var(--card)',
+                  borderColor: showVideo ? 'var(--dan)' : 'var(--bdr)',
+                  color: showVideo ? 'var(--dan)' : 'var(--txt)'
+                }}
+                onClick={() => setShowVideo(v => !v)}
+              >
+                {showVideo ? '✕ CHIUDI' : '▶ VIDEO TUTORIAL'}
               </button>
-            </a>
-          )}
-        </div>
+            : (
+                <a
+                  href={`https://www.youtube.com/results?search_query=${encodeURIComponent((media.englishName || name) + ' tutorial')}`}
+                  target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}
+                >
+                  <button className="btn btn-s" style={{ fontSize: 11, padding: '7px 12px' }}>
+                    🔍 CERCA SU YOUTUBE
+                  </button>
+                </a>
+              )
+        }
       </div>
 
-      {/* Embed YouTube 16:9 */}
+      {/* Embed singolo video reale */}
       {showVideo && media?.ytId && (
         <div style={{
           marginTop: 10, borderRadius: 10, overflow: 'hidden',
@@ -225,7 +217,6 @@ function ExerciseMediaCard({ name }) {
           position: 'relative', paddingTop: '56.25%'
         }}>
           <iframe
-            key={media.ytId}
             src={`https://www.youtube-nocookie.com/embed/${media.ytId}?modestbranding=1&rel=0&autoplay=1`}
             style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
