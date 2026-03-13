@@ -1259,13 +1259,14 @@ function Peso({peso,onAdd,onDelete}) {
   const [expanded,setExpanded]=useState(null);
   const [lightbox,setLightbox]=useState(null);
   const [scanning,setScanning]=useState(false);
-  const apiKey=localStorage.getItem("groq_key")||"";
+  const [apiKey,setApiKeyState]=useState(()=>localStorage.getItem("groq_key")||"");
+  const saveApiKey=(v)=>{setApiKeyState(v);localStorage.setItem("groq_key",v);};
 
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const handlePhoto=async(key,file)=>{if(!file)return;set(key,await compressImg(file));};
 
   const scanZepp=async(file)=>{
-    if(!apiKey){alert("Configura prima la Groq API key (sezione Import Scheda PDF)");return;}
+    if(!apiKey.trim()){alert("Inserisci la Groq API key nel campo qui sopra prima di scansionare.");return;}
     setScanning(true);
     try{
       const b64=await compressImg(file,1200,0.85);
@@ -1473,6 +1474,16 @@ function Peso({peso,onAdd,onDelete}) {
             {/* Zepp Life scan */}
             <div style={{marginBottom:16}}>
               <label className="lbl" style={{marginBottom:6}}>SCAN ZEPP LIFE — AI COMPILA TUTTO AUTOMATICAMENTE</label>
+              {!apiKey&&(
+                <div style={{marginBottom:8}}>
+                  <label className="lbl" style={{color:"var(--dan)"}}>⚠ GROQ API KEY (richiesta una volta)</label>
+                  <div style={{display:"flex",gap:6}}>
+                    <input className="inp" type="password" placeholder="gsk_…" style={{flex:1,fontSize:13}} onBlur={e=>e.target.value&&saveApiKey(e.target.value.trim())} onKeyDown={e=>e.key==="Enter"&&e.target.value&&saveApiKey(e.target.value.trim())}/>
+                    <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" style={{display:"flex",alignItems:"center",padding:"0 10px",background:"var(--acc2)",border:"1px solid var(--acc)",borderRadius:8,fontSize:11,color:"var(--acc)",fontWeight:700,textDecoration:"none",whiteSpace:"nowrap"}}>Ottieni key</a>
+                  </div>
+                  <div style={{fontSize:10,color:"var(--mut)",marginTop:3}}>Gratuita su console.groq.com · viene salvata sul dispositivo</div>
+                </div>
+              )}
               <label style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",border:"1px dashed var(--bdr)",borderRadius:10,cursor:"pointer",color:scanning?"var(--acc)":"var(--dim)",fontSize:13,transition:"all .15s",background:scanning?"var(--acc2)":"transparent"}}>
                 <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>e.target.files[0]&&scanZepp(e.target.files[0])}/>
                 <span style={{fontSize:20}}>{scanning?"⏳":"📊"}</span>
@@ -1542,6 +1553,8 @@ function Profilo({settings, peso, onSave}) {
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
   const [lightbox, setLightbox] = useState(null);
+  const [groqKey, setGroqKey] = useState(()=>localStorage.getItem("groq_key")||"");
+  const saveGroqKey=(v)=>{setGroqKey(v);localStorage.setItem("groq_key",v.trim());};
 
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
 
@@ -1783,6 +1796,15 @@ function Profilo({settings, peso, onSave}) {
               </div>
               <div><label className="lbl">Età</label><input className="inp" type="number" min="10" max="100" placeholder="30" value={form.eta} onChange={e=>set("eta",e.target.value)}/></div>
               <div><label className="lbl">Altezza (cm)</label><input className="inp" type="number" min="100" max="250" placeholder="175" value={form.altezza} onChange={e=>set("altezza",e.target.value)}/></div>
+            </div>
+
+            <div style={{marginTop:4,marginBottom:14}}>
+              <label className="lbl">GROQ API KEY <span style={{color:"var(--mut)"}}>(per scan Zepp Life)</span></label>
+              <div style={{display:"flex",gap:6}}>
+                <input className="inp" type="password" placeholder="gsk_…" value={groqKey} style={{flex:1,fontSize:13}} onChange={e=>saveGroqKey(e.target.value)}/>
+                {groqKey&&<div style={{display:"flex",alignItems:"center",padding:"0 10px",background:"rgba(48,209,88,.1)",border:"1px solid var(--ok)",borderRadius:8,fontSize:11,color:"var(--ok)",fontWeight:700,whiteSpace:"nowrap"}}>✓ Salvata</div>}
+              </div>
+              {!groqKey&&<div style={{fontSize:10,color:"var(--mut)",marginTop:3}}>Gratuita su <b>console.groq.com</b> → API Keys</div>}
             </div>
 
             <button className="btn btn-p btn-full" onClick={handleSave} disabled={saving}>
