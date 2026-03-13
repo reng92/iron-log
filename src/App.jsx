@@ -6,9 +6,6 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY); // <-- Cambiato "supabase" in "sb"
 
 // ─── UTILS ────────────────────────────────────────────────
-// ... il resto del codice rimane identico ...
-
-// ─── UTILS ────────────────────────────────────────────────
 const genId = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 const fmtDur = s => { const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sc=s%60; return h?`${h}h ${m}m`:(m?`${m}m ${sc}s`:`${sc}s`); };
 const fmtDate = d => new Date(d).toLocaleDateString('it-IT',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
@@ -188,6 +185,10 @@ function LineChart({ data, color = "#1E90FF", height = 110 }) {
 
 // ─── APP ──────────────────────────────────────────────────
 export default function App() {
+  // Stati per il PIN
+  const [isLogged, setIsLogged] = useState(localStorage.getItem("rw_logged") === "true");
+  const [pinInput, setPinInput] = useState("");
+
   const [tab,setTab]=useState("home");
   const [schede,setSchede]=useState([]);
   const [sessioni,setSessioni]=useState([]);
@@ -199,12 +200,12 @@ export default function App() {
   useEffect(()=>{
     (async()=>{
     const [sc,ss,ps,st]=await Promise.all([
-  db.getSchede().catch(()=>[]),
-  db.getSessioni().catch(()=>[]),
-  db.getPeso().catch(()=>[]),
-  db.getSettings().catch(()=>({}))
-]);
-setSchede(sc||[]); setSessioni(ss||[]); setPeso(ps||[]); setSettings({darkMode:true,...st}); setLoaded(true);
+      db.getSchede().catch(()=>[]),
+      db.getSessioni().catch(()=>[]),
+      db.getPeso().catch(()=>[]),
+      db.getSettings().catch(()=>({}))
+    ]);
+    setSchede(sc||[]); setSessioni(ss||[]); setPeso(ps||[]); setSettings({darkMode:true,...st}); setLoaded(true);
     })();
   },[]);
 
@@ -218,6 +219,51 @@ setSchede(sc||[]); setSessioni(ss||[]); setPeso(ps||[]); setSettings({darkMode:t
   const dark=settings.darkMode!==false;
   const cls=`app${dark?"":" light"}`;
 
+  // SCHERMATA DI BLOCCO PIN
+  if (!isLogged) {
+    return (
+      <div className={cls}>
+        <style>{CSS}</style>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, padding: 20 }}>
+          <div style={{fontSize: 50, marginBottom: 10}}>🔒</div>
+          <h1 className="pt" style={{ textAlign: "center", marginBottom: 8 }}>ACCESSO<br/>RISERVATO</h1>
+          <p className="sub" style={{marginBottom: 30}}>Inserisci il PIN per entrare</p>
+          
+          <input 
+            type="password" 
+            inputMode="numeric"
+            pattern="[0-9]*"
+            placeholder="••••" 
+            className="inp"
+            style={{ textAlign: "center", fontSize: 24, letterSpacing: "8px", width: "160px", marginBottom: 20 }}
+            value={pinInput}
+            onChange={(e) => setPinInput(e.target.value)}
+          />
+          <button 
+            className="btn btn-p"
+            style={{ width: "160px", padding: "14px" }}
+            onClick={() => {
+              
+              // 👇 👇 👇 👇 👇 👇 👇 👇 👇 👇 👇 👇 👇 👇 👇 👇
+              if (pinInput === "3103") { // <--- CAMBIA QUI IL TUO PIN! SOSTITUISCI "1234" CON IL TUO NUMERO
+              // 👆 👆 👆 👆 👆 👆 👆 👆 👆 👆 👆 👆 👆 👆 👆 👆
+                
+                localStorage.setItem("rw_logged", "true");
+                setIsLogged(true);
+              } else {
+                alert("PIN Errato! Riprova.");
+                setPinInput("");
+              }
+            }}
+          >
+            SBLOCCA
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // CARICAMENTO NORMALE APP
   if(!loaded) return (
     <div className={cls}>
       <style>{CSS}</style>
