@@ -504,10 +504,12 @@ function Schede({schede,onNew,onEdit,onDelete,onStart}) {
 
 // ─── SCHEDA PDF IMPORT MODAL ──────────────────────────────
 const GROQ_SCHEDA_PROMPT = `Sei un assistente fitness. L'utente ti fornisce il testo estratto da un PDF di una scheda di allenamento in palestra.
-Estrai la lista degli esercizi con: nome, numero di serie, ripetizioni (può essere un range come "8-12" o un numero fisso), pausa in secondi tra le serie, note tecniche opzionali.
-Se la pausa non è specificata usa 90 come default. Se le serie non sono specificate usa 3. Se le reps non sono specificate usa "10".
+Estrai TUTTI gli elementi della scheda nell'ordine in cui appaiono, inclusi: riscaldamento (warm-up), cardio iniziale, esercizi con i pesi, cardio finale, defaticamento, stretching — qualunque attività presente nel PDF va inclusa.
+Per ogni elemento indica: nome, numero di serie (per cardio usa 1), ripetizioni o durata come stringa (es. "10 min", "8-12", "15"), pausa in secondi tra le serie, note opzionali.
+Se la pausa non è specificata usa 60 per cardio/riscaldamento e 90 per esercizi con i pesi. Se le serie non sono specificate usa 3 per esercizi e 1 per cardio.
+Non omettere nessuna voce presente nel PDF, anche se sembra generica (es. "Cardio Warm Up 10 min", "Defaticamento").
 Rispondi SOLO con JSON valido (nessun testo aggiuntivo, nessun markdown):
-{"nomeScheda":"nome della scheda","esercizi":[{"nome":"Panca Piana","serie":4,"ripetizioni":"8-10","pausa":120,"note":""},{"nome":"Shoulder Press","serie":3,"ripetizioni":"10-12","pausa":90,"note":"presa neutra"}]}`;
+{"nomeScheda":"nome della scheda","esercizi":[{"nome":"Cardio Warm Up","serie":1,"ripetizioni":"10 min","pausa":0,"note":""},{"nome":"Panca Piana","serie":4,"ripetizioni":"8-10","pausa":120,"note":""}]}`;
 
 function SchedaPdfImportModal({onApply, onClose}) {
   const [fase, setFase] = useState(1);
