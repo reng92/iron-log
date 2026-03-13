@@ -27,34 +27,41 @@ async function fetchMealImg(rawName) {
   if (pendingFoodRequests[nomePulito]) return pendingFoodRequests[nomePulito];
 
   const request = (async () => {
-    let searchName = nomePulito;
-    if (GROQ_KEY) {
-      try {
-        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'llama-3.1-8b-instant',
-            messages: [{ role: 'user', content: `Translate "${nomePulito}" to English. Return ONLY the translated food name. No punctuation.` }],
-            temperature: 0, max_tokens: 10
-          })
-        });
-        const data = await res.json();
-        const translated = data?.choices?.[0]?.message?.content?.trim();
-        if (translated) searchName = translated;
-      } catch (e) { console.error("Translation error", e); }
-    }
-
     try {
-      const r = await fetch(`https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(searchName)}`);
-      const d = await r.json();
-      const url = d.meals?.[0]?.strMealThumb || `https://loremflickr.com/120/120/food,dish,${encodeURIComponent(searchName)}/all?lock=${encodeURIComponent(rawName)}`;
-      foodCache[nomePulito] = url;
-      return url;
-    } catch {
-      const url = `https://loremflickr.com/120/120/food,dish,${encodeURIComponent(searchName)}/all?lock=${encodeURIComponent(rawName)}`;
-      foodCache[nomePulito] = url;
-      return url;
+      let searchName = nomePulito;
+      if (GROQ_KEY) {
+        try {
+          const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: 'llama-3.1-8b-instant',
+              messages: [{ role: 'user', content: `Translate this food item to English. Return ONLY the single English ingredient name, no quantity, no punctuation: "${nomePulito}"` }],
+              temperature: 0, max_tokens: 10
+            })
+          });
+          const data = await res.json();
+          const translated = data?.choices?.[0]?.message?.content?.trim();
+          if (translated) searchName = translated;
+        } catch (e) { console.error("Translation error", e); }
+      }
+
+      let finalUrl = null;
+      try {
+        // 1. Prova endpoint ingredienti
+        const ingUrl = `https://www.themealdb.com/images/ingredients/${encodeURIComponent(searchName)}-Small.png`;
+        const check = await fetch(ingUrl, { method: 'HEAD' });
+        if (check.ok) finalUrl = ingUrl;
+        else {
+          // 2. Fallback ricerca ricetta
+          const r = await fetch(`https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(searchName)}`);
+          const d = await r.json();
+          if (d.meals?.[0]?.strMealThumb) finalUrl = d.meals[0].strMealThumb;
+        }
+      } catch (e) { console.error("Fetch error", e); }
+
+      foodCache[nomePulito] = finalUrl;
+      return finalUrl;
     } finally {
       delete pendingFoodRequests[nomePulito];
     }
