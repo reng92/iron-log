@@ -71,6 +71,144 @@ async function fetchMealImg(rawName) {
   return request;
 }
 
+// ─── EXERCISE MEDIA (icon + youtube) ─────────────────────
+const exMediaCache = {};
+
+async function resolveExerciseMedia(name) {
+  if (exMediaCache[name]) return exMediaCache[name];
+
+  const key = GROQ_KEY || localStorage.getItem('groq_key');
+  let englishName = name;
+  let iconUrl = null;
+  let ytId = null;
+
+  // Groq: traduce il nome E restituisce video ID in un'unica chiamata
+  if (key) {
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'llama-3.1-8b-instant',
+          messages: [{
+            role: 'user',
+            content: `Gym exercise: "${name}"
+Reply with EXACTLY 2 lines:
+ENGLISH: [English exercise name]
+YTID: [11-char YouTube ID of the most popular tutorial video for this exact exercise]`
+          }],
+          temperature: 0, max_tokens: 40
+        })
+      });
+      const data = await res.json();
+      const text = data?.choices?.[0]?.message?.content || '';
+      const em = text.match(/ENGLISH:\s*(.+)/i);
+      const ym = text.match(/YTID:\s*([a-zA-Z0-9_\-]{11})/i);
+      if (em) englishName = em[1].trim();
+      if (ym) ytId = ym[1].trim();
+    } catch {}
+  }
+
+  // Valida il video ID
+  if (ytId) {
+    const valid = await new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => resolve(img.naturalWidth > 120);
+      img.onerror = () => resolve(false);
+      img.src = `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`;
+    });
+    if (!valid) ytId = null;
+  }
+
+  // wger.de: illustrazioni stilizzate esercizi
+  try {
+    const r = await fetch(
+      `https://wger.de/api/v2/exercise/?format=json&language=2&name=${encodeURIComponent(englishName)}&limit=5`
+    );
+    const d = await r.json();
+    if (d.results?.length > 0) {
+      const baseId = d.results[0].exercise_base;
+      const ir = await fetch(
+        `https://wger.de/api/v2/exerciseimage/?format=json&exercise_base=${baseId}&limit=1`
+      );
+      const id2 = await ir.json();
+      iconUrl = id2.results?.[0]?.image || null;
+    }
+  } catch {}
+
+  const result = { iconUrl, ytId, englishName };
+  exMediaCache[name] = result;
+  return result;
+}
+
+function ExerciseMediaCard({ name }) {
+  const [media, setMedia] = useState(null);
+  const [showVideo, setShowVideo] = useState(false);
+
+  useEffect(() => {
+    resolveExerciseMedia(name).then(setMedia);
+  }, [name]);
+
+  const ytSearchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent((media?.englishName || name) + ' tutorial proper form')}`;
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{
+          width: 54, height: 54, borderRadius: 10, flexShrink: 0,
+          background: 'var(--sur)', border: '1px solid var(--bdr)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden'
+        }}>
+          {media?.iconUrl ? (
+            <img
+              src={media.iconUrl}
+              className="ex-icon"
+              style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 6 }}
+              onError={e => { e.target.style.display = 'none'; }}
+            />
+          ) : (
+            <span className={!media ? 'pls' : ''} style={{ fontSize: 22 }}>🏋️</span>
+          )}
+        </div>
+        <div style={{ flex: 1 }}>
+          {!media ? (
+            <span style={{ fontSize: 11, color: 'var(--mut)' }} className="pls">ricerca media…</span>
+          ) : media.ytId ? (
+            <button
+              className="btn btn-s"
+              style={{ fontSize: 11, padding: '7px 12px', gap: 5 }}
+              onClick={() => setShowVideo(v => !v)}
+            >
+              🎬 {showVideo ? 'CHIUDI VIDEO' : 'VIDEO TUTORIAL'}
+            </button>
+          ) : (
+            <a href={ytSearchUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
+              <button className="btn btn-s" style={{ fontSize: 11, padding: '7px 12px', gap: 5 }}>
+                🔍 CERCA TUTORIAL
+              </button>
+            </a>
+          )}
+        </div>
+      </div>
+      {showVideo && media?.ytId && (
+        <div style={{
+          marginTop: 8, borderRadius: 10, overflow: 'hidden',
+          border: '1px solid var(--bdr)', background: '#000',
+          position: 'relative', paddingTop: '56.25%'
+        }}>
+          <iframe
+            key={media.ytId}
+            src={`https://www.youtube-nocookie.com/embed/${media.ytId}?modestbranding=1&rel=0`}
+            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FoodThumb({ nome }) {
   const [src, setSrc] = useState(null);
   const [err, setErr] = useState(false);
@@ -237,6 +375,8 @@ textarea.inp{resize:vertical;min-height:64px;}
 .import-num{width:24px;height:24px;border-radius:50%;background:var(--acc2);color:var(--acc);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .spin{display:inline-block;animation:spin .8s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg)}}
+.ex-icon{filter:invert(1) brightness(1.8);}
+.app.light .ex-icon{filter:none;}
 `;
 
 // ─── ICONS ────────────────────────────────────────────────
@@ -818,6 +958,7 @@ function SchedaEdit({ scheda: init, onSave, onBack }) {
           ? <div className="emp" style={{ padding: "20px 0" }}><div style={{ fontSize: 13, color: "var(--dim)" }}>Nessun esercizio ancora</div></div>
           : esercizi.map((e, i) => (
             <div key={e.id} style={{ background: "var(--sur)", border: "1px solid var(--bdr)", borderRadius: 10, padding: 14, marginBottom: 9 }}>
+              <ExerciseMediaCard name={e.nome} />
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div style={{ flex: 1 }}>
                   <div className="exn">{e.nome}</div>
@@ -980,6 +1121,7 @@ function Allenamento({ scheda, sessioni, onComplete, onBack }) {
                 {ex.mediaUrl && <button className="bico" onClick={() => setMediaOpen(ex)}><IcImg /></button>}
               </div>
             </div>
+            <ExerciseMediaCard name={ex.nome} />
 
             <div style={{ display: "grid", gridTemplateColumns: "22px 1fr 1fr 38px 28px", gap: 6, fontSize: 10, color: "var(--dim)", fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", marginBottom: 6, padding: "0 0 4px", borderBottom: "1px solid var(--bdr)" }}>
               <div>#</div><div style={{ textAlign: "center" }}>KG</div><div style={{ textAlign: "center" }}>REPS</div><div style={{ textAlign: "center" }}>RPE</div><div />
