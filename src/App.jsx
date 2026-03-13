@@ -1570,9 +1570,8 @@ function Profilo({settings, peso, onSave}) {
   };
 
   // Ultimo peso con dati corpo
-  const ultimoPeso = [...peso].reverse().find(p =>
-    p.valore != null && (p.imc != null || p.massa_grassa != null || p.punteggio != null)
-  ) || [...peso].reverse()[0] || null;
+  const hasBody = p => p.imc!=null || p.massa_grassa!=null || p.acqua!=null || p.muscoli!=null || p.grasso_viscerale!=null || p.proteine!=null || p.metabolismo!=null || p.massa_ossea!=null;
+  const ultimoPeso = [...peso].reverse().find(p => p.valore != null && (hasBody(p) || p.punteggio != null)) || [...peso].reverse()[0] || null;
 
   // Ultime foto corporee
   const ultimeFoto = [...peso].reverse().find(p => p.foto_fronte || p.foto_retro);
@@ -1614,7 +1613,9 @@ function Profilo({settings, peso, onSave}) {
     {icon:"💧", label:"Acqua", vk:"acqua", sk:"acqua_status", unit:"%"},
     {icon:"🔶", label:"Grasso viscerale", vk:"grasso_viscerale", sk:"grasso_viscerale_status", unit:""},
     {icon:"💪", label:"Muscoli", vk:"muscoli", sk:"muscoli_status", unit:"kg"},
+    {icon:"🥩", label:"Proteine", vk:"proteine", sk:"proteine_status", unit:"%"},
     {icon:"🔥", label:"Metabolismo", vk:"metabolismo", sk:"metabolismo_status", unit:"kcal"},
+    {icon:"🦴", label:"Massa ossea", vk:"massa_ossea", sk:"massa_ossea_status", unit:"kg"},
   ];
 
   return (
@@ -1684,9 +1685,9 @@ function Profilo({settings, peso, onSave}) {
           </div>
 
           {/* Metriche grid */}
-          {METRICHE.some(m=>ultimoPeso[m.vk]!=null)&&(
+          {METRICHE.some(m=>ultimoPeso[m.vk]!=null && ultimoPeso[m.vk]!=="")&&(
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}>
-              {METRICHE.filter(m=>ultimoPeso[m.vk]!=null).map(m=>(
+              {METRICHE.filter(m=>ultimoPeso[m.vk]!=null && ultimoPeso[m.vk]!=="").map(m=>(
                 <div key={m.vk} style={{background:"var(--card)",borderRadius:8,padding:"8px 10px",border:"1px solid var(--bdr)"}}>
                   <div style={{fontSize:10,color:"var(--dim)",fontWeight:700,textTransform:"uppercase",letterSpacing:".06em",marginBottom:2}}>{m.icon} {m.label}</div>
                   <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",gap:4}}>
