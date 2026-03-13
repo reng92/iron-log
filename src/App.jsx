@@ -16,6 +16,47 @@ const GG = ["Lun","Mar","Mer","Gio","Ven","Sab","Dom"];
 const GIORNI_LABEL = ["","Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato","Domenica"];
 const GIORNI_SHORT = ["","Lun","Mar","Mer","Gio","Ven","Sab","Dom"];
 
+// ─── MEDIA HELPERS ────────────────────────────────────────
+const foodImgUrl = nome => `https://source.unsplash.com/80x80/?${encodeURIComponent(nome)},food`;
+
+const wgerImgCache = {};
+async function getExerciseImgUrl(nome) {
+  if(wgerImgCache[nome]) return wgerImgCache[nome];
+  try {
+    const res = await fetch(`https://wger.de/api/v2/exercise/search/?term=${encodeURIComponent(nome)}&language=italian&format=json`);
+    const data = await res.json();
+    const baseId = data?.suggestions?.[0]?.data?.base_id;
+    if(!baseId) throw new Error('no result');
+    const imgRes = await fetch(`https://wger.de/api/v2/exerciseimage/?exercise_base=${baseId}&format=json`);
+    const imgData = await imgRes.json();
+    const url = imgData?.results?.[0]?.image || null;
+    wgerImgCache[nome] = url;
+    return url;
+  } catch {
+    const fallback = `https://source.unsplash.com/300x180/?${encodeURIComponent(nome)},gym,workout`;
+    wgerImgCache[nome] = fallback;
+    return fallback;
+  }
+}
+
+async function getYoutubeId(nome, apiKey) {
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method:'POST',
+      headers:{'Authorization':`Bearer ${apiKey}`,'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'llama-3.3-70b-versatile',
+        messages:[{role:'user',content:`Return ONLY a valid YouTube video ID (exactly 11 alphanumeric characters, no spaces, no other text, no markdown) for the best gym tutorial video for this exercise: "${nome}". The video should be in Italian if possible.`}],
+        temperature:0, max_tokens:20
+      })
+    });
+    const data = await res.json();
+    const text = (data?.choices?.[0]?.message?.content||'').trim();
+    const match = text.match(/[A-Za-z0-9_-]{11}/);
+    return match?.[0] || null;
+  } catch { return null; }
+}
+
 // ─── DB ───────────────────────────────────────────────────
 const db = {
   async getSchede() { const {data}=await sb.from("schede").select("*"); return data?data.map(r=>r.data):[]; },
@@ -186,6 +227,73 @@ const IcApple=()=><Ico d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 2V6" />;
 const IcUser=()=><Ico d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2 M12 11a4 4 0 100-8 4 4 0 000 8z"/>;
 const IcFile=()=><Ico d={["M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z","M14 2v6h6","M16 13H8M16 17H8M10 9H8"]}/>;
 const IcUpload=()=><Ico d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>;
+
+// ─── EXERCISE MEDIA COMPONENT ─────────────────────────────
+function ExerciseMedia({ nome }) {
+  const [imgUrl, setImgUrl] = useState(null);
+  const [ytId, setYtId] = useState(null);
+  const [showVideo, setShowVideo] = useState(false);
+  const [loadingVideo, setLoadingVideo] = useState(false);
+  const apiKey = localStorage.getItem('groq_key') || '';
+
+  useEffect(() => {
+    let alive = true;
+    getExerciseImgUrl(nome).then(url => { if(alive) setImgUrl(url); });
+    return () => { alive = false; };
+  }, [nome]);
+
+  const handleVideo = async () => {
+    if(showVideo) { setShowVideo(false); return; }
+    if(ytId) { setShowVideo(true); return; }
+    if(!apiKey) { alert('Configura prima la Groq API key (sezione Import Scheda)'); return; }
+    setLoadingVideo(true);
+    const id = await getYoutubeId(nome, apiKey);
+    setLoadingVideo(false);
+    if(id) { setYtId(id); setShowVideo(true); }
+    else alert('Video non trovato. Riprova.');
+  };
+
+  return (
+    <div style={{marginBottom:10}}>
+      {imgUrl && (
+        <div style={{position:'relative',borderRadius:8,overflow:'hidden',marginBottom:6,background:'var(--bdr)',maxHeight:160}}>
+          <img src={imgUrl} alt={nome} loading="lazy" style={{width:'100%',maxHeight:160,objectFit:'cover',display:'block'}} onError={e=>e.target.style.display='none'}/>
+        </div>
+      )}
+      <button
+        onClick={handleVideo}
+        disabled={loadingVideo}
+        style={{display:'flex',alignItems:'center',gap:6,background:'var(--card)',border:'1px solid var(--bdr)',borderRadius:8,padding:'6px 12px',color:'var(--acc)',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:"'Barlow',sans-serif",width:'100%',justifyContent:'center',transition:'all .15s'}}
+      >
+        {loadingVideo ? <><span className="spin" style={{display:'inline-block',animation:'spin .8s linear infinite'}}>⚙️</span> Carico video...</> : showVideo ? '✕ Chiudi video' : '▶ GUARDA VIDEO TUTORIAL'}
+      </button>
+      {showVideo && ytId && (
+        <div style={{marginTop:8,borderRadius:8,overflow:'hidden',position:'relative',paddingTop:'56.25%'}}>
+          <iframe
+            src={`https://www.youtube-nocookie.com/embed/${ytId}?autoplay=1&rel=0`}
+            style={{position:'absolute',top:0,left:0,width:'100%',height:'100%',border:'none',borderRadius:8}}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            title={nome}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── FOOD THUMBNAIL ───────────────────────────────────────
+function FoodThumb({ nome }) {
+  return (
+    <img
+      src={foodImgUrl(nome)}
+      alt={nome}
+      loading="lazy"
+      style={{width:44,height:44,borderRadius:8,objectFit:'cover',flexShrink:0}}
+      onError={e=>e.target.style.display='none'}
+    />
+  );
+}
 
 // ─── LINE CHART ───────────────────────────────────────────
 function LineChart({ data, color = "#1E90FF", height = 110 }) {
@@ -733,6 +841,7 @@ function SchedaEdit({scheda:init,onSave,onBack}) {
           ?<div className="emp" style={{padding:"20px 0"}}><div style={{fontSize:13,color:"var(--dim)"}}>Nessun esercizio ancora</div></div>
           :esercizi.map((e,i)=>(
             <div key={e.id} style={{background:"var(--sur)",border:"1px solid var(--bdr)",borderRadius:10,padding:14,marginBottom:9}}>
+              <ExerciseMedia nome={e.nome}/>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                 <div style={{flex:1}}>
                   <div className="exn">{e.nome}</div>
@@ -885,7 +994,8 @@ function Allenamento({scheda,sessioni,onComplete,onBack}) {
 
         {sets.map((ex,ei)=>(
           <div key={ex.esercizioId} className="card" style={{marginBottom:12}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+              <ExerciseMedia nome={ex.nome}/>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
               <div>
                 <div className="exn">{ex.nome}</div>
                 {ex.note&&<div style={{fontSize:11,color:"var(--dim)",fontStyle:"italic",marginTop:2}}>{ex.note}</div>}
@@ -1976,8 +2086,9 @@ function PianoEdit({piano:init, onSave, onBack}) {
             </div>
             {p.alimenti.length===0&&<div style={{fontSize:12,color:"var(--mut)",marginBottom:10,fontStyle:"italic"}}>Nessun alimento.</div>}
             {p.alimenti.map((al,ai)=>(
-              <div key={al.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--sur)",padding:"8px 10px",borderRadius:8,marginBottom:6}}>
-                <div>
+              <div key={al.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--sur)",padding:"8px 10px",borderRadius:8,marginBottom:6,gap:8}}>
+                <FoodThumb nome={al.nome}/>
+                <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:600,fontSize:14}}>{al.nome}</div>
                   <div style={{fontSize:11,color:"var(--dim)",marginTop:2}}>{al.grammi}g · {al.kcal} kcal</div>
                 </div>
@@ -2129,6 +2240,7 @@ function DietaLog({piani, logDieta, onAdd, onDelete, onBack}) {
                       const eaten=!!mangiato[`${pi}_${ai}`];
                       return (
                         <div key={al.id||ai} className="frow">
+                          <FoodThumb nome={al.nome}/>
                           <div style={{flex:1,opacity:eaten?.55:1,transition:"opacity .15s"}}>
                             <div style={{fontWeight:600,fontSize:13,textDecoration:eaten?"line-through":"none"}}>{al.nome}</div>
                             <div style={{fontSize:11,color:"var(--dim)",marginTop:1}}>{al.grammi}g · {al.kcal} kcal</div>
