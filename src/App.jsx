@@ -702,8 +702,7 @@ function SchedaPdfImportModal({ onApply, onClose }) {
       serie: +e.serie || 3,
       ripetizioni: String(e.ripetizioni || "10"),
       pausa: +e.pausa || 90,
-      note: String(e.note || ""),
-      mediaUrl: "", mediaType: null
+      note: String(e.note || "")
     }));
     onApply({ nomeScheda: parsed.nomeScheda || "", esercizi: ex });
     onClose();
@@ -815,7 +814,7 @@ function SchedaEdit({ scheda: init, onSave, onBack }) {
         <div className="div" />
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <div className="st" style={{ margin: 0 }}>ESERCIZI ({esercizi.length})</div>
-          <button className="btn btn-s" onClick={() => setModal({ mode: "new", data: { nome: "", serie: 3, ripetizioni: "10", pausa: 90, note: "", mediaUrl: "", mediaType: null } })}><IcPlus /> AGGIUNGI</button>
+          <button className="btn btn-s" onClick={() => setModal({ mode: "new", data: { nome: "", serie: 3, ripetizioni: "10", pausa: 90, note: "" } })}><IcPlus /> AGGIUNGI</button>
         </div>
         {esercizi.length === 0
           ? <div className="emp" style={{ padding: "20px 0" }}><div style={{ fontSize: 13, color: "var(--dim)" }}>Nessun esercizio ancora</div></div>
@@ -828,7 +827,7 @@ function SchedaEdit({ scheda: init, onSave, onBack }) {
                     <div className="ep"><b>{e.serie}</b> serie</div>
                     <div className="ep"><b>{e.ripetizioni}</b> reps</div>
                     <div className="ep"><IcTimer /><b>{e.pausa}s</b></div>
-                    {e.mediaUrl && <div className="ep"><IcImg /><b>Media</b></div>}
+
                   </div>
                   {e.note && <div style={{ fontSize: 11, color: "var(--dim)", fontStyle: "italic", marginTop: 4 }}>{e.note}</div>}
                 </div>
@@ -863,13 +862,7 @@ function SchedaEdit({ scheda: init, onSave, onBack }) {
 // ─── ESERCIZIO MODAL ──────────────────────────────────────
 function EsercizioModal({ init, mode, onSave, onClose }) {
   const [d, setD] = useState({ ...init });
-  const fileRef = useRef();
   const upd = (k, v) => setD(p => ({ ...p, [k]: v }));
-  const handleFile = e => {
-    const f = e.target.files[0]; if (!f) return;
-    if (f.size > 4 * 1024 * 1024) { alert("Max 4MB"); return; }
-    const r = new FileReader(); r.onload = ev => upd("mediaUrl", ev.target.result); r.readAsDataURL(f); upd("mediaType", "image");
-  };
   return (
     <div className="mov" onClick={onClose}>
       <div className="mod" onClick={e => e.stopPropagation()}>
@@ -884,16 +877,7 @@ function EsercizioModal({ init, mode, onSave, onClose }) {
           <div><label className="lbl">Pausa (s)</label><input className="inp" type="number" min="0" value={d.pausa} onChange={e => upd("pausa", +e.target.value)} /></div>
         </div>
         <div className="ig"><label className="lbl">Note / tecnica</label><textarea className="inp" rows={2} value={d.note} onChange={e => upd("note", e.target.value)} placeholder="Indicazioni tecniche…" /></div>
-        <div className="ig">
-          <label className="lbl">Video URL (YouTube, Drive…)</label>
-          <input className="inp" placeholder="https://…" value={d.mediaType === "url" ? d.mediaUrl : ""} onChange={e => { upd("mediaUrl", e.target.value); upd("mediaType", "url"); }} style={{ marginBottom: 8 }} />
-          <div className="mu" onClick={() => fileRef.current?.click()}>
-            <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFile} />
-            <IcCamera /><span style={{ fontSize: 13, color: "var(--dim)" }}>Carica foto (max 4MB)</span>
-          </div>
-          {d.mediaUrl && d.mediaType === "image" && <img src={d.mediaUrl} className="mpv" alt="preview" />}
-          {d.mediaUrl && <button onClick={() => { upd("mediaUrl", ""); upd("mediaType", null); }} style={{ background: "none", border: "none", color: "var(--dan)", cursor: "pointer", fontSize: 12, marginTop: 6 }}>✕ Rimuovi media</button>}
-        </div>
+
         <button className="btn btn-p btn-full" onClick={() => onSave(d)}><IcCheck /> {mode === "new" ? "AGGIUNGI" : "SALVA"}</button>
       </div>
     </div>
@@ -909,8 +893,7 @@ function Allenamento({ scheda, sessioni, onComplete, onBack }) {
   const [sets, setSets] = useState(scheda.esercizi.map(e => {
     const prev = lastData[e.id] || [];
     return {
-      esercizioId: e.id, nome: e.nome, pausa: e.pausa,
-      mediaUrl: e.mediaUrl, mediaType: e.mediaType, note: e.note,
+      esercizioId: e.id, nome: e.nome, pausa: e.pausa, note: e.note,
       serie: Array.from({ length: e.serie }, (_, i) => ({
         idx: i,
         kg: prev[i]?.kg || "",
@@ -923,7 +906,6 @@ function Allenamento({ scheda, sessioni, onComplete, onBack }) {
   const [elapsed, setElapsed] = useState(0);
   const [rest, setRest] = useState(null);
   const [noteSess, setNoteSess] = useState("");
-  const [mediaOpen, setMediaOpen] = useState(null);
   const [rpeOpen, setRpeOpen] = useState(null);
   const tiRef = useRef(); const reRef = useRef();
 
@@ -980,7 +962,6 @@ function Allenamento({ scheda, sessioni, onComplete, onBack }) {
               </div>
               <div style={{ display: "flex", gap: 6 }}>
                 {ex.pausa > 0 && <div className="tag tag-m"><IcTimer />{ex.pausa}s</div>}
-                {ex.mediaUrl && <button className="bico" onClick={() => setMediaOpen(ex)}><IcImg /></button>}
               </div>
             </div>
 
@@ -1034,16 +1015,7 @@ function Allenamento({ scheda, sessioni, onComplete, onBack }) {
           <div className="rest-l">📳 tocca per saltare</div>
         </div>
       )}
-      {mediaOpen && (
-        <div className="rest-ov" onClick={() => setMediaOpen(null)}>
-          <div style={{ padding: 20, width: "100%", maxWidth: 480 }} onClick={e => e.stopPropagation()}>
-            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 18, letterSpacing: ".05em", marginBottom: 12, textAlign: "center" }}>{mediaOpen.nome}</div>
-            {mediaOpen.mediaType === "image" && <img src={mediaOpen.mediaUrl} style={{ width: "100%", borderRadius: 12, maxHeight: 380, objectFit: "contain" }} />}
-            {mediaOpen.mediaType === "url" && <div style={{ background: "var(--card)", borderRadius: 12, padding: 20, textAlign: "center" }}><a href={mediaOpen.mediaUrl} target="_blank" rel="noopener noreferrer" style={{ color: "var(--acc)", fontSize: 14 }}>Apri video →</a></div>}
-            <button className="btn btn-s btn-full" style={{ marginTop: 14 }} onClick={() => setMediaOpen(null)}>CHIUDI</button>
-          </div>
-        </div>
-      )}
+
     </>
   );
 }
@@ -1921,15 +1893,26 @@ function PianiAlimentari({ piani, logDieta, onNew, onEdit, onDelete, onLog }) {
       )}
 
       {piani.length === 0 ? (
-        <div className="emp"><div className="emp-ic">🍎</div><div className="emp-t">Nessun piano</div>
-          <button className="btn btn-p" style={{ marginTop: 16 }} onClick={onNew}><IcPlus /> CREA PIANO</button></div>
+        <div className="emp">
+          <div className="emp-ic">🍎</div>
+          <div className="emp-t">Nessun piano</div>
+          <button className="btn btn-p" style={{ marginTop: 16 }} onClick={onNew}><IcPlus /> CREA PIANO</button>
+        </div>
       ) : piani.map(p => {
-        // Calcola kcal per giorno se struttura settimanale
         const hasWeekly = p.giorniPasti && Object.keys(p.giorniPasti).length > 0;
         const kcalPerGiorno = hasWeekly
-          ? [1, 2, 3, 4, 5, 6, 7].map(d => (p.giorniPasti[d] || []).reduce((a, pst) => a + pst.alimenti.reduce((b, al) => b + (+al.kcal || 0), 0), 0))
+          ? [1, 2, 3, 4, 5, 6, 7].map(d => {
+            const pasti = p.giorniPasti[d] || [];
+            const seen = new Set();
+            return pasti.reduce((a, pst) => {
+              if (pst.altGroupId && seen.has(pst.altGroupId)) return a;
+              if (pst.altGroupId) seen.add(pst.altGroupId);
+              return a + pst.alimenti.reduce((b, al) => b + (+al.kcal || 0), 0);
+            }, 0);
+          })
           : [];
-        const maxKcal = kcalPerGiorno.length > 0 ? Math.max(...kcalPerGiorno, 1) : 1;
+        const maxKcal = Math.max(...kcalPerGiorno, 1);
+
         return (
           <div key={p.id} className="card" style={{ borderLeft: "3px solid #30D158" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -1955,7 +1938,6 @@ function PianiAlimentari({ piani, logDieta, onNew, onEdit, onDelete, onLog }) {
                 ))}
               </div>
             )}
-            {!hasWeekly && p.pasti?.length > 0 && <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 6 }}>{p.pasti.map((pasto, i) => <span key={i} className="tag tag-m">{pasto.nome}</span>)}</div>}
           </div>
         );
       })}
@@ -1963,14 +1945,13 @@ function PianiAlimentari({ piani, logDieta, onNew, onEdit, onDelete, onLog }) {
   );
 }
 
-// ─── PIANO EDIT (CREAZIONE DIETA SETTIMANALE) ─────────────
+// ─── PIANO EDIT ───────────────────────────────────────────
 function PianoEdit({ piano: init, onSave, onBack }) {
   const [nome, setNome] = useState(init.nome || "");
   const [giorno, setGiorno] = useState(1);
   const [alModal, setAlModal] = useState(null);
   const [pdfModal, setPdfModal] = useState(false);
 
-  // Inizializza giorniPasti: migra vecchio formato o usa giorniPasti esistente
   const initGP = () => {
     if (init.giorniPasti) return JSON.parse(JSON.stringify(init.giorniPasti));
     const gp = {};
@@ -1984,56 +1965,129 @@ function PianoEdit({ piano: init, onSave, onBack }) {
 
   const addPasto = () => {
     const n = prompt("Nome del pasto? (es. Colazione, Spuntino, Pranzo...)");
-    if (n && n.trim()) setPC([...pastiCorrente, { id: genId(), nome: n.trim(), alimenti: [] }]);
+    if (n?.trim()) setPC([...pastiCorrente, { id: genId(), nome: n.trim(), alimenti: [], altGroupId: null }]);
   };
-  const movePasto = (i, dir) => { const a = [...pastiCorrente], j = i + dir; if (j < 0 || j >= a.length) return;[a[i], a[j]] = [a[j], a[i]]; setPC(a); };
-  const delPasto = i => { if (window.confirm("Eliminare intero pasto?")) setPC(pastiCorrente.filter((_, j) => j !== i)); };
+
+  const addAlternativa = (pi) => {
+    const src = pastiCorrente[pi];
+    const n = prompt(`Nome alternativa per "${src.nome}"? (es. Pranzo B, Opzione vegana...)`);
+    if (!n?.trim()) return;
+    const groupId = src.altGroupId || src.id;
+    // Assicura che il pasto sorgente abbia altGroupId
+    const updated = pastiCorrente.map((p, i) =>
+      i === pi && !p.altGroupId ? { ...p, altGroupId: groupId } : p
+    );
+    setPC([...updated, { id: genId(), nome: n.trim(), alimenti: [], altGroupId: groupId }]);
+  };
+
+  const movePasto = (i, dir) => {
+    const a = [...pastiCorrente], j = i + dir;
+    if (j < 0 || j >= a.length) return;
+    [a[i], a[j]] = [a[j], a[i]]; setPC(a);
+  };
+
+  const delPasto = i => {
+    if (window.confirm("Eliminare questo pasto?")) setPC(pastiCorrente.filter((_, j) => j !== i));
+  };
+
   const copyFromPrev = () => {
     if (giorno <= 1) return;
     const prev = giorniPasti[giorno - 1];
     if (!prev || prev.length === 0) return alert("Il giorno precedente non ha pasti da copiare");
-    if (window.confirm(`Copiare i pasti del Giorno ${giorno - 1}?`)) {
-      setPC(JSON.parse(JSON.stringify(prev)).map(p => ({ ...p, id: genId(), alimenti: p.alimenti.map(a => ({ ...a, id: genId() })) })));
+    if (window.confirm(`Copiare i pasti di ${GIORNI_LABEL[giorno - 1]}?`)) {
+      setPC(JSON.parse(JSON.stringify(prev)).map(p => ({
+        ...p, id: genId(),
+        alimenti: p.alimenti.map(a => ({ ...a, id: genId() }))
+      })));
     }
   };
 
-  const saveAlimento = al => {
-    if (!al.nome.trim()) return alert("Inserisci il nome dell'alimento");
+  const saveAlimento = food => {
+    if (!food.nome?.trim()) return alert("Inserisci il nome dell'alimento");
     let np = [...pastiCorrente];
     if (alModal.mode === "new") {
-      np = np.map((pst, i) => i === alModal.pIdx ? { ...pst, alimenti: [...pst.alimenti, { ...al, id: genId() }] } : pst);
+      np = np.map((pst, i) => i === alModal.pIdx ? { ...pst, alimenti: [...pst.alimenti, { ...food, id: genId() }] } : pst);
     } else {
-      np = np.map((pst, i) => i === alModal.pIdx ? { ...pst, alimenti: pst.alimenti.map((a, j) => j === alModal.aIdx ? { ...al } : a) } : pst);
+      np = np.map((pst, i) => i === alModal.pIdx ? { ...pst, alimenti: pst.alimenti.map((a, j) => j === alModal.aIdx ? { ...food } : a) } : pst);
     }
     setPC(np);
     setAlModal(null);
   };
-  const delAlim = (pi, ai) => setPC(pastiCorrente.map((pst, i) => i === pi ? { ...pst, alimenti: pst.alimenti.filter((_, j) => j !== ai) } : pst));
 
-  const totKcalGiorno = pastiCorrente.reduce((a, p) => a + p.alimenti.reduce((b, al) => b + (+al.kcal || 0), 0), 0);
-  const totKcalSett = Object.values(giorniPasti).reduce((a, pasti) => a + pasti.reduce((b, p) => b + p.alimenti.reduce((c, al) => c + (+al.kcal || 0), 0), 0), 0);
+  const delAlim = (pi, ai) =>
+    setPC(pastiCorrente.map((pst, i) => i === pi ? { ...pst, alimenti: pst.alimenti.filter((_, j) => j !== ai) } : pst));
+
+  // Kcal giorno — conta solo il primo pasto di ogni gruppo alt
+  const totKcalGiorno = useMemo(() => {
+    const seen = new Set();
+    return pastiCorrente.reduce((a, p) => {
+      if (p.altGroupId && seen.has(p.altGroupId)) return a;
+      if (p.altGroupId) seen.add(p.altGroupId);
+      return a + p.alimenti.reduce((b, al) => b + (+al.kcal || 0), 0);
+    }, 0);
+  }, [pastiCorrente]);
+
+  const totKcalSett = useMemo(() =>
+    Object.values(giorniPasti).reduce((tot, pasti) => {
+      const seen = new Set();
+      return tot + pasti.reduce((a, p) => {
+        if (p.altGroupId && seen.has(p.altGroupId)) return a;
+        if (p.altGroupId) seen.add(p.altGroupId);
+        return a + p.alimenti.reduce((b, al) => b + (+al.kcal || 0), 0);
+      }, 0);
+    }, 0),
+    [giorniPasti]
+  );
+
+  // Raggruppa pasti per visualizzazione in edit
+  const pastiGroupsEdit = useMemo(() => {
+    const groups = [];
+    const seen = new Set();
+    pastiCorrente.forEach((pasto, idx) => {
+      if (!pasto.altGroupId) {
+        groups.push({ type: 'single', items: [{ pasto, idx }] });
+      } else if (!seen.has(pasto.altGroupId)) {
+        seen.add(pasto.altGroupId);
+        const alts = pastiCorrente
+          .map((p, i) => ({ pasto: p, idx: i }))
+          .filter(({ pasto: p }) => p.altGroupId === pasto.altGroupId);
+        groups.push({ type: 'alternative', groupId: pasto.altGroupId, items: alts });
+      }
+    });
+    return groups;
+  }, [pastiCorrente]);
 
   return (
     <>
-      <div className="content fi">
+      <div className="content fi" style={{ paddingBottom: 100 }}>
         <button className="bb" onClick={onBack}><IcChevL /> Indietro</button>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
           <h1 className="pt">{init.id ? "MODIFICA" : "NUOVO"}<br />PIANO</h1>
-          <button className="btn btn-s" style={{ marginTop: 6, fontSize: 11, gap: 5 }} onClick={() => setPdfModal(true)}><IcFile size={14} /> PDF</button>
+          <button className="btn btn-s" style={{ marginTop: 6, fontSize: 11, gap: 5 }} onClick={() => setPdfModal(true)}><IcFile size={14} /> PDF AI</button>
         </div>
 
-        <div className="ig"><label className="lbl">Nome del piano</label><input className="inp" placeholder="es. Massa Invernale, Definizione..." value={nome} onChange={e => setNome(e.target.value)} /></div>
+        <div className="ig">
+          <label className="lbl">Nome del piano</label>
+          <input className="inp" placeholder="es. Massa 2024, Definizione..." value={nome} onChange={e => setNome(e.target.value)} />
+        </div>
 
-        <div className="wh" style={{ borderColor: "#30D158", background: "rgba(48,209,88,.1)" }}>
-          <div className="wt" style={{ color: "#30D158" }}>TARGET — {GIORNI_LABEL[giorno].toUpperCase()}</div>
-          <div className="wlv" style={{ color: "#30D158" }}>{totKcalGiorno} kcal</div>
-          <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 4 }}>{pastiCorrente.length} pasti · {totKcalSett} kcal totali settimana</div>
+        <div className="wh" style={{ borderColor: "#30D158", background: "rgba(48,209,88,.1)", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div>
+            <div className="st" style={{ color: "#30D158", marginBottom: 2 }}>CALORIE {GIORNI_LABEL[giorno].toUpperCase()}</div>
+            <div className="wlv" style={{ color: "#30D158" }}>{totKcalGiorno} <span style={{ fontSize: 16 }}>kcal</span></div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div className="st">TOT. SETTIMANA</div>
+            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 24 }}>{totKcalSett} kcal</div>
+          </div>
         </div>
 
         <div className="st">GIORNO DELLA SETTIMANA</div>
         <div className="day-pill">
           {[1, 2, 3, 4, 5, 6, 7].map(d => (
-            <button key={d} className={`dpb${giorno === d ? " on" : ""}${giorniPasti[d]?.length > 0 && giorno !== d ? " log" : ""}`} onClick={() => setGiorno(d)}>
+            <button key={d}
+              className={`dpb${giorno === d ? " on" : ""}${giorniPasti[d]?.length > 0 && giorno !== d ? " log" : ""}`}
+              onClick={() => setGiorno(d)}>
               <div>{GIORNI_SHORT[d]}</div>
               <div style={{ fontSize: 8, marginTop: 2 }}>G{d}</div>
             </button>
@@ -2043,80 +2097,232 @@ function PianoEdit({ piano: init, onSave, onBack }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <div className="st" style={{ margin: 0 }}>PASTI — {GIORNI_LABEL[giorno].toUpperCase()}</div>
           <div style={{ display: "flex", gap: 6 }}>
-            {giorno > 1 && <button className="btn btn-s" style={{ fontSize: 11, padding: "7px 10px" }} onClick={copyFromPrev}>Copia G{giorno - 1}</button>}
+            {giorno > 1 && (
+              <button className="btn btn-s" style={{ fontSize: 11, padding: "7px 10px" }} onClick={copyFromPrev}>
+                Copia G{giorno - 1}
+              </button>
+            )}
             <button className="btn btn-s" onClick={addPasto}><IcPlus /> PASTO</button>
           </div>
         </div>
 
-        {pastiCorrente.length === 0 && (
-          <div className="emp" style={{ padding: "20px 0" }}>
+        {pastiGroupsEdit.length === 0 && (
+          <div className="emp" style={{ padding: "24px 0" }}>
             <div style={{ fontSize: 13, color: "var(--dim)" }}>Nessun pasto per {GIORNI_LABEL[giorno]}</div>
             <div style={{ fontSize: 11, color: "var(--mut)", marginTop: 4 }}>Aggiungi pasti o copia dal giorno precedente</div>
           </div>
         )}
 
-        {pastiCorrente.map((p, pi) => (
-          <div key={p.id} className="card" style={{ padding: "12px", marginBottom: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, borderBottom: "1px solid var(--bdr)", paddingBottom: 8 }}>
-              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 20, letterSpacing: ".05em", color: "#30D158" }}>{p.nome}</div>
-              <div style={{ display: "flex", gap: 4 }}>
-                <button className="bico" style={{ padding: 5 }} onClick={() => movePasto(pi, -1)} disabled={pi === 0}><IcArrowUp size={14} /></button>
-                <button className="bico" style={{ padding: 5 }} onClick={() => movePasto(pi, 1)} disabled={pi === pastiCorrente.length - 1}><IcArrowDown size={14} /></button>
-                <button className="bico d" style={{ padding: 5 }} onClick={() => delPasto(pi)}><IcTrash size={14} /></button>
-              </div>
-            </div>
-            {p.alimenti.length === 0 && <div style={{ fontSize: 12, color: "var(--mut)", marginBottom: 10, fontStyle: "italic" }}>Nessun alimento.</div>}
-            {p.alimenti.map((al, ai) => (
-              <div key={al.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--sur)", padding: "8px 10px", borderRadius: 8, marginBottom: 6, gap: 10 }}>
-                <FoodThumb nome={al.nome} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{al.nome}</div>
-                  <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{al.grammi}g · {al.kcal} kcal</div>
+        {pastiGroupsEdit.map((group, gi) => {
+          if (group.type === 'single') {
+            const { pasto: p, idx: pi } = group.items[0];
+            return (
+              <PastoEditCard key={p.id}
+                pasto={p} pi={pi} isAlt={false}
+                canMoveUp={pi > 0} canMoveDown={pi < pastiCorrente.length - 1}
+                onMoveUp={() => movePasto(pi, -1)}
+                onMoveDown={() => movePasto(pi, 1)}
+                onDelete={() => delPasto(pi)}
+                onAddAlim={() => setAlModal({ mode: "new", pIdx: pi, data: { nome: "", grammi: "", kcal: "" } })}
+                onEditAlim={(ai) => setAlModal({ mode: "edit", pIdx: pi, aIdx: ai, data: { ...p.alimenti[ai] } })}
+                onDelAlim={(ai) => delAlim(pi, ai)}
+                onAddAlternativa={() => addAlternativa(pi)}
+              />
+            );
+          } else {
+            // Gruppo alternative — box arancione contenitore
+            return (
+              <div key={group.groupId} style={{
+                border: "2px solid rgba(255,149,0,.4)", borderRadius: 12,
+                padding: 10, marginBottom: 14, background: "rgba(255,149,0,.04)"
+              }}>
+                <div style={{
+                  fontSize: 10, fontWeight: 700, color: "#FF9500",
+                  textTransform: "uppercase", letterSpacing: ".08em",
+                  marginBottom: 10, display: "flex", alignItems: "center", gap: 6
+                }}>
+                  ⇄ PASTI ALTERNATIVI
+                  <span style={{ fontSize: 9, color: "var(--mut)", fontWeight: 400, textTransform: "none" }}>
+                    — nel tracking sceglierai quale hai mangiato
+                  </span>
                 </div>
-                <div style={{ display: "flex", gap: 4 }}>
-                  <button className="bico" style={{ padding: 5, border: "none" }} onClick={() => setAlModal({ mode: "edit", pIdx: pi, aIdx: ai, data: { ...al } })}><IcEdit size={14} /></button>
-                  <button className="bico d" style={{ padding: 5, border: "none" }} onClick={() => delAlim(pi, ai)}><IcTrash size={14} /></button>
-                </div>
+                {group.items.map(({ pasto: p, idx: pi }, altI) => (
+                  <PastoEditCard key={p.id}
+                    pasto={p} pi={pi} isAlt={true} altIndex={altI}
+                    canMoveUp={pi > 0} canMoveDown={pi < pastiCorrente.length - 1}
+                    onMoveUp={() => movePasto(pi, -1)}
+                    onMoveDown={() => movePasto(pi, 1)}
+                    onDelete={() => delPasto(pi)}
+                    onAddAlim={() => setAlModal({ mode: "new", pIdx: pi, data: { nome: "", grammi: "", kcal: "" } })}
+                    onEditAlim={(ai) => setAlModal({ mode: "edit", pIdx: pi, aIdx: ai, data: { ...p.alimenti[ai] } })}
+                    onDelAlim={(ai) => delAlim(pi, ai)}
+                    onAddAlternativa={null}
+                  />
+                ))}
               </div>
-            ))}
-            <button className="btn btn-s btn-full" style={{ marginTop: 6, fontSize: 11, padding: "8px" }} onClick={() => setAlModal({ mode: "new", pIdx: pi, data: { nome: "", grammi: "", kcal: "" } })}><IcPlus /> AGGIUNGI ALIMENTO</button>
-          </div>
-        ))}
+            );
+          }
+        })}
 
-        <div className="div" />
-        <button className="btn btn-p btn-full" style={{ background: "#30D158" }} onClick={() => {
-          if (!nome.trim()) return alert("Dai un nome al tuo piano");
-          onSave({ ...init, nome: nome.trim(), durataGiorni: 7, pasti: giorniPasti[1] || [], giorniPasti });
-        }}><IcCheck /> SALVA PIANO</button>
+        <div style={{ height: 20 }} />
+        <button className="btn btn-p btn-full" style={{ background: "#30D158", padding: 16, fontSize: 15 }}
+          onClick={() => {
+            if (!nome.trim()) return alert("Dai un nome al piano");
+            onSave({ ...init, nome: nome.trim(), durataGiorni: 7, pasti: giorniPasti[1] || [], giorniPasti });
+          }}>
+          <IcCheck /> SALVA PIANO
+        </button>
       </div>
-      {alModal && <AlimentoModal init={alModal.data} mode={alModal.mode} onSave={saveAlimento} onClose={() => setAlModal(null)} />}
-      {pdfModal && <PdfImportModal
-        onApply={({ nomePiano, giorniPasti: gp }) => {
-          if (nomePiano && !nome.trim()) setNome(nomePiano);
-          else if (nomePiano) setNome(nomePiano);
-          setGiorniPasti(gp);
-          setGiorno(1);
-        }}
-        onClose={() => setPdfModal(false)}
-      />}
+
+      {alModal && (
+        <AlimentoModal
+          init={alModal.data}
+          mode={alModal.mode}
+          onSave={saveAlimento}
+          onClose={() => setAlModal(null)}
+        />
+      )}
+      {pdfModal && (
+        <PdfImportModal
+          onApply={({ nomePiano, giorniPasti: gp }) => {
+            if (nomePiano) setNome(nomePiano);
+            setGiorniPasti(gp);
+            setGiorno(1);
+          }}
+          onClose={() => setPdfModal(false)}
+        />
+      )}
     </>
   );
 }
 
-// ─── DIETA LOG (TRACKING GIORNALIERO) ─────────────────────
+// ─── PASTO EDIT CARD ──────────────────────────────────────
+function PastoEditCard({ pasto: p, pi, isAlt, altIndex, canMoveUp, canMoveDown, onMoveUp, onMoveDown, onDelete, onAddAlim, onEditAlim, onDelAlim, onAddAlternativa }) {
+  const kcalPasto = p.alimenti.reduce((a, al) => a + (+al.kcal || 0), 0);
+
+  return (
+    <div style={{
+      background: "var(--card)",
+      border: `1px solid ${isAlt ? "rgba(255,149,0,.35)" : "var(--bdr)"}`,
+      borderRadius: 10, padding: 12, marginBottom: isAlt ? 8 : 12
+    }}>
+      {/* Header pasto */}
+      <div style={{
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        marginBottom: 10, borderBottom: "1px solid var(--bdr)", paddingBottom: 8
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {isAlt && (
+            <span style={{
+              fontSize: 11, fontWeight: 700, minWidth: 22, height: 22,
+              background: "#FF9500", color: "#fff",
+              borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center",
+              flexShrink: 0
+            }}>
+              {altIndex === 0 ? "A" : "B"}
+            </span>
+          )}
+          <div style={{
+            fontFamily: "'Bebas Neue',cursive", fontSize: 20, letterSpacing: ".05em",
+            color: isAlt ? "#FF9500" : "#30D158"
+          }}>
+            {p.nome}
+          </div>
+          {kcalPasto > 0 && (
+            <span style={{ fontSize: 11, color: "var(--dim)" }}>{kcalPasto} kcal</span>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 4 }}>
+          <button className="bico" style={{ padding: 5 }} onClick={onMoveUp} disabled={!canMoveUp}><IcArrowUp size={14} /></button>
+          <button className="bico" style={{ padding: 5 }} onClick={onMoveDown} disabled={!canMoveDown}><IcArrowDown size={14} /></button>
+          <button className="bico d" style={{ padding: 5 }} onClick={onDelete}><IcTrash size={14} /></button>
+        </div>
+      </div>
+
+      {/* Lista alimenti */}
+      {p.alimenti.length === 0 && (
+        <div style={{ fontSize: 12, color: "var(--mut)", marginBottom: 8, fontStyle: "italic" }}>Nessun alimento.</div>
+      )}
+      {p.alimenti.map((al, ai) => (
+        <div key={al.id || ai} style={{
+          display: "flex", alignItems: "center", gap: 10,
+          background: "var(--sur)", padding: "8px 10px", borderRadius: 8, marginBottom: 6
+        }}>
+          <FoodThumb nome={al.nome} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{al.nome}</div>
+            <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{al.grammi}g · {al.kcal} kcal</div>
+          </div>
+          <div style={{ display: "flex", gap: 4 }}>
+            <button className="bico" style={{ padding: 5, border: "none" }} onClick={() => onEditAlim(ai)}><IcEdit size={14} /></button>
+            <button className="bico d" style={{ padding: 5, border: "none" }} onClick={() => onDelAlim(ai)}><IcTrash size={14} /></button>
+          </div>
+        </div>
+      ))}
+
+      {/* Bottoni azioni pasto */}
+      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+        <button className="btn btn-s" style={{ flex: 1, fontSize: 11, padding: "8px" }} onClick={onAddAlim}>
+          <IcPlus /> ALIMENTO
+        </button>
+        {onAddAlternativa && (
+          <button
+            className="btn btn-s"
+            style={{ fontSize: 11, padding: "8px", color: "#FF9500", borderColor: "rgba(255,149,0,.4)" }}
+            onClick={onAddAlternativa}>
+            ⇄ ALTERNATIVA
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── DIETA LOG ────────────────────────────────────────────
 function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
-  const todayDow = ((new Date().getDay() + 6) % 7) + 1; // 1=Lun ... 7=Dom
+  const todayDow = ((new Date().getDay() + 6) % 7) + 1;
   const todayIso = fmtIso();
   const [selectedDay, setSelectedDay] = useState(todayDow);
   const [selectedPianoId, setSelectedPianoId] = useState(piani[0]?.id || "");
   const [mangiato, setMangiato] = useState({});
+  const [selectedAlts, setSelectedAlts] = useState({}); // { groupId: pastoId }
+  const [extra, setExtra] = useState([]);
+  const [showAddExtra, setShowAddExtra] = useState(false);
+  const [extraNome, setExtraNome] = useState("");
+  const [extraKcal, setExtraKcal] = useState("");
   const [saved, setSaved] = useState(false);
 
   const piano = piani.find(p => p.id === selectedPianoId);
+
   const pastiGiorno = useMemo(() => {
     if (!piano) return [];
     return piano.giorniPasti?.[selectedDay] || piano.pasti || [];
   }, [piano, selectedDay]);
+
+  // Raggruppa: single o gruppi di alternative
+  const pastiGroups = useMemo(() => {
+    const groups = [];
+    const seen = new Set();
+    pastiGiorno.forEach((pasto, idx) => {
+      if (!pasto.altGroupId) {
+        groups.push({ type: 'single', items: [{ pasto, idx }] });
+      } else if (!seen.has(pasto.altGroupId)) {
+        seen.add(pasto.altGroupId);
+        const alts = pastiGiorno
+          .map((p, i) => ({ pasto: p, idx: i }))
+          .filter(({ pasto: p }) => p.altGroupId === pasto.altGroupId);
+        groups.push({ type: 'alternative', groupId: pasto.altGroupId, items: alts });
+      }
+    });
+    return groups;
+  }, [pastiGiorno]);
+
+  // Pasto attualmente selezionato per un gruppo
+  const getSelItem = (group) => {
+    if (group.type === 'single') return group.items[0];
+    const selId = selectedAlts[group.groupId];
+    return group.items.find(i => i.pasto.id === selId) || group.items[0];
+  };
 
   const existingLog = useMemo(() =>
     logDieta.find(l => l.data === todayIso && l.pianoId === selectedPianoId && l.giornoNumero === selectedDay),
@@ -2126,18 +2332,84 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
   useEffect(() => {
     if (existingLog) {
       const m = {};
-      existingLog.pastiLog?.forEach((pasto, pi) => pasto.alimenti?.forEach((al, ai) => { if (al.mangiato) m[`${pi}_${ai}`] = true; }));
+      existingLog.pastiLog?.forEach((pasto, pi) =>
+        pasto.alimenti?.forEach((al, ai) => { if (al.mangiato) m[`${pi}_${ai}`] = true; })
+      );
       setMangiato(m);
+      setExtra(existingLog.extra || []);
+      setSelectedAlts(existingLog.selectedAlts || {});
     } else {
       setMangiato({});
+      setExtra([]);
+      setSelectedAlts({});
     }
-  }, [existingLog]);
+  }, [existingLog, selectedDay, selectedPianoId]);
 
-  const toggleFood = (pi, ai) => { const key = `${pi}_${ai}`; setMangiato(prev => ({ ...prev, [key]: !prev[key] })); };
+  const toggleFood = (pi, ai) =>
+    setMangiato(prev => ({ ...prev, [`${pi}_${ai}`]: !prev[`${pi}_${ai}`] }));
 
-  const totPreviste = pastiGiorno.reduce((a, p) => a + p.alimenti.reduce((b, al) => b + (+al.kcal || 0), 0), 0);
-  const totConsumate = pastiGiorno.reduce((a, p, pi) => a + p.alimenti.reduce((b, al, ai) => b + (mangiato[`${pi}_${ai}`] ? (+al.kcal || 0) : 0), 0), 0);
-  const perc = totPreviste > 0 ? Math.min(100, Math.round(totConsumate / totPreviste * 100)) : 0;
+  const selectAlt = (groupId, pastoId) => {
+    setSelectedAlts(prev => ({ ...prev, [groupId]: pastoId }));
+    // Resetta flag del gruppo quando cambi alternativa
+    const group = pastiGroups.find(g => g.groupId === groupId);
+    if (group) {
+      setMangiato(prev => {
+        const next = { ...prev };
+        group.items.forEach(({ idx, pasto }) =>
+          pasto.alimenti.forEach((_, ai) => delete next[`${idx}_${ai}`])
+        );
+        return next;
+      });
+    }
+  };
+
+  const toggleExtra = id => setExtra(prev => prev.map(e => e.id === id ? { ...e, mangiato: !e.mangiato } : e));
+  const delExtra = id => setExtra(prev => prev.filter(e => e.id !== id));
+
+  const addExtra = () => {
+    if (!extraNome.trim() || !extraKcal) return;
+    setExtra(prev => [...prev, { id: genId(), nome: extraNome.trim(), kcal: +extraKcal, mangiato: true }]);
+    setExtraNome(""); setExtraKcal(""); setShowAddExtra(false);
+  };
+
+  // ─── Calcoli kcal ─────────────────────────────────────
+  // Target = kcal del pasto selezionato per ogni gruppo
+  const totPreviste = useMemo(() =>
+    pastiGroups.reduce((a, group) => {
+      const sel = getSelItem(group);
+      return a + sel.pasto.alimenti.reduce((b, al) => b + (+al.kcal || 0), 0);
+    }, 0),
+    [pastiGroups, selectedAlts]
+  );
+
+  const totConsumatePiano = useMemo(() =>
+    pastiGroups.reduce((a, group) => {
+      const sel = getSelItem(group);
+      return a + sel.pasto.alimenti.reduce((b, al, ai) =>
+        b + (mangiato[`${sel.idx}_${ai}`] ? (+al.kcal || 0) : 0), 0
+      );
+    }, 0),
+    [pastiGroups, selectedAlts, mangiato]
+  );
+
+  const totConsumateExtra = extra.filter(e => e.mangiato).reduce((a, e) => a + (+e.kcal || 0), 0);
+  const totConsumate = totConsumatePiano + totConsumateExtra;
+  const delta = totConsumate - totPreviste;
+  const percTarget = totPreviste > 0 ? Math.min(120, Math.round(totConsumate / totPreviste * 100)) : 0;
+
+  const balanceColor = totPreviste === 0 ? 'var(--acc)'
+    : delta > 200 ? 'var(--dan)'
+      : delta > 0 ? '#FF9500'
+        : delta > -200 ? 'var(--ok)'
+          : 'var(--acc)';
+
+  const balanceLabel = totPreviste === 0
+    ? `${totConsumate} kcal totali`
+    : delta > 200 ? `+${delta} kcal sopra il target ⚠️`
+      : delta > 0 ? `+${delta} kcal — leggermente sopra`
+        : delta === 0 ? `In target perfetto ✓`
+          : delta > -200 ? `${delta} kcal — leggermente sotto`
+            : `${delta} kcal sotto il target`;
 
   const daysWithLog = useMemo(() => {
     const s = new Set();
@@ -2150,8 +2422,12 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
     if (existingLog) await onDelete(existingLog.id);
     const log = {
       id: genId(), data: todayIso, pianoId: piano.id, pianoNome: piano.nome,
-      giornoNumero: selectedDay, totKcalPreviste: totPreviste, totKcalConsumate: totConsumate,
-      pastiLog: pastiGiorno.map((p, pi) => ({ nome: p.nome, alimenti: p.alimenti.map((al, ai) => ({ ...al, mangiato: !!mangiato[`${pi}_${ai}`] })) }))
+      giornoNumero: selectedDay, totKcalPreviste: totPreviste,
+      totKcalConsumate: totConsumate, extra, selectedAlts,
+      pastiLog: pastiGiorno.map((p, pi) => ({
+        nome: p.nome,
+        alimenti: p.alimenti.map((al, ai) => ({ ...al, mangiato: !!mangiato[`${pi}_${ai}`] }))
+      }))
     };
     await onAdd(log);
     setSaved(true);
@@ -2162,84 +2438,280 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
     <div className="content fi">
       <button className="bb" onClick={onBack}><IcChevL /> Indietro</button>
       <h1 className="pt" style={{ marginBottom: 6 }}>TRACKING<br />DIETA</h1>
-      <p className="sub" style={{ marginBottom: 16 }}>{new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+      <p className="sub" style={{ marginBottom: 16 }}>
+        {new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })}
+      </p>
 
       {piani.length === 0 ? (
-        <div className="emp"><div className="emp-ic">🍎</div><div className="emp-t">Nessun piano creato</div><div style={{ fontSize: 13, color: "var(--dim)" }}>Crea prima un piano alimentare</div></div>
+        <div className="emp"><div className="emp-ic">🍎</div><div className="emp-t">Nessun piano creato</div></div>
       ) : (
         <>
           {piani.length > 1 && (
             <div className="ig">
-              <label className="lbl">Piano alimentare</label>
-              <select className="inp" value={selectedPianoId} onChange={e => { setSelectedPianoId(e.target.value); setMangiato({}); }}>
+              <label className="lbl">Piano</label>
+              <select className="inp" value={selectedPianoId} onChange={e => {
+                setSelectedPianoId(e.target.value); setMangiato({}); setExtra([]); setSelectedAlts({});
+              }}>
                 {piani.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
               </select>
             </div>
           )}
 
-          <div className="st">GIORNO DELLA SETTIMANA</div>
+          <div className="st">GIORNO</div>
           <div className="day-pill">
             {[1, 2, 3, 4, 5, 6, 7].map(d => (
-              <button key={d} className={`dpb${selectedDay === d ? " on" : ""}${daysWithLog.has(d) && selectedDay !== d ? " log" : ""}`} onClick={() => { setSelectedDay(d); setMangiato({}); }}>
+              <button key={d}
+                className={`dpb${selectedDay === d ? " on" : ""}${daysWithLog.has(d) && selectedDay !== d ? " log" : ""}`}
+                onClick={() => { setSelectedDay(d); setMangiato({}); setExtra([]); setSelectedAlts({}); }}>
                 <div>{GIORNI_SHORT[d]}</div>
                 <div style={{ fontSize: 8, marginTop: 2 }}>G{d}</div>
               </button>
             ))}
           </div>
 
-          {totPreviste > 0 && (
-            <div className="kcal-sum">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "#30D158", textTransform: "uppercase", letterSpacing: ".07em" }}>Calorie {GIORNI_LABEL[selectedDay]}</span>
-                <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 18, color: "#30D158" }}>{totConsumate} / {totPreviste} kcal</span>
+          {/* ─── Box kcal ─── */}
+          <div style={{
+            background: 'var(--card)', border: `2px solid ${balanceColor}`,
+            borderRadius: 14, padding: 16, marginBottom: 16, transition: 'border-color .3s'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4 }}>
+                  Calorie giornata
+                </div>
+                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 42, color: balanceColor, lineHeight: 1, transition: 'color .3s' }}>
+                  {totConsumate}
+                  <span style={{ fontSize: 16, color: 'var(--dim)', fontFamily: "'Barlow',sans-serif", fontWeight: 400, marginLeft: 6 }}>kcal</span>
+                </div>
+                {totPreviste > 0 && (
+                  <div style={{ fontSize: 12, color: 'var(--dim)', marginTop: 4 }}>target: {totPreviste} kcal</div>
+                )}
               </div>
-              <div className="kcal-bar"><div className="kcal-fill" style={{ width: perc + "%" }} /></div>
-              <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 4 }}>{perc}% del target giornaliero</div>
+              {totPreviste > 0 && (
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 28, color: balanceColor }}>{percTarget}%</div>
+                  <div style={{ fontSize: 10, color: 'var(--dim)' }}>del target</div>
+                </div>
+              )}
             </div>
-          )}
 
-          {pastiGiorno.length === 0 ? (
+            {totPreviste > 0 && (
+              <div style={{ height: 6, background: 'var(--bdr)', borderRadius: 3, marginBottom: 8, position: 'relative' }}>
+                <div style={{
+                  height: '100%', borderRadius: 3, transition: 'width .4s, background .3s',
+                  width: `${Math.min(100, percTarget)}%`,
+                  background: percTarget > 110 ? 'var(--dan)' : percTarget > 100 ? '#FF9500' : '#30D158'
+                }} />
+                <div style={{ position: 'absolute', top: -4, right: 0, width: 2, height: 14, background: 'var(--dim)', borderRadius: 1 }} />
+              </div>
+            )}
+
+            <div style={{ fontSize: 12, fontWeight: 700, color: balanceColor }}>{balanceLabel}</div>
+
+            {totConsumateExtra > 0 && (
+              <div style={{ display: 'flex', gap: 16, marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--bdr)' }}>
+                <div style={{ fontSize: 11, color: 'var(--dim)' }}>Piano: <b style={{ color: 'var(--txt)' }}>{totConsumatePiano} kcal</b></div>
+                <div style={{ fontSize: 11, color: 'var(--dim)' }}>Extra: <b style={{ color: '#FF9500' }}>{totConsumateExtra} kcal</b></div>
+              </div>
+            )}
+          </div>
+
+          {/* ─── Pasti ─── */}
+          {pastiGroups.length === 0 ? (
             <div className="emp" style={{ padding: "24px 0" }}>
               <div className="emp-ic">📅</div>
               <div style={{ fontSize: 13, color: "var(--dim)" }}>Nessun pasto pianificato per {GIORNI_LABEL[selectedDay]}</div>
-              <div style={{ fontSize: 11, color: "var(--mut)", marginTop: 4 }}>Modifica il piano per aggiungere pasti a questo giorno</div>
             </div>
           ) : (
             <>
               <div className="st" style={{ marginBottom: 10 }}>PASTI — {GIORNI_LABEL[selectedDay].toUpperCase()}</div>
-              {pastiGiorno.map((pasto, pi) => {
+
+              {pastiGroups.map((group, gi) => {
+                const selItem = getSelItem(group);
+                const { pasto, idx: pi } = selItem;
                 const pastoKcal = pasto.alimenti.reduce((a, al) => a + (+al.kcal || 0), 0);
-                const pastoEaten = pasto.alimenti.reduce((a, al, ai) => a + (mangiato[`${pi}_${ai}`] ? (+al.kcal || 0) : 0), 0);
-                const tuttiMangiati = pasto.alimenti.length > 0 && pasto.alimenti.every((_, ai) => mangiato[`${pi}_${ai}`]);
+                const pastoEaten = pasto.alimenti.reduce((a, al, ai) =>
+                  a + (mangiato[`${pi}_${ai}`] ? (+al.kcal || 0) : 0), 0);
+                const tuttiMangiati = pasto.alimenti.length > 0
+                  && pasto.alimenti.every((_, ai) => mangiato[`${pi}_${ai}`]);
+                const nessuno = pasto.alimenti.length > 0
+                  && pasto.alimenti.every((_, ai) => !mangiato[`${pi}_${ai}`]);
+
                 return (
-                  <div key={pasto.id || pi} style={{ background: "var(--sur)", border: `1px solid ${tuttiMangiati ? "#30D158" : "var(--bdr)"}`, borderRadius: 10, padding: 12, marginBottom: 10, transition: "border-color .2s" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, borderBottom: "1px solid var(--bdr)", paddingBottom: 8 }}>
-                      <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 18, letterSpacing: ".05em", color: tuttiMangiati ? "#30D158" : "var(--txt)" }}>{pasto.nome}{tuttiMangiati && " ✓"}</div>
-                      <div style={{ fontSize: 11, color: "var(--dim)" }}>{pastoEaten > 0 ? `${pastoEaten} / ` : ""}{pastoKcal} kcal</div>
+                  <div key={gi} style={{
+                    background: 'var(--sur)',
+                    border: `1px solid ${tuttiMangiati ? '#30D158' : nessuno ? 'rgba(255,59,48,.35)' : 'var(--bdr)'}`,
+                    borderRadius: 10, padding: 12, marginBottom: 12, transition: 'border-color .2s'
+                  }}>
+                    {/* Header */}
+                    <div style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--bdr)'
+                    }}>
+                      <div style={{
+                        fontFamily: "'Bebas Neue',cursive", fontSize: 18, letterSpacing: '.05em',
+                        color: tuttiMangiati ? '#30D158' : nessuno ? 'var(--dan)' : 'var(--txt)'
+                      }}>
+                        {pasto.nome} {tuttiMangiati ? '✓' : nessuno && group.type === 'single' ? '✗' : ''}
+                      </div>
+                      <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 15, color: 'var(--acc)' }}>
+                        {pastoEaten > 0 ? `${pastoEaten} / ` : ''}{pastoKcal} kcal
+                      </div>
                     </div>
+
+                    {/* Pill selezione alternativa */}
+                    {group.type === 'alternative' && (
+                      <div style={{ marginBottom: 10 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: '#FF9500', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 6 }}>
+                          ⇄ Quale hai mangiato oggi?
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {group.items.map(({ pasto: p }, altI) => {
+                            const isSelected = p.id === selItem.pasto.id;
+                            const kc = p.alimenti.reduce((a, al) => a + (+al.kcal || 0), 0);
+                            return (
+                              <button key={p.id} onClick={() => selectAlt(group.groupId, p.id)}
+                                style={{
+                                  padding: '6px 14px', borderRadius: 20, border: 'none',
+                                  cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                                  fontFamily: "'Barlow',sans-serif",
+                                  background: isSelected ? '#FF9500' : 'var(--bdr)',
+                                  color: isSelected ? '#fff' : 'var(--dim)',
+                                  transition: 'all .15s'
+                                }}>
+                                {altI === 0 ? 'A' : 'B'} · {p.nome}
+                                <span style={{ fontSize: 10, opacity: .8, marginLeft: 5 }}>{kc} kcal</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Alimenti del pasto selezionato */}
                     {pasto.alimenti.map((al, ai) => {
                       const eaten = !!mangiato[`${pi}_${ai}`];
                       return (
-                        <div key={al.id || ai} className="frow" style={{ gap: 10 }}>
+                        <div key={al.id || ai} className="frow">
                           <FoodThumb nome={al.nome} />
-                          <div style={{ flex: 1, opacity: eaten ? .55 : 1, transition: "opacity .15s", minWidth: 0 }}>
-                            <div style={{ fontWeight: 600, fontSize: 13, textDecoration: eaten ? "line-through" : "none" }}>{al.nome}</div>
-                            <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 1 }}>{al.grammi}g · {al.kcal} kcal</div>
+                          <div style={{ flex: 1, opacity: eaten ? .45 : 1, transition: 'opacity .15s', minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, fontSize: 13, textDecoration: eaten ? 'line-through' : 'none' }}>{al.nome}</div>
+                            <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 1 }}>{al.grammi}g</div>
                           </div>
-                          <button className={`fck${eaten ? " ok" : ""}`} onClick={() => toggleFood(pi, ai)}>
+                          <div style={{
+                            fontFamily: "'Bebas Neue',cursive", fontSize: 16,
+                            color: eaten ? 'var(--dim)' : 'var(--acc)', flexShrink: 0,
+                            textDecoration: eaten ? 'line-through' : 'none'
+                          }}>
+                            {al.kcal} kcal
+                          </div>
+                          <button className={`fck${eaten ? ' ok' : ''}`} onClick={() => toggleFood(pi, ai)}>
                             {eaten && <Ico d="M20 6L9 17l-5-5" size={12} stroke="#fff" sw={2.5} />}
                           </button>
                         </div>
                       );
                     })}
+
+                    {pasto.alimenti.length === 0 && (
+                      <div style={{ fontSize: 12, color: 'var(--mut)', fontStyle: 'italic', padding: '4px 0' }}>
+                        Nessun alimento configurato
+                      </div>
+                    )}
                   </div>
                 );
               })}
-              <button className="btn btn-p btn-full" style={{ background: saved ? "#059669" : "#30D158", marginTop: 8, transition: "background .3s" }} onClick={handleSave}>
-                {saved ? <><Ico d="M20 6L9 17l-5-5" size={16} stroke="#fff" sw={2.5} /> SALVATO!</> : <><IcApple /> SALVA LOG GIORNATA</>}
-              </button>
-              {existingLog && <div style={{ textAlign: "center", fontSize: 11, color: "#30D158", marginTop: 8 }}>✓ Log già salvato per oggi — il salvataggio sovrascriverà il precedente</div>}
             </>
+          )}
+
+          {/* ─── Extra ─── */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, marginTop: 4 }}>
+            <div className="st" style={{ margin: 0 }}>EXTRA / FUORI PIANO</div>
+            <button className="btn btn-s" style={{ fontSize: 11, padding: '7px 10px', gap: 4 }}
+              onClick={() => setShowAddExtra(v => !v)}>
+              <IcPlus /> AGGIUNGI
+            </button>
+          </div>
+
+          {showAddExtra && (
+            <div style={{ background: 'var(--sur)', border: '1px solid var(--acc)', borderRadius: 10, padding: 14, marginBottom: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px', gap: 8, marginBottom: 10 }}>
+                <div>
+                  <label className="lbl">Alimento / Bevanda</label>
+                  <input className="inp" placeholder="es. Gin Tonic, Tiramisù…" value={extraNome}
+                    onChange={e => setExtraNome(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && addExtra()} />
+                </div>
+                <div>
+                  <label className="lbl">Kcal</label>
+                  <input className="inp" type="number" min="0" placeholder="150" value={extraKcal}
+                    onChange={e => setExtraKcal(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && addExtra()} />
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-s" style={{ flex: 1, fontSize: 12 }}
+                  onClick={() => { setShowAddExtra(false); setExtraNome(''); setExtraKcal(''); }}>
+                  ANNULLA
+                </button>
+                <button className="btn btn-p" style={{ flex: 2, fontSize: 12, background: '#FF9500' }}
+                  onClick={addExtra} disabled={!extraNome.trim() || !extraKcal}>
+                  <IcPlus /> AGGIUNGI
+                </button>
+              </div>
+            </div>
+          )}
+
+          {extra.length > 0 && (
+            <div style={{ background: 'var(--sur)', border: '1px solid var(--bdr)', borderRadius: 10, padding: 12, marginBottom: 12 }}>
+              {extra.map(e => (
+                <div key={e.id} className="frow">
+                  <div style={{
+                    width: 44, height: 44, borderRadius: 8,
+                    background: 'rgba(255,149,0,.12)', border: '1px solid rgba(255,149,0,.3)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 20, flexShrink: 0
+                  }}>🍹</div>
+                  <div style={{ flex: 1, opacity: e.mangiato ? .45 : 1, transition: 'opacity .15s', minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, textDecoration: e.mangiato ? 'line-through' : 'none' }}>{e.nome}</div>
+                    <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 1 }}>extra · fuori piano</div>
+                  </div>
+                  <div style={{
+                    fontFamily: "'Bebas Neue',cursive", fontSize: 16,
+                    color: e.mangiato ? 'var(--dim)' : '#FF9500', flexShrink: 0,
+                    textDecoration: e.mangiato ? 'line-through' : 'none'
+                  }}>
+                    {e.kcal} kcal
+                  </div>
+                  <button className={`fck${e.mangiato ? ' ok' : ''}`}
+                    style={{ borderColor: e.mangiato ? '#30D158' : 'rgba(255,149,0,.5)' }}
+                    onClick={() => toggleExtra(e.id)}>
+                    {e.mangiato && <Ico d="M20 6L9 17l-5-5" size={12} stroke="#fff" sw={2.5} />}
+                  </button>
+                  <button className="bico d" style={{ padding: 5, border: 'none', marginLeft: 4 }} onClick={() => delExtra(e.id)}>
+                    <IcTrash size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {extra.length === 0 && !showAddExtra && (
+            <div style={{ fontSize: 12, color: 'var(--mut)', fontStyle: 'italic', marginBottom: 16, textAlign: 'center' }}>
+              Hai mangiato qualcosa fuori piano? Aggiungilo sopra.
+            </div>
+          )}
+
+          <button className="btn btn-p btn-full"
+            style={{ background: saved ? '#059669' : '#30D158', marginTop: 8, transition: 'background .3s' }}
+            onClick={handleSave}>
+            {saved
+              ? <><Ico d="M20 6L9 17l-5-5" size={16} stroke="#fff" sw={2.5} /> SALVATO!</>
+              : <><IcApple /> SALVA LOG GIORNATA</>}
+          </button>
+          {existingLog && (
+            <div style={{ textAlign: 'center', fontSize: 11, color: '#30D158', marginTop: 8 }}>
+              ✓ Log già salvato — il salvataggio sovrascriverà il precedente
+            </div>
           )}
         </>
       )}
@@ -2247,16 +2719,22 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
   );
 }
 
-// ─── PDF IMPORT MODAL (via Groq + PDF.js) ─────────────────
-const GROQ_PROMPT = `Sei un assistente nutrizionale. L'utente ti fornisce il testo estratto da un PDF di un piano alimentare settimanale italiano.
-Estrai la struttura per ogni giorno (Giorno 1=Lunedì, Giorno 2=Martedì, ..., Giorno 7=Domenica).
-Per ogni giorno identifica i pasti (Colazione, Spuntino Mattina, Pranzo, Spuntino Pomeriggio, Cena, ecc.) e per ogni pasto gli alimenti con grammi e kcal totali per quella porzione.
-Se le kcal non sono specificate, stimale ragionevolmente in base ai grammi e al tipo di alimento.
-Se il piano alimentare è uguale per tutti i giorni, replicalo per tutti e 7.
-Rispondi SOLO con JSON valido (nessun testo aggiuntivo, nessun markdown, nessun backtick):
-{"nomePiano":"nome del piano","giorniPasti":{"1":[{"id":"g1p1","nome":"Colazione","alimenti":[{"id":"g1p1a1","nome":"Pane integrale","grammi":"50","kcal":"120"}]}],"2":[...],"3":[...],"4":[...],"5":[...],"6":[...],"7":[...]}}`;
+// ─── PDF IMPORT MODAL ─────────────────────────────────────
+const GROQ_PROMPT = `Sei un assistente nutrizionale esperto. Estrai il piano alimentare settimanale completo dal testo del PDF.
 
-// Carica PDF.js dal CDN la prima volta
+ISTRUZIONI DI MAPPING (CRITICO):
+- 1=Lunedì, 2=Martedì, 3=Mercoledì, 4=Giovedì, 5=Venerdì, 6=Sabato, 7=Domenica.
+- IDENTIFICA TUTTI I 7 GIORNI. Se il PDF raggruppa (es. "Dal Lunedì al Venerdì"), espandili in chiavi separate con gli stessi pasti.
+- Presta MASSIMA ATTENZIONE a SABATO E DOMENICA che spesso sono alla fine del testo o in sezioni "Weekend". Non ometterli Mai.
+
+GESTIONE ALTERNATIVE (MOLTO IMPORTANTE):
+- Cerca pasti alternativi (es: "Pranzo A o Pranzo B", "In alternativa:...", "oppure", "Opzione 1 / 2").
+- Per raggrupparli, assegna a TUTTI i pasti tra loro alternativi lo STESSO 'altGroupId' (es. "pranzo_alt_1").
+- Se un pasto ha un'alternativa, ENTRAMBI (o più) devono avere lo stesso altGroupId. Se non ci sono alternative, usa null.
+
+Rispondi SOLO con JSON valido, nessun testo extra:
+{"nomePiano":"...","giorniPasti":{"1":[{"id":"...","nome":"...","altGroupId":null,"alimenti":[]}],"2":[],"3":[],"4":[],"5":[],"6":[],"7":[]}}`;
+
 const loadPdfJs = () => new Promise((resolve, reject) => {
   if (window.pdfjsLib) return resolve(window.pdfjsLib);
   const script = document.createElement("script");
@@ -2284,7 +2762,7 @@ const estraiTestoPdf = async (file) => {
 };
 
 function PdfImportModal({ onApply, onClose }) {
-  const [fase, setFase] = useState(1); // 1=select, 2=loading, 3=preview
+  const [fase, setFase] = useState(1);
   const [apiKey, setApiKey] = useState(() => localStorage.getItem("groq_key") || "");
   const [file, setFile] = useState(null);
   const [loadingMsg, setLoadingMsg] = useState("");
@@ -2296,15 +2774,12 @@ function PdfImportModal({ onApply, onClose }) {
     const activeKey = GROQ_KEY || apiKey.trim();
     if (!activeKey) return setErrore("Inserisci la tua Groq API key");
     if (!file.name.toLowerCase().endsWith(".pdf")) return setErrore("Il file deve essere un PDF");
-    setErrore("");
-    setFase(2);
+    setErrore(""); setFase(2);
     try {
-      // Step 1: estrai testo dal PDF con PDF.js
       setLoadingMsg("Lettura del PDF in corso...");
       const testoPdf = await estraiTestoPdf(file);
-      if (!testoPdf || testoPdf.length < 50) throw new Error("Non è stato possibile estrarre testo dal PDF. Verifica che non sia un PDF solo-immagine.");
+      if (!testoPdf || testoPdf.length < 50) throw new Error("Testo non estraibile — verifica che il PDF non sia solo-immagine.");
 
-      // Step 2: invia testo a Groq
       setLoadingMsg("Analisi con Groq AI (LLaMA 3)...");
       const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
@@ -2313,10 +2788,9 @@ function PdfImportModal({ onApply, onClose }) {
           model: "llama-3.3-70b-versatile",
           messages: [
             { role: "system", content: GROQ_PROMPT },
-            { role: "user", content: `Ecco il testo estratto dal PDF del piano alimentare:\n\n${testoPdf.slice(0, 12000)}` }
+            { role: "user", content: `Testo del piano alimentare:\n\n${testoPdf.slice(0, 18000)}` }
           ],
-          temperature: 0.1,
-          max_tokens: 8192
+          temperature: 0.1, max_tokens: 8192
         })
       });
       if (!resp.ok) {
@@ -2324,21 +2798,14 @@ function PdfImportModal({ onApply, onClose }) {
         throw new Error(err?.error?.message || `Errore Groq: ${resp.status}`);
       }
       const data = await resp.json();
-      let testo = data?.choices?.[0]?.message?.content || "";
-
-      // Estrai JSON (gestisce anche ```json ... ```)
+      const testo = data?.choices?.[0]?.message?.content || "";
       const match = testo.match(/\{[\s\S]+\}/);
       if (!match) throw new Error("Il modello non ha restituito JSON valido. Riprova.");
       const obj = JSON.parse(match[0]);
-      if (!obj.giorniPasti) throw new Error("Struttura JSON non riconosciuta. Riprova.");
-
+      if (!obj.giorniPasti) throw new Error("Struttura JSON non riconosciuta.");
       localStorage.setItem("groq_key", apiKey.trim());
-      setParsed(obj);
-      setFase(3);
-    } catch (e) {
-      setErrore(e.message || "Errore sconosciuto");
-      setFase(1);
-    }
+      setParsed(obj); setFase(3);
+    } catch (e) { setErrore(e.message || "Errore sconosciuto"); setFase(1); }
   };
 
   const applica = () => {
@@ -2347,6 +2814,7 @@ function PdfImportModal({ onApply, onClose }) {
     for (let d = 1; d <= 7; d++) {
       gp[d] = (parsed.giorniPasti[d] || parsed.giorniPasti[String(d)] || []).map(p => ({
         ...p, id: genId(),
+        altGroupId: p.altGroupId || null,
         alimenti: (p.alimenti || []).map(a => ({ ...a, id: genId(), grammi: String(a.grammi || ""), kcal: String(a.kcal || "") }))
       }));
     }
@@ -2365,34 +2833,33 @@ function PdfImportModal({ onApply, onClose }) {
         {fase === 1 && (
           <>
             <div style={{ marginBottom: 16 }}>
-              {!GROQ_KEY && <div className="import-step"><span className="import-num">1</span><span style={{ fontSize: 13 }}>Registrati gratis su <b>console.groq.com</b> (solo email, no carta)</span></div>}
-              <div className="import-step"><span className="import-num">{GROQ_KEY ? "1" : "2"}</span><span style={{ fontSize: 13 }}>Vai in <b>API Keys</b> e crea una nuova chiave</span></div>
-              <div className="import-step"><span className="import-num">{GROQ_KEY ? "2" : "3"}</span><span style={{ fontSize: 13 }}>Carica il PDF — Groq AI (LLaMA 3.1) estrae i pasti automaticamente</span></div>
+              <div className="import-step"><span className="import-num">1</span><span style={{ fontSize: 13 }}>Key gratuita su <b>console.groq.com</b> → API Keys</span></div>
+              <div className="import-step"><span className="import-num">2</span><span style={{ fontSize: 13 }}>Carica il PDF — l'AI estrae pasti, alternative e kcal automaticamente</span></div>
             </div>
-
             {!GROQ_KEY && (
               <div className="ig">
                 <label className="lbl">Groq API Key{apiKey && " ✓ salvata"}</label>
                 <input className="inp" type="password" placeholder="gsk_..." value={apiKey} onChange={e => setApiKey(e.target.value)} />
-                <div style={{ fontSize: 11, color: "var(--mut)", marginTop: 4 }}>Salvata solo nel tuo browser · Non va su GitHub · Free tier: 14.400 req/giorno</div>
               </div>
             )}
-
             <div className="ig">
-              <label className="lbl">File PDF piano alimentare</label>
-              <div
-                style={{ border: "2px dashed var(--bdr)", borderRadius: 10, padding: "18px", textAlign: "center", cursor: "pointer", transition: "all .15s", background: file ? "var(--acc2)" : "none", borderColor: file ? "var(--acc)" : "var(--bdr)" }}
-                onClick={() => document.getElementById("pdf-input").click()}
-              >
+              <label className="lbl">File PDF</label>
+              <div style={{
+                border: "2px dashed var(--bdr)", borderRadius: 10, padding: "18px",
+                textAlign: "center", cursor: "pointer",
+                background: file ? "var(--acc2)" : "none", borderColor: file ? "var(--acc)" : "var(--bdr)"
+              }} onClick={() => document.getElementById("pdf-input").click()}>
                 {file
-                  ? <><IcFile /><div style={{ fontSize: 13, fontWeight: 600, marginTop: 6, color: "var(--acc)" }}>{file.name}</div><div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{(file.size / 1024).toFixed(0)} KB</div></>
+                  ? <><IcFile /><div style={{ fontSize: 13, fontWeight: 600, marginTop: 6, color: "var(--acc)" }}>{file.name}</div></>
                   : <><IcUpload /><div style={{ fontSize: 13, color: "var(--dim)", marginTop: 6 }}>Tocca per selezionare il PDF</div></>
                 }
-                <input id="pdf-input" type="file" accept=".pdf,application/pdf" style={{ display: "none" }} onChange={e => { setFile(e.target.files[0] || null); setErrore(""); }} />
+                <input id="pdf-input" type="file" accept=".pdf,application/pdf" style={{ display: "none" }}
+                  onChange={e => { setFile(e.target.files[0] || null); setErrore(""); }} />
               </div>
             </div>
-
-            {errore && <div style={{ color: "var(--dan)", fontSize: 13, marginBottom: 12, padding: "10px", background: "var(--dan2)", borderRadius: 8 }}>{errore}</div>}
+            {errore && (
+              <div style={{ color: "var(--dan)", fontSize: 13, marginBottom: 12, padding: "10px", background: "var(--dan2)", borderRadius: 8 }}>{errore}</div>
+            )}
             <button className="btn btn-p btn-full" onClick={analizza}><IcUpload /> ANALIZZA PDF</button>
           </>
         )}
@@ -2401,8 +2868,7 @@ function PdfImportModal({ onApply, onClose }) {
           <div style={{ textAlign: "center", padding: "32px 16px" }}>
             <div className="spin" style={{ fontSize: 36, marginBottom: 16 }}>⚙️</div>
             <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, letterSpacing: ".05em", marginBottom: 8 }}>ANALISI IN CORSO</div>
-            <div style={{ fontSize: 13, color: "var(--dim)", marginBottom: 4 }}>{loadingMsg}</div>
-            <div style={{ fontSize: 11, color: "var(--mut)" }}>Può richiedere 10-20 secondi</div>
+            <div style={{ fontSize: 13, color: "var(--dim)" }}>{loadingMsg}</div>
           </div>
         )}
 
@@ -2413,13 +2879,24 @@ function PdfImportModal({ onApply, onClose }) {
               {parsed.nomePiano && <div style={{ fontSize: 13, fontWeight: 600 }}>{parsed.nomePiano}</div>}
             </div>
 
-            <div className="st" style={{ marginBottom: 8 }}>ANTEPRIMA STRUTTURA</div>
+            <div className="st" style={{ marginBottom: 8 }}>ANTEPRIMA</div>
             {[1, 2, 3, 4, 5, 6, 7].map(d => {
               const pasti = parsed.giorniPasti[d] || parsed.giorniPasti[String(d)] || [];
-              const kcal = pasti.reduce((a, p) => a + p.alimenti.reduce((b, al) => b + (+al.kcal || 0), 0), 0);
+              const seen = new Set();
+              const kcal = pasti.reduce((a, p) => {
+                if (p.altGroupId && seen.has(p.altGroupId)) return a;
+                if (p.altGroupId) seen.add(p.altGroupId);
+                return a + p.alimenti.reduce((b, al) => b + (+al.kcal || 0), 0);
+              }, 0);
+              const hasAlts = pasti.some(p => p.altGroupId);
               return (
                 <div key={d} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--bdr)" }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{GIORNI_LABEL[d]}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{GIORNI_LABEL[d]}</div>
+                    {hasAlts && (
+                      <span style={{ fontSize: 9, fontWeight: 700, background: "rgba(255,149,0,.15)", color: "#FF9500", padding: "2px 6px", borderRadius: 20 }}>⇄ ALT</span>
+                    )}
+                  </div>
                   <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                     <span style={{ fontSize: 11, color: "var(--dim)" }}>{pasti.length} pasti</span>
                     <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 16, color: "#30D158" }}>{kcal > 0 ? `${kcal} kcal` : "—"}</span>
@@ -2439,7 +2916,7 @@ function PdfImportModal({ onApply, onClose }) {
   );
 }
 
-// ─── ALIMENTO MODAL (POPUP INSERIMENTO CIBO) ──────────────
+// ─── ALIMENTO MODAL ───────────────────────────────────────
 function AlimentoModal({ init, mode, onSave, onClose }) {
   const [d, setD] = useState({ ...init });
   const upd = (k, v) => setD(p => ({ ...p, [k]: v }));
@@ -2448,22 +2925,25 @@ function AlimentoModal({ init, mode, onSave, onClose }) {
     <div className="mov" onClick={onClose}>
       <div className="mod" onClick={e => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-          <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, letterSpacing: ".05em", color: "#30D158" }}>{mode === "new" ? "NUOVO ALIMENTO" : "MODIFICA"}</span>
+          <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, letterSpacing: ".05em", color: "#30D158" }}>
+            {mode === "new" ? "NUOVO ALIMENTO" : "MODIFICA"}
+          </span>
           <button className="bico" onClick={onClose}><IcClose /></button>
         </div>
-
-        <div className="ig"><label className="lbl">Nome alimento *</label><input className="inp" placeholder="es. Pollo, Riso Basmati, Uova..." value={d.nome} onChange={e => upd("nome", e.target.value)} /></div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-          <div><label className="lbl">Grammi / Qtà</label><input className="inp" type="number" min="0" placeholder="es. 100" value={d.grammi} onChange={e => upd("grammi", e.target.value)} /></div>
-          <div><label className="lbl">Kcal Totali</label><input className="inp" type="number" min="0" placeholder="es. 350" value={d.kcal} onChange={e => upd("kcal", e.target.value)} /></div>
+        <div className="ig">
+          <label className="lbl">Nome alimento *</label>
+          <input className="inp" placeholder="es. Pollo, Riso Basmati, Uova..." value={d.nome} onChange={e => upd("nome", e.target.value)} />
         </div>
-
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+          <div><label className="lbl">Grammi / Qtà</label><input className="inp" type="number" min="0" placeholder="100" value={d.grammi} onChange={e => upd("grammi", e.target.value)} /></div>
+          <div><label className="lbl">Kcal Totali</label><input className="inp" type="number" min="0" placeholder="350" value={d.kcal} onChange={e => upd("kcal", e.target.value)} /></div>
+        </div>
         <p style={{ fontSize: 11, color: "var(--mut)", marginBottom: 18, fontStyle: "italic" }}>
-          Inserisci le Kcal totali relative alla porzione che hai indicato.
+          Inserisci le Kcal totali relative alla porzione indicata.
         </p>
-
-        <button className="btn btn-p btn-full" style={{ background: "#30D158" }} onClick={() => onSave(d)}><IcCheck /> {mode === "new" ? "AGGIUNGI" : "SALVA"}</button>
+        <button className="btn btn-p btn-full" style={{ background: "#30D158" }} onClick={() => onSave(d)}>
+          <IcCheck /> {mode === "new" ? "AGGIUNGI" : "SALVA"}
+        </button>
       </div>
     </div>
   );
