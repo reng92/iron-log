@@ -17,6 +17,125 @@ const GG = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 const GIORNI_LABEL = ["", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"];
 const GIORNI_SHORT = ["", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 
+const FOOD_KCAL_PER_100G = {
+  riso: 130,
+  pasta: 158,
+  pollo: 239,
+  tacchino: 135,
+  manzo: 250,
+  maiale: 242,
+  pane: 265,
+  pizza: 266,
+  patate: 77,
+  patatine: 536,
+  banana: 89,
+  mela: 52,
+  yogurt: 59,
+  uovo: 155,
+  formaggio: 402,
+  insalata: 15,
+  salmone: 208,
+  tonno: 132,
+  avocado: 160,
+  cioccolato: 546,
+  biscotti: 502,
+  gelato: 207,
+  hamburger: 240
+};
+
+const estimateKcalFromName = (name) => {
+  if (!name || typeof name !== 'string') return 0;
+  const text = name.toLowerCase().replace(/\s+/g, ' ').replace(/[,;:\-]+/g, ' ').trim();
+
+  let quantity = 100;
+  let unit = 'g';
+
+  const qMatch = text.match(/([\d.,]+)\s*(kg|g|grammi?|ml|cl|l)\b/);
+  if (qMatch) {
+    let n = parseFloat(qMatch[1].replace(',', '.'));
+    if (!Number.isNaN(n) && n > 0) {
+      const u = qMatch[2];
+      if (u.startsWith('kg')) {
+        quantity = n * 1000;
+        unit = 'g';
+      } else if (u.startsWith('g') || u.startsWith('gram')) {
+        quantity = n;
+        unit = 'g';
+      } else if (u === 'l' || u === 'cl' || u === 'ml') {
+        // consideriamo per liquidi: ml equivalgono a grammi approssimativamente
+        quantity = u === 'l' ? n * 1000 : u === 'cl' ? n * 10 : n;
+        unit = 'g';
+      }
+    }
+  }
+
+  for (const key of Object.keys(FOOD_KCAL_PER_100G)) {
+    if (text.includes(key)) {
+      const kcalPer100 = FOOD_KCAL_PER_100G[key];
+      const estimated = Math.round((quantity * kcalPer100) / 100);
+      return estimated > 0 ? estimated : 0;
+    }
+  }
+
+  // fallback: se ha numeri, usa 250g standard con media 150 kcal/100g
+  if (/\d/.test(text)) {
+    return Math.round((quantity * 150) / 100);
+  }
+
+  return 0;
+};
+
+const fetchWithTimeout = async (url, opts = {}, timeout = 20000) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    return await fetch(url, { ...opts, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+async function estimateKcalFromAI(description) {
+  if (!description || typeof description !== 'string') return null;
+  const key = GROQ_KEY || localStorage.getItem('groq_key') || '';
+  if (!key) return null;
+
+  const text = description.trim();
+  if (!text) return null;
+
+  try {
+    const res = await fetchWithTimeout('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${key}`
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: 'Sei un assistente nutrizionale esperto. Rispondi esclusivamente con un numero intero o decimale rappresentante le kcal totali del pasto descritto, senza unità e senza testo.' },
+          { role: 'user', content: `Stima le calorie totali (kcal) di questo alimento / pasto: "${text}"` }
+        ],
+        temperature: 0.2,
+        max_tokens: 30
+      })
+    }, 15000);
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    const answer = data?.choices?.[0]?.message?.content || '';
+    const match = answer.match(/([0-9]+(?:[.,][0-9]+)?)/);
+    if (!match) return null;
+
+    const value = parseFloat(match[1].replace(',', '.'));
+    if (Number.isNaN(value) || value <= 0) return null;
+    return Math.round(value);
+  } catch (e) {
+    console.warn('estimateKcalFromAI fallo', e);
+    return null;
+  }
+}
+
 // ─── MEDIA HELPERS ────────────────────────────────────────
 const foodCache = {};
 const pendingFoodRequests = {};
@@ -2404,6 +2523,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
   const [showAddExtra, setShowAddExtra] = useState(false);
   const [extraNome, setExtraNome] = useState("");
   const [extraKcal, setExtraKcal] = useState("");
+  const [extraEstimating, setExtraEstimating] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const piano = piani.find(p => p.id === selectedPianoId);
@@ -2480,10 +2600,47 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
   const toggleExtra = id => setExtra(prev => prev.map(e => e.id === id ? { ...e, mangiato: !e.mangiato } : e));
   const delExtra = id => setExtra(prev => prev.filter(e => e.id !== id));
 
-  const addExtra = () => {
-    if (!extraNome.trim() || !extraKcal) return;
-    setExtra(prev => [...prev, { id: genId(), nome: extraNome.trim(), kcal: +extraKcal, mangiato: true }]);
-    setExtraNome(""); setExtraKcal(""); setShowAddExtra(false);
+  const addExtra = async () => {
+    const nome = extraNome.trim();
+    if (!nome || extraEstimating) return;
+
+    setExtraEstimating(true);
+    try {
+      const manualKcal = Number(extraKcal);
+      const estimatedKcal = estimateKcalFromName(nome);
+
+      let finalKcal;
+      if (manualKcal > 0) {
+        finalKcal = manualKcal;
+      } else {
+        const aiKcal = await estimateKcalFromAI(nome);
+        if (aiKcal && aiKcal > 0) {
+          finalKcal = aiKcal;
+        } else if (estimatedKcal > 0) {
+          finalKcal = estimatedKcal;
+        } else {
+          finalKcal = 150; // fallback
+        }
+      }
+
+      setExtra(prev => [...prev, {
+        id: genId(),
+        nome,
+        kcal: Math.round(finalKcal),
+        mangiato: true
+      }] );
+
+      setExtraNome("");
+      setExtraKcal("");
+      setShowAddExtra(false);
+    } catch (e) {
+      console.error('addExtra error', e);
+      setExtraNome("");
+      setExtraKcal("");
+      setShowAddExtra(false);
+    } finally {
+      setExtraEstimating(false);
+    }
   };
 
 
@@ -2757,23 +2914,35 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
                     <input className="inp" placeholder="es. Gin Tonic, Tiramisù…" value={extraNome}
                       onChange={e => setExtraNome(e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && addExtra()} />
+                    {extraNome.trim() && !extraKcal && (
+                      <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 6 }}>
+                        Kcal stimate: {estimateKcalFromName(extraNome.trim()) || '150'} kcal
+                      </div>
+                    )}
                   </div>
                   <div>
-                    <label className="lbl">Kcal</label>
+                    <label className="lbl">Kcal (opzionale)</label>
                     <input className="inp" type="number" min="0" placeholder="150" value={extraKcal}
                       onChange={e => setExtraKcal(e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && addExtra()} />
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button className="btn btn-s" style={{ flex: 1, fontSize: 12 }}
-                    onClick={() => { setShowAddExtra(false); setExtraNome(''); setExtraKcal(''); }}>
-                    ANNULLA
-                  </button>
-                  <button className="btn btn-p" style={{ flex: 2, fontSize: 12, background: '#FF9500' }}
-                    onClick={addExtra} disabled={!extraNome.trim() || !extraKcal}>
-                    <IcPlus /> AGGIUNGI
-                  </button>
+                <div style={{ display: 'flex', gap: 8, flexDirection: 'column' }}>
+                  {extraEstimating && (
+                    <div style={{ fontSize: 12, color: 'var(--acc)', marginBottom: 6 }}>
+                      Calcolo kcal AI in corso...
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-s" style={{ flex: 1, fontSize: 12 }}
+                      onClick={() => { setShowAddExtra(false); setExtraNome(''); setExtraKcal(''); }}>
+                      ANNULLA
+                    </button>
+                    <button className="btn btn-p" style={{ flex: 2, fontSize: 12, background: '#FF9500' }}
+                      onClick={addExtra} disabled={!extraNome.trim() || extraEstimating}>
+                      <IcPlus /> AGGIUNGI
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
