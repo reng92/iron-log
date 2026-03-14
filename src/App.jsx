@@ -288,7 +288,7 @@ const IcEdit = () => <Ico d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v
 const IcCheck = () => <Ico d="M20 6L9 17l-5-5" />;
 const IcChevL = () => <Ico d="M15 18l-6-6 6-6" />;
 const IcClose = () => <Ico d="M18 6L6 18M6 6l12 12" />;
-const IcPlay = () => <Ico d="M5 3l14 9-14 9V3z" fill="currentColor" sw={0} />;
+const IcPlay = () => <Ico d="M5 3l14 9-14 9V3" fill="currentColor" sw={0} />;
 const IcTimer = () => <Ico d="M12 6v6l4 2 M12 2a10 10 0 100 20A10 10 0 0012 2z" />;
 const IcCamera = () => <Ico d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z M12 17a4 4 0 100-8 4 4 0 000 8z" />;
 const IcImg = () => <Ico d={["M21 15l-5-5L5 21", "M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2z", "M8.5 8.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"]} />;
@@ -492,7 +492,7 @@ export default function App() {
     <div className={cls}>
       <style>{CSS}</style>
       <div className="content fi">
-        {tab === "home" && <Home schede={schede} sessioni={sessioni} dark={dark} onToggleDark={toggleDark} onStart={sc => setSubview({ type: "allenamento", data: sc })} onGoSchede={() => setTab("schede")} />}
+        {tab === "home" && <Home schede={schede} sessioni={sessioni} peso={peso} piani={piani} dark={dark} onToggleDark={toggleDark} onStart={sc => setSubview({ type: "allenamento", data: sc })} onGoSchede={() => setTab("schede")} />}
         {tab === "schede" && <Schede schede={schede} onNew={() => setSubview({ type: "scheda-edit", data: { nome: "", giorni: [], esercizi: [] } })} onEdit={sc => setSubview({ type: "scheda-edit", data: sc })} onDelete={id => saveSchede(schede.filter(s => s.id !== id))} onStart={sc => setSubview({ type: "allenamento", data: sc })} />}
 
         {/* -- Nuova Tab Dieta -- */}
@@ -513,7 +513,7 @@ export default function App() {
 }
 
 // ─── HOME ─────────────────────────────────────────────────
-function Home({ schede, sessioni, dark, onToggleDark, onStart, onGoSchede }) {
+function Home({ schede, sessioni, peso, piani, dark, onToggleDark, onStart, onGoSchede }) {
   const [pick, setPick] = useState(false);
   const totKg = sessioni.reduce((a, s) => a + s.esercizi.reduce((b, e) => b + e.serie.reduce((c, sr) => c + (sr.completata ? (+sr.kg || 0) * (+sr.reps || 0) : 0), 0), 0), 0);
   const avgMin = sessioni.length ? Math.round(sessioni.reduce((a, s) => a + (s.durata || 0), 0) / sessioni.length) : 0;
@@ -528,6 +528,16 @@ function Home({ schede, sessioni, dark, onToggleDark, onStart, onGoSchede }) {
     })));
     return Object.entries(rec).sort((a, b) => b[1].kg - a[1].kg).slice(0, 5);
   }, [sessioni]);
+
+  const latestPeso = [...peso].sort((a,b)=>a.data.localeCompare(b.data)).pop() || null;
+  const nextDays = [1,3,5]; // Lun/Mer/Ven
+
+  const getPasti = (day) => {
+    if (!piani?.length) return [];
+    const plan = piani[0];
+    return (plan.giorniPasti?.[day] || plan.pasti || []);
+  };
+  const getWorkouts = (day) => schede.filter(s => Array.isArray(s.giorni) && s.giorni.includes(day));
 
   return (
     <>
@@ -2481,290 +2491,292 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
   };
 
   return (
-    <div className="content fi">
-      <button className="bb" onClick={onBack}><IcChevL /> Indietro</button>
-      <h1 className="pt" style={{ marginBottom: 6 }}>TRACKING<br />DIETA</h1>
-      <p className="sub" style={{ marginBottom: 16 }}>
-        {new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })}
-      </p>
+    <>
+      <div className="content fi">
+        <button className="bb" onClick={onBack}><IcChevL /> Indietro</button>
+        <h1 className="pt" style={{ marginBottom: 6 }}>TRACKING<br />DIETA</h1>
+        <p className="sub" style={{ marginBottom: 16 }}>
+          {new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })}
+        </p>
 
-      {piani.length === 0 ? (
-        <div className="emp"><div className="emp-ic">🍎</div><div className="emp-t">Nessun piano creato</div></div>
-      ) : (
-        <>
-          {piani.length > 1 && (
-            <div className="ig">
-              <label className="lbl">Piano</label>
-              <select className="inp" value={selectedPianoId} onChange={e => {
-                setSelectedPianoId(e.target.value); setMangiato({}); setExtra([]); setSelectedAlts({});
-              }}>
-                {piani.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-              </select>
+        {piani.length === 0 ? (
+          <div className="emp"><div className="emp-ic">🍎</div><div className="emp-t">Nessun piano creato</div></div>
+        ) : (
+          <>
+            {piani.length > 1 && (
+              <div className="ig">
+                <label className="lbl">Piano</label>
+                <select className="inp" value={selectedPianoId} onChange={e => {
+                  setSelectedPianoId(e.target.value); setMangiato({}); setExtra([]); setSelectedAlts({});
+                }}>
+                  {piani.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                </select>
+              </div>
+            )}
+
+            <div className="st">GIORNO</div>
+            <div className="day-pill">
+              {[1, 2, 3, 4, 5, 6, 7].map(d => (
+                <button key={d}
+                  className={`dpb${selectedDay === d ? " on" : ""}${daysWithLog.has(d) && selectedDay !== d ? " log" : ""}`}
+                  onClick={() => { setSelectedDay(d); setMangiato({}); setExtra([]); setSelectedAlts({}); }}>
+                  <div>{GIORNI_SHORT[d]}</div>
+                  <div style={{ fontSize: 8, marginTop: 2 }}>G{d}</div>
+                </button>
+              ))}
             </div>
-          )}
 
-          <div className="st">GIORNO</div>
-          <div className="day-pill">
-            {[1, 2, 3, 4, 5, 6, 7].map(d => (
-              <button key={d}
-                className={`dpb${selectedDay === d ? " on" : ""}${daysWithLog.has(d) && selectedDay !== d ? " log" : ""}`}
-                onClick={() => { setSelectedDay(d); setMangiato({}); setExtra([]); setSelectedAlts({}); }}>
-                <div>{GIORNI_SHORT[d]}</div>
-                <div style={{ fontSize: 8, marginTop: 2 }}>G{d}</div>
-              </button>
-            ))}
-          </div>
-
-          {/* ─── Box kcal ─── */}
-          <div style={{
-            background: 'var(--card)', border: `2px solid ${balanceColor}`,
-            borderRadius: 14, padding: 16, marginBottom: 16, transition: 'border-color .3s'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4 }}>
-                  Calorie giornata
-                </div>
-                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 42, color: balanceColor, lineHeight: 1, transition: 'color .3s' }}>
-                  {totConsumate}
-                  <span style={{ fontSize: 16, color: 'var(--dim)', fontFamily: "'Barlow',sans-serif", fontWeight: 400, marginLeft: 6 }}>kcal</span>
+            {/* ─── Box kcal ─── */}
+            <div style={{
+              background: 'var(--card)', border: `2px solid ${balanceColor}`,
+              borderRadius: 14, padding: 16, marginBottom: 16, transition: 'border-color .3s'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4 }}>
+                    Calorie giornata
+                  </div>
+                  <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 42, color: balanceColor, lineHeight: 1, transition: 'color .3s' }}>
+                    {totConsumate}
+                    <span style={{ fontSize: 16, color: 'var(--dim)', fontFamily: "'Barlow',sans-serif", fontWeight: 400, marginLeft: 6 }}>kcal</span>
+                  </div>
+                  {totPreviste > 0 && (
+                    <div style={{ fontSize: 12, color: 'var(--dim)', marginTop: 4 }}>target: {totPreviste} kcal</div>
+                  )}
                 </div>
                 {totPreviste > 0 && (
-                  <div style={{ fontSize: 12, color: 'var(--dim)', marginTop: 4 }}>target: {totPreviste} kcal</div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 28, color: balanceColor }}>{percTarget}%</div>
+                    <div style={{ fontSize: 10, color: 'var(--dim)' }}>del target</div>
+                  </div>
                 )}
               </div>
+
               {totPreviste > 0 && (
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 28, color: balanceColor }}>{percTarget}%</div>
-                  <div style={{ fontSize: 10, color: 'var(--dim)' }}>del target</div>
+                <div style={{ height: 6, background: 'var(--bdr)', borderRadius: 3, marginBottom: 8, position: 'relative' }}>
+                  <div style={{
+                    height: '100%', borderRadius: 3, transition: 'width .4s, background .3s',
+                    width: `${Math.min(100, percTarget)}%`,
+                    background: percTarget > 110 ? 'var(--dan)' : percTarget > 100 ? '#FF9500' : '#30D158'
+                  }} />
+                  <div style={{ position: 'absolute', top: -4, right: 0, width: 2, height: 14, background: 'var(--dim)', borderRadius: 1 }} />
+                </div>
+              )}
+
+              <div style={{ fontSize: 12, fontWeight: 700, color: balanceColor }}>{balanceLabel}</div>
+
+              {totConsumateExtra > 0 && (
+                <div style={{ display: 'flex', gap: 16, marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--bdr)' }}>
+                  <div style={{ fontSize: 11, color: 'var(--dim)' }}>Piano: <b style={{ color: 'var(--txt)' }}>{totConsumatePiano} kcal</b></div>
+                  <div style={{ fontSize: 11, color: 'var(--dim)' }}>Extra: <b style={{ color: '#FF9500' }}>{totConsumateExtra} kcal</b></div>
                 </div>
               )}
             </div>
 
-            {totPreviste > 0 && (
-              <div style={{ height: 6, background: 'var(--bdr)', borderRadius: 3, marginBottom: 8, position: 'relative' }}>
-                <div style={{
-                  height: '100%', borderRadius: 3, transition: 'width .4s, background .3s',
-                  width: `${Math.min(100, percTarget)}%`,
-                  background: percTarget > 110 ? 'var(--dan)' : percTarget > 100 ? '#FF9500' : '#30D158'
-                }} />
-                <div style={{ position: 'absolute', top: -4, right: 0, width: 2, height: 14, background: 'var(--dim)', borderRadius: 1 }} />
+            {/* ─── Pasti ─── */}
+            {pastiGroups.length === 0 ? (
+              <div className="emp" style={{ padding: "24px 0" }}>
+                <div style={{ fontSize: 13, color: "var(--dim)" }}>Nessun pasto pianificato per {GIORNI_LABEL[selectedDay]}</div>
               </div>
-            )}
+            ) : (
+              <>
+                <div className="st" style={{ marginBottom: 10 }}>PASTI — {GIORNI_LABEL[selectedDay].toUpperCase()}</div>
 
-            <div style={{ fontSize: 12, fontWeight: 700, color: balanceColor }}>{balanceLabel}</div>
+                {pastiGroups.map((group, gi) => {
+                  const selItem = getSelItem(group);
+                  const { pasto, idx: pi } = selItem;
+                  const pastoKcal = pasto.alimenti.reduce((a, al) => a + (+al.kcal || 0), 0);
+                  const pastoEaten = pasto.alimenti.reduce((a, al, ai) =>
+                    a + (mangiato[`${pi}_${ai}`] ? (+al.kcal || 0) : 0), 0
+                  );
+                  const tuttiMangiati = pasto.alimenti.length > 0
+                    && pasto.alimenti.every((_, ai) => mangiato[`${pi}_${ai}`]);
+                  const nessuno = pasto.alimenti.length > 0
+                    && pasto.alimenti.every((_, ai) => !mangiato[`${pi}_${ai}`]);
 
-            {totConsumateExtra > 0 && (
-              <div style={{ display: 'flex', gap: 16, marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--bdr)' }}>
-                <div style={{ fontSize: 11, color: 'var(--dim)' }}>Piano: <b style={{ color: 'var(--txt)' }}>{totConsumatePiano} kcal</b></div>
-                <div style={{ fontSize: 11, color: 'var(--dim)' }}>Extra: <b style={{ color: '#FF9500' }}>{totConsumateExtra} kcal</b></div>
-              </div>
-            )}
-          </div>
-
-          {/* ─── Pasti ─── */}
-          {pastiGroups.length === 0 ? (
-            <div className="emp" style={{ padding: "24px 0" }}>
-              <div style={{ fontSize: 13, color: "var(--dim)" }}>Nessun pasto pianificato per {GIORNI_LABEL[selectedDay]}</div>
-            </div>
-          ) : (
-            <>
-              <div className="st" style={{ marginBottom: 10 }}>PASTI — {GIORNI_LABEL[selectedDay].toUpperCase()}</div>
-
-              {pastiGroups.map((group, gi) => {
-                const selItem = getSelItem(group);
-                const { pasto, idx: pi } = selItem;
-                const pastoKcal = pasto.alimenti.reduce((a, al) => a + (+al.kcal || 0), 0);
-                const pastoEaten = pasto.alimenti.reduce((a, al, ai) =>
-                  a + (mangiato[`${pi}_${ai}`] ? (+al.kcal || 0) : 0), 0
-                );
-                const tuttiMangiati = pasto.alimenti.length > 0
-                  && pasto.alimenti.every((_, ai) => mangiato[`${pi}_${ai}`]);
-                const nessuno = pasto.alimenti.length > 0
-                  && pasto.alimenti.every((_, ai) => !mangiato[`${pi}_${ai}`]);
-
-                return (
-                  <div key={gi} style={{
-                    background: 'var(--sur)',
-                    border: `1px solid ${tuttiMangiati ? '#30D158' : nessuno ? 'rgba(255,59,48,.35)' : 'var(--bdr)'}`,
-                    borderRadius: 10, padding: 12, marginBottom: 12, transition: 'border-color .2s'
-                  }}>
-                    {/* Header */}
-                    <div style={{
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--bdr)'
+                  return (
+                    <div key={gi} style={{
+                      background: 'var(--sur)',
+                      border: `1px solid ${tuttiMangiati ? '#30D158' : nessuno ? 'rgba(255,59,48,.35)' : 'var(--bdr)'}`,
+                      borderRadius: 10, padding: 12, marginBottom: 12, transition: 'border-color .2s'
                     }}>
+                      {/* Header */}
                       <div style={{
-                        fontFamily: "'Bebas Neue',cursive", fontSize: 18, letterSpacing: '.05em',
-                        color: tuttiMangiati ? '#30D158' : nessuno ? 'var(--dan)' : 'var(--txt)'
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--bdr)'
                       }}>
-                        {pasto.nome} {tuttiMangiati ? '✓' : nessuno && group.type === 'single' ? '✗' : ''}
+                        <div style={{
+                          fontFamily: "'Bebas Neue',cursive", fontSize: 18, letterSpacing: '.05em',
+                          color: tuttiMangiati ? '#30D158' : nessuno ? 'var(--dan)' : 'var(--txt)'
+                        }}>
+                          {pasto.nome} {tuttiMangiati ? '✓' : nessuno && group.type === 'single' ? '✗' : ''}
+                        </div>
+                        <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 15, color: 'var(--acc)' }}>
+                          {pastoEaten > 0 ? `${pastoEaten} / ` : ''}{pastoKcal} kcal
+                        </div>
                       </div>
-                      <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 15, color: 'var(--acc)' }}>
-                        {pastoEaten > 0 ? `${pastoEaten} / ` : ''}{pastoKcal} kcal
-                      </div>
+
+                      {/* Pill selezione alternativa */}
+                      {group.type === 'alternative' && (
+                        <div style={{ marginBottom: 10 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: '#FF9500', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 6 }}>
+                            ⇄ Quale hai mangiato oggi?
+                          </div>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            {group.items.map(({ pasto: p }, altI) => {
+                              const isSelected = p.id === selItem.pasto.id;
+                              const kc = p.alimenti.reduce((a, al) => a + (+al.kcal || 0), 0);
+                              return (
+                                <button key={p.id} onClick={() => selectAlt(group.groupId, p.id)}
+                                  style={{
+                                    padding: '6px 14px', borderRadius: 20, border: 'none',
+                                    cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                                    fontFamily: "'Barlow',sans-serif",
+                                    background: isSelected ? '#FF9500' : 'var(--bdr)',
+                                    color: isSelected ? '#fff' : 'var(--dim)',
+                                    transition: 'all .15s'
+                                  }}>
+                                  {altI === 0 ? 'A' : 'B'} · {p.nome}
+                                  <span style={{ fontSize: 10, opacity: .8, marginLeft: 5 }}>{kc} kcal</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Alimenti del pasto selezionato */}
+                      {pasto.alimenti.map((al, ai) => {
+                        const eaten = !!mangiato[`${pi}_${ai}`];
+                        return (
+                          <div key={al.id || ai} className="frow">
+                            <FoodThumb nome={al.nome} />
+                            <div style={{ flex: 1, opacity: eaten ? .45 : 1, transition: 'opacity .15s', minWidth: 0 }}>
+                              <div style={{ fontWeight: 600, fontSize: 13, textDecoration: eaten ? 'line-through' : 'none' }}>{al.nome}</div>
+                              <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 1 }}>{al.grammi}g</div>
+                            </div>
+                            <div style={{
+                              fontFamily: "'Bebas Neue',cursive", fontSize: 16,
+                              color: eaten ? 'var(--dim)' : 'var(--acc)', flexShrink: 0,
+                              textDecoration: eaten ? 'line-through' : 'none'
+                            }}>
+                              {al.kcal} kcal
+                            </div>
+                            <button className={`fck${eaten ? ' ok' : ''}`} onClick={() => toggleFood(pi, ai)}>
+                              {eaten && <Ico d="M20 6L9 17l-5-5" size={12} stroke="#fff" sw={2.5} />}
+                            </button>
+                            <button className="bico d" style={{ padding: 5, border: 'none', marginLeft: 4 }} onClick={() => delExtra(e.id)}>
+                              <IcTrash size={13} />
+                            </button>
+                          </div>
+                        );
+                      })}
+
+                      {pasto.alimenti.length === 0 && (
+                        <div style={{ fontSize: 12, color: 'var(--mut)', fontStyle: 'italic', padding: '4px 0' }}>
+                          Nessun alimento configurato
+                        </div>
+                      )}
                     </div>
+                  );
+                })}
+              </>
+            )}
 
-                    {/* Pill selezione alternativa */}
-                    {group.type === 'alternative' && (
-                      <div style={{ marginBottom: 10 }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: '#FF9500', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 6 }}>
-                          ⇄ Quale hai mangiato oggi?
-                        </div>
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                          {group.items.map(({ pasto: p }, altI) => {
-                            const isSelected = p.id === selItem.pasto.id;
-                            const kc = p.alimenti.reduce((a, al) => a + (+al.kcal || 0), 0);
-                            return (
-                              <button key={p.id} onClick={() => selectAlt(group.groupId, p.id)}
-                                style={{
-                                  padding: '6px 14px', borderRadius: 20, border: 'none',
-                                  cursor: 'pointer', fontSize: 12, fontWeight: 700,
-                                  fontFamily: "'Barlow',sans-serif",
-                                  background: isSelected ? '#FF9500' : 'var(--bdr)',
-                                  color: isSelected ? '#fff' : 'var(--dim)',
-                                  transition: 'all .15s'
-                                }}>
-                                {altI === 0 ? 'A' : 'B'} · {p.nome}
-                                <span style={{ fontSize: 10, opacity: .8, marginLeft: 5 }}>{kc} kcal</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
+            {/* ─── Extra ─── */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, marginTop: 4 }}>
+              <div className="st" style={{ margin: 0 }}>EXTRA / FUORI PIANO</div>
+              <button className="btn btn-s" style={{ fontSize: 11, padding: '7px 10px', gap: 4 }}
+                onClick={() => setShowAddExtra(v => !v)}>
+                <IcPlus /> AGGIUNGI
+              </button>
+            </div>
 
-                    {/* Alimenti del pasto selezionato */}
-                    {pasto.alimenti.map((al, ai) => {
-                      const eaten = !!mangiato[`${pi}_${ai}`];
-                      return (
-                        <div key={al.id || ai} className="frow">
-                          <FoodThumb nome={al.nome} />
-                          <div style={{ flex: 1, opacity: eaten ? .45 : 1, transition: 'opacity .15s', minWidth: 0 }}>
-                            <div style={{ fontWeight: 600, fontSize: 13, textDecoration: eaten ? 'line-through' : 'none' }}>{al.nome}</div>
-                            <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 1 }}>{al.grammi}g</div>
-                          </div>
-                          <div style={{
-                            fontFamily: "'Bebas Neue',cursive", fontSize: 16,
-                            color: eaten ? 'var(--dim)' : 'var(--acc)', flexShrink: 0,
-                            textDecoration: eaten ? 'line-through' : 'none'
-                          }}>
-                            {al.kcal} kcal
-                          </div>
-                          <button className={`fck${eaten ? ' ok' : ''}`} onClick={() => toggleFood(pi, ai)}>
-                            {eaten && <Ico d="M20 6L9 17l-5-5" size={12} stroke="#fff" sw={2.5} />}
-                          </button>
-                          <button className="bico d" style={{ padding: 5, border: 'none', marginLeft: 4 }} onClick={() => delExtra(e.id)}>
-                            <IcTrash size={13} />
-                          </button>
-                        </div>
-                      );
-                    })}
-
-                    {pasto.alimenti.length === 0 && (
-                      <div style={{ fontSize: 12, color: 'var(--mut)', fontStyle: 'italic', padding: '4px 0' }}>
-                        Nessun alimento configurato
-                      </div>
-                    )}
+            {showAddExtra && (
+              <div style={{ background: 'var(--sur)', border: '1px solid var(--acc)', borderRadius: 10, padding: 14, marginBottom: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px', gap: 8, marginBottom: 10 }}>
+                  <div>
+                    <label className="lbl">Alimento / Bevanda</label>
+                    <input className="inp" placeholder="es. Gin Tonic, Tiramisù…" value={extraNome}
+                      onChange={e => setExtraNome(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && addExtra()} />
                   </div>
-                );
-              })}
-            </>
-          )}
+                  <div>
+                    <label className="lbl">Kcal</label>
+                    <input className="inp" type="number" min="0" placeholder="150" value={extraKcal}
+                      onChange={e => setExtraKcal(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && addExtra()} />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn btn-s" style={{ flex: 1, fontSize: 12 }}
+                    onClick={() => { setShowAddExtra(false); setExtraNome(''); setExtraKcal(''); }}>
+                    ANNULLA
+                  </button>
+                  <button className="btn btn-p" style={{ flex: 2, fontSize: 12, background: '#FF9500' }}
+                    onClick={addExtra} disabled={!extraNome.trim() || !extraKcal}>
+                    <IcPlus /> AGGIUNGI
+                  </button>
+                </div>
+              </div>
+            )}
 
-          {/* ─── Extra ─── */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, marginTop: 4 }}>
-            <div className="st" style={{ margin: 0 }}>EXTRA / FUORI PIANO</div>
-            <button className="btn btn-s" style={{ fontSize: 11, padding: '7px 10px', gap: 4 }}
-              onClick={() => setShowAddExtra(v => !v)}>
-              <IcPlus /> AGGIUNGI
+            {extra.length > 0 && (
+              <div style={{ background: 'var(--sur)', border: '1px solid var(--bdr)', borderRadius: 10, padding: 12, marginBottom: 12 }}>
+                {extra.map(e => (
+                  <div key={e.id} className="frow">
+                    <div style={{
+                      width: 44, height: 44, borderRadius: 8,
+                      background: 'rgba(255,149,0,.12)', border: '1px solid rgba(255,149,0,.3)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 20, flexShrink: 0
+                    }}>🍹</div>
+                    <div style={{ flex: 1, opacity: e.mangiato ? .45 : 1, transition: 'opacity .15s', minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13, textDecoration: e.mangiato ? 'line-through' : 'none' }}>{e.nome}</div>
+                      <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 1 }}>extra · fuori piano</div>
+                    </div>
+                    <div style={{
+                      fontFamily: "'Bebas Neue',cursive", fontSize: 16,
+                      color: e.mangiato ? 'var(--dim)' : '#FF9500', flexShrink: 0,
+                      textDecoration: e.mangiato ? 'line-through' : 'none'
+                    }}>
+                      {e.kcal} kcal
+                    </div>
+                    <button className={`fck${e.mangiato ? ' ok' : ''}`}
+                      style={{ borderColor: e.mangiato ? '#30D158' : 'rgba(255,149,0,.5)' }}
+                      onClick={() => toggleExtra(e.id)}>
+                      {e.mangiato && <Ico d="M20 6L9 17l-5-5" size={12} stroke="#fff" sw={2.5} />}
+                    </button>
+                    <button className="bico d" style={{ padding: 5, border: 'none', marginLeft: 4 }} onClick={() => delExtra(e.id)}>
+                      <IcTrash size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {extra.length === 0 && !showAddExtra && (
+              <div style={{ fontSize: 12, color: 'var(--mut)', fontStyle: 'italic', marginBottom: 16, textAlign: 'center' }}>
+                Hai mangiato qualcosa fuori piano? Aggiungilo sopra.
+              </div>
+            )}
+
+            <button className="btn btn-p btn-full"
+              style={{ background: saved ? '#059669' : '#30D158', marginTop: 8, transition: 'background .3s' }}
+              onClick={handleSave}>
+              {saved
+                ? <><Ico d="M20 6L9 17l-5-5" size={16} stroke="#fff" sw={2.5} /> SALVATO!</>
+                : <><IcApple /> SALVA LOG GIORNATA</>}
             </button>
-          </div>
-
-          {showAddExtra && (
-            <div style={{ background: 'var(--sur)', border: '1px solid var(--acc)', borderRadius: 10, padding: 14, marginBottom: 12 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px', gap: 8, marginBottom: 10 }}>
-                <div>
-                  <label className="lbl">Alimento / Bevanda</label>
-                  <input className="inp" placeholder="es. Gin Tonic, Tiramisù…" value={extraNome}
-                    onChange={e => setExtraNome(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && addExtra()} />
-                </div>
-                <div>
-                  <label className="lbl">Kcal</label>
-                  <input className="inp" type="number" min="0" placeholder="150" value={extraKcal}
-                    onChange={e => setExtraKcal(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && addExtra()} />
-                </div>
+            {existingLog && (
+              <div style={{ textAlign: 'center', fontSize: 11, color: '#30D158', marginTop: 8 }}>
+                ✓ Log già salvato — il salvataggio sovrascriverà il precedente
               </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-s" style={{ flex: 1, fontSize: 12 }}
-                  onClick={() => { setShowAddExtra(false); setExtraNome(''); setExtraKcal(''); }}>
-                  ANNULLA
-                </button>
-                <button className="btn btn-p" style={{ flex: 2, fontSize: 12, background: '#FF9500' }}
-                  onClick={addExtra} disabled={!extraNome.trim() || !extraKcal}>
-                  <IcPlus /> AGGIUNGI
-                </button>
-              </div>
-            </div>
-          )}
-
-          {extra.length > 0 && (
-            <div style={{ background: 'var(--sur)', border: '1px solid var(--bdr)', borderRadius: 10, padding: 12, marginBottom: 12 }}>
-              {extra.map(e => (
-                <div key={e.id} className="frow">
-                  <div style={{
-                    width: 44, height: 44, borderRadius: 8,
-                    background: 'rgba(255,149,0,.12)', border: '1px solid rgba(255,149,0,.3)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 20, flexShrink: 0
-                  }}>🍹</div>
-                  <div style={{ flex: 1, opacity: e.mangiato ? .45 : 1, transition: 'opacity .15s', minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13, textDecoration: e.mangiato ? 'line-through' : 'none' }}>{e.nome}</div>
-                    <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 1 }}>extra · fuori piano</div>
-                  </div>
-                  <div style={{
-                    fontFamily: "'Bebas Neue',cursive", fontSize: 16,
-                    color: e.mangiato ? 'var(--dim)' : '#FF9500', flexShrink: 0,
-                    textDecoration: e.mangiato ? 'line-through' : 'none'
-                  }}>
-                    {e.kcal} kcal
-                  </div>
-                  <button className={`fck${e.mangiato ? ' ok' : ''}`}
-                    style={{ borderColor: e.mangiato ? '#30D158' : 'rgba(255,149,0,.5)' }}
-                    onClick={() => toggleExtra(e.id)}>
-                    {e.mangiato && <Ico d="M20 6L9 17l-5-5" size={12} stroke="#fff" sw={2.5} />}
-                  </button>
-                  <button className="bico d" style={{ padding: 5, border: 'none', marginLeft: 4 }} onClick={() => delExtra(e.id)}>
-                    <IcTrash size={13} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {extra.length === 0 && !showAddExtra && (
-            <div style={{ fontSize: 12, color: 'var(--mut)', fontStyle: 'italic', marginBottom: 16, textAlign: 'center' }}>
-              Hai mangiato qualcosa fuori piano? Aggiungilo sopra.
-            </div>
-          )}
-
-          <button className="btn btn-p btn-full"
-            style={{ background: saved ? '#059669' : '#30D158', marginTop: 8, transition: 'background .3s' }}
-            onClick={handleSave}>
-            {saved
-              ? <><Ico d="M20 6L9 17l-5-5" size={16} stroke="#fff" sw={2.5} /> SALVATO!</>
-              : <><IcApple /> SALVA LOG GIORNATA</>}
-          </button>
-          {existingLog && (
-            <div style={{ textAlign: 'center', fontSize: 11, color: '#30D158', marginTop: 8 }}>
-              ✓ Log già salvato — il salvataggio sovrascriverà il precedente
-            </div>
-          )}
-        </>
-      )}
-    </div>
+            )}
+          </>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -2869,11 +2881,12 @@ function PdfImportModal({ onApply, onClose }) {
             )}
             <div className="ig">
               <label className="lbl">File PDF</label>
-              <div style={{
-                border: "2px dashed var(--bdr)", borderRadius: 10, padding: "18px",
+              <div
+                style={{ border: "2px dashed var(--bdr)", borderRadius: 10, padding: "18px",
                 textAlign: "center", cursor: "pointer",
-                background: file ? "var(--acc2)" : "none", borderColor: file ? "var(--acc)" : "var(--bdr)"
-              }} onClick={() => document.getElementById("pdf-input").click()}>
+                background: file ? "var(--acc2)" : "none", borderColor: file ? "var(--acc)" : "var(--bdr)" }}
+                onClick={() => document.getElementById("pdf-input").click()}
+              >
                 {file
                   ? <><IcFile /><div style={{ fontSize: 13, fontWeight: 600, marginTop: 6, color: "var(--acc)" }}>{file.name}</div><div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{(file.size / 1024).toFixed(0)} KB</div></>
                   : <><IcUpload /><div style={{ fontSize: 13, color: "var(--dim)", marginTop: 6 }}>Tocca per selezionare il PDF</div></>
