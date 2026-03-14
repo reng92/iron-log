@@ -216,7 +216,7 @@ async function analyzeMealPhoto(file) {
 
     console.warn('Groq Vision non disponibile o limitata (funzione free tier) - avvio fallback Llama', err);
 
-    // fallback a chat completions senza errori di mandato
+    // fallback a chat completions con prompt minimo (senza base64) per evitare TPM/limite token
     const fallbackRes = await fetchWithTimeout(fallbackEndpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
@@ -224,10 +224,10 @@ async function analyzeMealPhoto(file) {
         model: 'llama-3.3-70b-versatile',
         messages: [
           { role: 'system', content: GROQ_MEAL_PHOTO_PROMPT },
-          { role: 'user', content: `Image (base64) (ridotta): data:${inputImage.type};base64,${base64}` }
+          { role: 'user', content: 'Non posso inviare i dati dell immagini a causa di limiti TPM. Fornisci un esempio JSON di un pasto bilanciato con 3 alimenti, includendo nome, grammi e kcal.' }
         ],
         temperature: 0.2,
-        max_tokens: 1024
+        max_tokens: 600
       })
     }, 35000);
 
