@@ -1535,7 +1535,7 @@ function Peso({ peso, onAdd, onDelete }) {
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                     {(p.foto_fronte || p.foto_retro) && <span style={{ fontSize: 12 }}>📷</span>}
                     {hasBody(p) && <span style={{ fontSize: 12 }}>📊</span>}
-                    <span style={{ color: "var(--dim)", fontSize: 11 }}>{isExp ? "▲" : "▼"}</span>
+                    <span style={{
                   </div>
                 </div>
 
@@ -1613,7 +1613,7 @@ function Peso({ peso, onAdd, onDelete }) {
               </label>
             </div>
 
-            <div className="st">PESO E DATA</div>
+            <div className="st" style={{ marginBottom: 8 }}>PESO E DATA</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
               <div><label className="lbl">Peso (kg)</label><input className="inp" type="number" step="0.1" min="30" placeholder="86.5" value={form.valore} onChange={e => set("valore", e.target.value)} /></div>
               <div><label className="lbl">Data</label><input className="inp" type="date" value={form.data} onChange={e => set("data", e.target.value)} /></div>
