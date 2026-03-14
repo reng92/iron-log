@@ -835,7 +835,10 @@ function SchedaEdit({ scheda: init, onSave, onBack }) {
           <h1 className="pt">{init.id ? "MODIFICA" : "NUOVA"}<br />SCHEDA</h1>
           <button className="btn btn-s" style={{ marginTop: 6, fontSize: 11, gap: 5 }} onClick={() => setPdfModal(true)}><IcFile size={14} /> PDF</button>
         </div>
-        <div className="ig"><label className="lbl">Nome scheda</label><input className="inp" placeholder="es. Full Body, Push Day…" value={nome} onChange={e => setNome(e.target.value)} /></div>
+        <div className="ig">
+          <label className="lbl">Nome scheda</label>
+          <input className="inp" placeholder="es. Full Body, Push Day…" value={nome} onChange={e => setNome(e.target.value)} />
+        </div>
         <div className="ig">
           <label className="lbl">Giorni della settimana</label>
           <div className="chip-row">{GG.map((g, i) => <button key={i} className={`chip${giorni.includes(i) ? " on" : ""}`} onClick={() => toggleG(i)}>{g}</button>)}</div>
@@ -846,7 +849,9 @@ function SchedaEdit({ scheda: init, onSave, onBack }) {
           <button className="btn btn-s" onClick={() => setModal({ mode: "new", data: { nome: "", serie: 3, ripetizioni: "10", pausa: 90, note: "" } })}><IcPlus /> AGGIUNGI</button>
         </div>
         {esercizi.length === 0
-          ? <div className="emp" style={{ padding: "20px 0" }}><div style={{ fontSize: 13, color: "var(--dim)" }}>Nessun esercizio ancora</div></div>
+          ? <div className="emp" style={{ padding: "20px 0" }}>
+            <div style={{ fontSize: 13, color: "var(--dim)" }}>Nessun esercizio ancora</div>
+          </div>
           : esercizi.map((e, i) => (
             <div key={e.id} style={{ background: "var(--sur)", border: "1px solid var(--bdr)", borderRadius: 10, padding: 14, marginBottom: 9 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -870,9 +875,8 @@ function SchedaEdit({ scheda: init, onSave, onBack }) {
                 </div>
               </div>
             </div>
-          ))
-        }
-        <div className="div" />
+          ))}
+        </div>
         <button className="btn btn-p btn-full" onClick={() => { if (!nome.trim()) return alert("Inserisci un nome"); onSave({ ...init, nome: nome.trim(), giorni, esercizi }); }}><IcCheck /> SALVA SCHEDA</button>
       </div>
       {modal && <EsercizioModal init={modal.data} mode={modal.mode} onSave={applyModal} onClose={() => setModal(null)} />}
@@ -892,14 +896,20 @@ function SchedaEdit({ scheda: init, onSave, onBack }) {
 function EsercizioModal({ init, mode, onSave, onClose }) {
   const [d, setD] = useState({ ...init });
   const upd = (k, v) => setD(p => ({ ...p, [k]: v }));
+
   return (
     <div className="mov" onClick={onClose}>
       <div className="mod" onClick={e => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-          <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, letterSpacing: ".05em" }}>{mode === "new" ? "NUOVO ESERCIZIO" : "MODIFICA"}</span>
+          <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, letterSpacing: ".05em", color: "#30D158" }}>
+            {mode === "new" ? "NUOVO ESERCIZIO" : "MODIFICA"}
+          </span>
           <button className="bico" onClick={onClose}><IcClose /></button>
         </div>
-        <div className="ig"><label className="lbl">Nome *</label><input className="inp" placeholder="es. Panca Piana, Squat…" value={d.nome} onChange={e => upd("nome", e.target.value)} /></div>
+        <div className="ig">
+          <label className="lbl">Nome *</label>
+          <input className="inp" placeholder="es. Panca Piana, Squat…" value={d.nome} onChange={e => upd("nome", e.target.value)} />
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 9, marginBottom: 14 }}>
           <div><label className="lbl">Serie</label><input className="inp" type="number" min="1" value={d.serie} onChange={e => upd("serie", +e.target.value)} /></div>
           <div><label className="lbl">Reps</label><input className="inp" placeholder="10" value={d.ripetizioni} onChange={e => upd("ripetizioni", e.target.value)} /></div>
@@ -1078,7 +1088,7 @@ function Storico({ sessioni, onDetail, onDelete }) {
               <div className="ssv"><b>{tot}</b>Serie OK</div>
               <div className="ssv"><b>{Math.round(vol)}</b>Vol kg×r</div>
             </div>
-            {s.note && <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 8, fontStyle: "italic", borderTop: "1px solid var(--bdr)", paddingTop: 8 }}>{s.note}</div>}
+            {s.note && <div style={{ fontSize: 12, color: "var(--dim)", marginBottom: 8, fontStyle: "italic", borderTop: "1px solid var(--bdr)", paddingTop: 8 }}>{s.note}</div>}
           </div>
         );
       })}
@@ -1148,7 +1158,7 @@ function SessioneDetail({ sessione: s, sessioni, onBack }) {
                 {best > 0 && bestSr && <div style={{ fontSize: 10, color: "var(--dim)", marginTop: 2 }}>1RM ~{epley(best, bestSr.reps)}kg</div>}
               </div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "22px 1fr 1fr 1fr 1fr", gap: 4, fontSize: 10, color: "var(--dim)", fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", marginBottom: 6 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "22px 1fr 1fr 1fr 1fr", gap: 4, padding: "5px 0", borderTop: "1px solid var(--bdr)", alignItems: "center" }}>
               <div>#</div><div>KG</div><div>REPS</div><div>RPE</div><div>OK</div>
             </div>
             {ex.serie.map((sr, j) => (
@@ -1259,7 +1269,7 @@ function RecordTab({ sessioni }) {
             <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{fmtDate(r.data)} · {r.schedaNome}</div>
           </div>
           <div style={{ textAlign: "right" }}>
-            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 28, color: "var(--acc)", letterSpacing: ".05em" }}>{r.kg}kg</div>
+            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 28, color: "var(--acc)", letterSpacing: ".05em", lineHeight: 1 }}>{r.kg}kg</div>
             <div style={{ fontSize: 11, color: "var(--dim)" }}>1RM ~{epley(r.kg, r.reps)}kg</div>
           </div>
         </div>
@@ -1326,7 +1336,7 @@ function CalcRM() {
           <>
             <div style={{ textAlign: "center", padding: "18px 0", background: "var(--acc2)", borderRadius: 10, marginBottom: 14, borderBottom: "1px solid var(--bdr)" }}>
               <div style={{ fontSize: 12, color: "var(--acc)", fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase" }}>Massimale stimato</div>
-              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 58, color: "var(--acc)", letterSpacing: ".05em", lineHeight: 1.1 }}>{rm} kg</div>
+              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 58, color: "var(--acc)", letterSpacing: ".05em", lineHeight: 1 }}>{rm} kg</div>
             </div>
             <div className="st">PERCENTUALI DI CARICO</div>
             {pcts.map(p => (
@@ -1392,8 +1402,8 @@ function Peso({ peso, onAdd, onDelete }) {
         })
       });
       const json = await resp.json();
-      const text = json.choices?.[0]?.message?.content || "";
-      const match = text.match(/\{[\s\S]*\}/);
+      const testo = json.choices?.[0]?.message?.content || "";
+      const match = testo.match(/\{[\s\S]*\}/);
       if (match) {
         const d = JSON.parse(match[0]);
         setForm(f => ({
@@ -1652,6 +1662,12 @@ function Profilo({ settings, peso, onSave }) {
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
   const [lightbox, setLightbox] = useState(null);
+  const fileInputRef = useRef(null);
+  const [currentPhoto, setCurrentPhoto] = useState(settings.foto_profilo || null);
+
+  useEffect(() => {
+    setCurrentPhoto(settings.foto_profilo || null);
+  }, [settings.foto_profilo]);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -1676,7 +1692,8 @@ function Profilo({ settings, peso, onSave }) {
   const handleFotoProfilo = async (file) => {
     if (!file) return;
     const b64 = await compressImg(file, 400, 0.8);
-    set("foto_profilo", b64);
+    setCurrentPhoto(b64);
+    onSave({ ...settings, foto_profilo: b64 });
   };
 
   // Ultimo peso con dati corpo
@@ -1743,8 +1760,8 @@ function Profilo({ settings, peso, onSave }) {
         <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
           {/* Avatar */}
           <div style={{ width: 72, height: 72, borderRadius: "50%", overflow: "hidden", border: "2px solid var(--acc)", flexShrink: 0, background: "var(--sur)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: "var(--mut)" }}>
-            {settings.foto_profilo
-              ? <img src={settings.foto_profilo} alt="profilo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            {currentPhoto
+              ? <img src={currentPhoto} alt="profilo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               : "👤"}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -2027,7 +2044,7 @@ function PianoEdit({ piano: init, onSave, onBack }) {
       setPC(JSON.parse(JSON.stringify(prev)).map(p => ({
         ...p, id: genId(),
         alimenti: p.alimenti.map(a => ({ ...a, id: genId() }))
-      })));
+      }));
     }
   };
 
@@ -2548,7 +2565,6 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
           {/* ─── Pasti ─── */}
           {pastiGroups.length === 0 ? (
             <div className="emp" style={{ padding: "24px 0" }}>
-              <div className="emp-ic">📅</div>
               <div style={{ fontSize: 13, color: "var(--dim)" }}>Nessun pasto pianificato per {GIORNI_LABEL[selectedDay]}</div>
             </div>
           ) : (
@@ -2560,7 +2576,8 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
                 const { pasto, idx: pi } = selItem;
                 const pastoKcal = pasto.alimenti.reduce((a, al) => a + (+al.kcal || 0), 0);
                 const pastoEaten = pasto.alimenti.reduce((a, al, ai) =>
-                  a + (mangiato[`${pi}_${ai}`] ? (+al.kcal || 0) : 0), 0);
+                  a + (mangiato[`${pi}_${ai}`] ? (+al.kcal || 0) : 0), 0
+                );
                 const tuttiMangiati = pasto.alimenti.length > 0
                   && pasto.alimenti.every((_, ai) => mangiato[`${pi}_${ai}`]);
                 const nessuno = pasto.alimenti.length > 0
@@ -2636,6 +2653,9 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
                           </div>
                           <button className={`fck${eaten ? ' ok' : ''}`} onClick={() => toggleFood(pi, ai)}>
                             {eaten && <Ico d="M20 6L9 17l-5-5" size={12} stroke="#fff" sw={2.5} />}
+                          </button>
+                          <button className="bico d" style={{ padding: 5, border: 'none', marginLeft: 4 }} onClick={() => delExtra(e.id)}>
+                            <IcTrash size={13} />
                           </button>
                         </div>
                       );
@@ -2855,7 +2875,7 @@ function PdfImportModal({ onApply, onClose }) {
                 background: file ? "var(--acc2)" : "none", borderColor: file ? "var(--acc)" : "var(--bdr)"
               }} onClick={() => document.getElementById("pdf-input").click()}>
                 {file
-                  ? <><IcFile /><div style={{ fontSize: 13, fontWeight: 600, marginTop: 6, color: "var(--acc)" }}>{file.name}</div></>
+                  ? <><IcFile /><div style={{ fontSize: 13, fontWeight: 600, marginTop: 6, color: "var(--acc)" }}>{file.name}</div><div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{(file.size / 1024).toFixed(0)} KB</div></>
                   : <><IcUpload /><div style={{ fontSize: 13, color: "var(--dim)", marginTop: 6 }}>Tocca per selezionare il PDF</div></>
                 }
                 <input id="pdf-input" type="file" accept=".pdf,application/pdf" style={{ display: "none" }}
@@ -2873,7 +2893,7 @@ function PdfImportModal({ onApply, onClose }) {
           <div style={{ textAlign: "center", padding: "32px 16px" }}>
             <div className="spin" style={{ fontSize: 36, marginBottom: 16 }}>⚙️</div>
             <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, letterSpacing: ".05em", marginBottom: 8 }}>ANALISI IN CORSO</div>
-            <div style={{ fontSize: 13, color: "var(--dim)" }}>{loadingMsg}</div>
+            <div style={{ fontSize: 13, color: "var(--dim)", marginBottom: 4 }}>{loadingMsg}</div>
           </div>
         )}
 
