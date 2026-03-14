@@ -126,12 +126,56 @@ const parseJsonFromText = (text) => {
   return JSON.parse(match[0]);
 };
 
+const fetchWithTimeout = async (url, opts = {}, timeout = 30000) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    return await fetch(url, { ...opts, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+const resizeImageFile = (file, maxSide = 1024, quality = 0.7) => new Promise((resolve, reject) => {
+  if (!file.type.startsWith('image/')) return reject(new Error('Tipo di file non supportato'));
+  if (file.size <= 800 * 1024) {
+    return resolve(file);
+  }
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  img.onload = () => {
+    let w = img.width, h = img.height;
+    const ratio = Math.min(1, maxSide / Math.max(w, h));
+    if (ratio === 1) {
+      URL.revokeObjectURL(url);
+      resolve(file);
+      return;
+    }
+    w = Math.round(w * ratio); h = Math.round(h * ratio);
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+    canvas.toBlob(blob => {
+      URL.revokeObjectURL(url);
+      if (!blob) return reject(new Error('Errore ridimensionamento immagine'));
+      resolve(new File([blob], file.name, { type: 'image/jpeg' }));
+    }, 'image/jpeg', quality);
+  };
+  img.onerror = () => {
+    URL.revokeObjectURL(url);
+    reject(new Error('Impossibile caricare immagine'));
+  };
+  img.src = url;
+});
+
 async function analyzeMealPhoto(file) {
   if (!file) throw new Error('File immagine mancante');
   const key = GROQ_KEY || localStorage.getItem('groq_key') || '';
   if (!key) throw new Error('Inserisci la tua Groq API key nelle impostazioni');
 
-  const base64 = await toBase64(file);
+  const inputImage = await resizeImageFile(file, 768, 0.75);
+  const base64 = await toBase64(inputImage);
 
   // Proviamo l'endpoint Vision (Groq) se disponibile.
   const visionEndpoint = 'https://api.groq.com/v1/vision';
@@ -139,7 +183,7 @@ async function analyzeMealPhoto(file) {
 
   const payloadVision = {
     model: 'groq-vision-1.0',
-    image: `data:${file.type};base64,${base64}`,
+    image: `data:${inputImage.type};base64,${base64}`,
     prompt: GROQ_MEAL_PHOTO_PROMPT,
     temperature: 0.2,
     max_tokens: 1024
@@ -147,22 +191,51 @@ async function analyzeMealPhoto(file) {
 
   let response = null;
   try {
-    const res = await fetch(visionEndpoint, {
+    const res = await fetchWithTimeout(visionEndpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
       body: JSON.stringify(payloadVision)
-    });
+    }, 35000);
+
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
+      if (res.status === 413 || errText.toLowerCase().includes('request entity too large')) {
+        throw new Error('Immagine troppo grande, ridimensiona e riprova (aggiunto resize automatico).');
+      }
       throw new Error(`Errore Vision (${res.status}) ${errText}`);
     }
     response = await res.json();
   } catch (e) {
     const err = String(e.message || e);
+    if (err.toLowerCase().includes('aborted') || err.toLowerCase().includes('timeout')) {
+      throw new Error('Timeout nella chiamata a Groq Vision. Riprova con un file più piccolo o connessione migliore.');
+    }
     if (err.toLowerCase().includes('please reduce') || err.toLowerCase().includes('length')) {
       throw new Error('Errore modello: messaggio/completion troppo lungo (riduci risoluzione immagine o segmento PDF)');
     }
-    throw new Error('Vision endpoint fallito. Assicurati che la Groq API key sia corretta e che il modello groq-vision-1.0 sia disponibile.');
+
+    console.warn('Groq Vision non disponibile o limitata (funzione free tier) - avvio fallback Llama', err);
+
+    // fallback a chat completions senza errori di mandato
+    const fallbackRes = await fetchWithTimeout(fallbackEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: GROQ_MEAL_PHOTO_PROMPT },
+          { role: 'user', content: `Image (base64) (ridotta): data:${inputImage.type};base64,${base64}` }
+        ],
+        temperature: 0.2,
+        max_tokens: 1024
+      })
+    }, 35000);
+
+    if (!fallbackRes.ok) {
+      const errData = await fallbackRes.json().catch(() => null);
+      throw new Error(errData?.error?.message || `Errore fallback Groq (${fallbackRes.status})`);
+    }
+    response = await fallbackRes.json();
   }
 
   const text = response?.choices?.[0]?.message?.content || response?.output?.text || JSON.stringify(response);
