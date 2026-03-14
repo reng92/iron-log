@@ -886,7 +886,6 @@ function SchedaEdit({ scheda: init, onSave, onBack }) {
               </div>
             </div>
           ))}
-        </div>
         <button className="btn btn-p btn-full" onClick={() => { if (!nome.trim()) return alert("Inserisci un nome"); onSave({ ...init, nome: nome.trim(), giorni, esercizi }); }}><IcCheck /> SALVA SCHEDA</button>
       </div>
       {modal && <EsercizioModal init={modal.data} mode={modal.mode} onSave={applyModal} onClose={() => setModal(null)} />}
@@ -2663,9 +2662,6 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
                             </div>
                             <button className={`fck${eaten ? ' ok' : ''}`} onClick={() => toggleFood(pi, ai)}>
                               {eaten && <Ico d="M20 6L9 17l-5-5" size={12} stroke="#fff" sw={2.5} />}
-                            </button>
-                            <button className="bico d" style={{ padding: 5, border: 'none', marginLeft: 4 }} onClick={() => delExtra(e.id)}>
-                              <IcTrash size={13} />
                             </button>
                           </div>
                         );
