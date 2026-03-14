@@ -104,209 +104,6 @@ function FoodThumb({ nome }) {
 }
 
 // ─── DB ───────────────────────────────────────────────────
-const GROQ_MEAL_PHOTO_PROMPT = `Sei un assistente nutrizionale che analizza la foto di un pasto.
-Rispondi esclusivamente con JSON valido:
-{"alimenti":[{"nome":"...","grammi":"...","kcal":"..."}, ...]}
-- Fornisci TUTTI i cibi visibili, almeno 3 se possibile, fino a 5.
-- Determina le porzioni in grammi e le kcal totali per ciascun alimento.
-- Se non riconosci cibi, indica almeno quelli principali.
-- Non scrivere testo extra, solo JSON.
-`;
-
-const toBase64 = (file) => new Promise((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onload = () => resolve(reader.result.split(",")[1]);
-  reader.onerror = reject;
-  reader.readAsDataURL(file);
-});
-
-const parseJsonFromText = (text) => {
-  if (!text || typeof text !== 'string') throw new Error('Risposta non valida');
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('JSON non trovato nella risposta AI');
-  return JSON.parse(match[0]);
-};
-
-const fetchWithTimeout = async (url, opts = {}, timeout = 30000) => {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout);
-  try {
-    return await fetch(url, { ...opts, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-};
-
-const resizeImageFile = (file, maxSide = 1024, quality = 0.7) => new Promise((resolve, reject) => {
-  if (!file.type.startsWith('image/')) return reject(new Error('Tipo di file non supportato'));
-  if (file.size <= 800 * 1024) {
-    return resolve(file);
-  }
-  const img = new Image();
-  const url = URL.createObjectURL(file);
-  img.onload = () => {
-    let w = img.width, h = img.height;
-    const ratio = Math.min(1, maxSide / Math.max(w, h));
-    if (ratio === 1) {
-      URL.revokeObjectURL(url);
-      resolve(file);
-      return;
-    }
-    w = Math.round(w * ratio); h = Math.round(h * ratio);
-    const canvas = document.createElement('canvas');
-    canvas.width = w; canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0, w, h);
-    canvas.toBlob(blob => {
-      URL.revokeObjectURL(url);
-      if (!blob) return reject(new Error('Errore ridimensionamento immagine'));
-      resolve(new File([blob], file.name, { type: 'image/jpeg' }));
-    }, 'image/jpeg', quality);
-  };
-  img.onerror = () => {
-    URL.revokeObjectURL(url);
-    reject(new Error('Impossibile caricare immagine'));
-  };
-  img.src = url;
-});
-
-async function analyzeMealPhoto(file) {
-  if (!file) throw new Error('File immagine mancante');
-  const key = GROQ_KEY || localStorage.getItem('groq_key') || '';
-  if (!key) throw new Error('Inserisci la tua Groq API key nelle impostazioni');
-
-  const inputImage = await resizeImageFile(file, 768, 0.75);
-  const base64 = await toBase64(inputImage);
-
-  // Proviamo l'endpoint Vision (Groq) se disponibile.
-  const visionEndpoint = 'https://api.groq.com/v1/vision';
-  const fallbackEndpoint = 'https://api.groq.com/openai/v1/chat/completions';
-
-  const payloadVision = {
-    model: 'groq-vision-1.0',
-    image: `data:${inputImage.type};base64,${base64}`,
-    prompt: GROQ_MEAL_PHOTO_PROMPT,
-    temperature: 0.2,
-    max_tokens: 1024
-  };
-
-  let response = null;
-  try {
-    const res = await fetchWithTimeout(visionEndpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-      body: JSON.stringify(payloadVision)
-    }, 35000);
-
-    if (!res.ok) {
-      const errText = await res.text().catch(() => '');
-      if (res.status === 413 || errText.toLowerCase().includes('request entity too large')) {
-        throw new Error('Immagine troppo grande, ridimensiona e riprova (aggiunto resize automatico).');
-      }
-      throw new Error(`Errore Vision (${res.status}) ${errText}`);
-    }
-    response = await res.json();
-  } catch (e) {
-    const err = String(e.message || e);
-    if (err.toLowerCase().includes('aborted') || err.toLowerCase().includes('timeout')) {
-      throw new Error('Timeout nella chiamata a Groq Vision. Riprova con un file più piccolo o connessione migliore.');
-    }
-    if (err.toLowerCase().includes('please reduce') || err.toLowerCase().includes('length')) {
-      throw new Error('Errore modello: messaggio/completion troppo lungo (riduci risoluzione immagine o segmento PDF)');
-    }
-
-    console.warn('Groq Vision non disponibile o limitata (funzione free tier) - avvio fallback Llama', err);
-
-    // fallback a chat completions con prompt minimo (senza base64) per evitare TPM/limite token
-    const fallbackRes = await fetchWithTimeout(fallbackEndpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          { role: 'system', content: GROQ_MEAL_PHOTO_PROMPT },
-          { role: 'user', content: 'Non posso inviare i dati dell immagini a causa di limiti TPM. Fornisci un esempio JSON di un pasto bilanciato con 3 alimenti, includendo nome, grammi e kcal.' }
-        ],
-        temperature: 0.2,
-        max_tokens: 600
-      })
-    }, 35000);
-
-    if (!fallbackRes.ok) {
-      const errData = await fallbackRes.json().catch(() => null);
-      const fallbackErr = errData?.error?.message || `Errore fallback Groq (${fallbackRes.status})`;
-
-      if (String(fallbackErr).toLowerCase().includes('requested') && String(fallbackErr).toLowerCase().includes('tpm')) {
-        console.warn('Token limit superato, uso fallback testuale meno token.');
-        const fallbackTextRes = await fetchWithTimeout(fallbackEndpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-          body: JSON.stringify({
-            model: 'llama-3.1-8b-instant',
-            messages: [
-              { role: 'system', content: GROQ_MEAL_PHOTO_PROMPT },
-              { role: 'user', content: "Non posso inviare l'immagine a causa del limite token. Elenca 3 alimenti comuni di un pasto bilanciato con grammi e kcal stimati." }
-            ],
-            temperature: 0.2,
-            max_tokens: 600
-          })
-        }, 30000);
-
-        if (!fallbackTextRes.ok) {
-          const errTextData = await fallbackTextRes.json().catch(() => null);
-          throw new Error(errTextData?.error?.message || `Errore fallback testuale Groq (${fallbackTextRes.status})`);
-        }
-        response = await fallbackTextRes.json();
-      } else {
-        throw new Error(fallbackErr);
-      }
-    } else {
-      response = await fallbackRes.json();
-    }
-  }
-
-  const text = response?.choices?.[0]?.message?.content || response?.output?.text || JSON.stringify(response);
-  let parsed = parseJsonFromText(text);
-
-  // se la prima estrazione produce pochi alimenti, facciamo retry con un prompt più esplicito
-  if (Array.isArray(parsed.alimenti) && parsed.alimenti.length < 3) {
-    const retryRes = await fetchWithTimeout(fallbackEndpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-      body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
-        messages: [
-          { role: 'system', content: GROQ_MEAL_PHOTO_PROMPT },
-          { role: 'user', content: 'Riprova: il pasto contiene più alimenti. Restituisci fino a 5 alimenti con nome, grammi e kcal in formato JSON esattamente come prima.' }
-        ],
-        temperature: 0.2,
-        max_tokens: 600
-      })
-    }, 30000);
-
-    if (retryRes.ok) {
-      const retryJson = await retryRes.json();
-      const retryText = retryJson?.choices?.[0]?.message?.content || retryJson?.output?.text || '';
-      try {
-        const maybeParsed = parseJsonFromText(retryText);
-        if (Array.isArray(maybeParsed.alimenti) && maybeParsed.alimenti.length > parsed.alimenti.length) {
-          parsed = maybeParsed;
-        }
-      } catch (e) {
-        // manteniamo il parsed originale se il retry fallisce
-      }
-    }
-  }
-
-  if (!parsed?.alimenti || !Array.isArray(parsed.alimenti)) throw new Error('Formato alimenti non valido');
-
-  return parsed.alimenti.map(a => ({
-    nome: String(a.nome || '').trim(),
-    grammi: String(a.grammi || a.qty || a.weight || ''),
-    kcal: String(a.kcal || a.calorie || a.cal || '0')
-  })).filter(a => a.nome);
-}
-
 const db = {
   async getSchede() { const { data } = await sb.from("schede").select("*"); return data ? data.map(r => r.data) : []; },
   async setSchede(a) { await sb.from("schede").delete().neq("id", "__x__"); if (a.length) await sb.from("schede").insert(a.map(s => ({ id: s.id, data: s }))); },  async getSessioni() { const { data } = await sb.from("sessioni").select("*").order("created_at", { ascending: false }); return data ? data.map(r => r.data) : []; },
@@ -2607,11 +2404,6 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
   const [showAddExtra, setShowAddExtra] = useState(false);
   const [extraNome, setExtraNome] = useState("");
   const [extraKcal, setExtraKcal] = useState("");
-  const [photoModalOpen, setPhotoModalOpen] = useState(false);
-  const [photoFile, setPhotoFile] = useState(null);
-  const [photoLoading, setPhotoLoading] = useState(false);
-  const [photoError, setPhotoError] = useState("");
-  const [photoItems, setPhotoItems] = useState([]);
   const [saved, setSaved] = useState(false);
 
   const piano = piani.find(p => p.id === selectedPianoId);
@@ -2694,45 +2486,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
     setExtraNome(""); setExtraKcal(""); setShowAddExtra(false);
   };
 
-  const resetPhotoAnalysis = () => {
-    setPhotoFile(null);
-    setPhotoItems([]);
-    setPhotoError("");
-    setPhotoLoading(false);
-  };
 
-  const handlePhotoAnalyze = async () => {
-    if (!photoFile) {
-      setPhotoError("Seleziona un'immagine del pasto da analizzare");
-      return;
-    }
-    setPhotoError("");
-    setPhotoLoading(true);
-    try {
-      const results = await analyzeMealPhoto(photoFile);
-      if (results.length === 0) {
-        setPhotoError("Nessun alimento riconosciuto, prova un'altra foto o descrizione.");
-      } else {
-        setPhotoItems(results);
-      }
-    } catch (e) {
-      setPhotoError(e.message || "Errore analisi foto");
-    } finally {
-      setPhotoLoading(false);
-    }
-  };
-
-  const addPhotoItemsAsExtra = () => {
-    if (!photoItems?.length) return;
-    setExtra(prev => [...prev, ...photoItems.map(item => ({
-      id: genId(),
-      nome: item.nome,
-      kcal: Number(item.kcal) || 0,
-      mangiato: true
-    }))]);
-    setPhotoModalOpen(false);
-    resetPhotoAnalysis();
-  };
 
   // ─── Calcoli kcal ─────────────────────────────────────
   // Target = kcal del pasto selezionato per ogni gruppo
@@ -2831,10 +2585,6 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
                 </button>
               ))}
             </div>
-
-            <button className="btn btn-p btn-full" style={{ background: '#1E90FF', marginBottom: 14 }} onClick={() => { setPhotoModalOpen(true); resetPhotoAnalysis(); }}>
-              <IcCamera /> ANALIZZA FOTO PASTO
-            </button>
 
             {/* ─── Box kcal ─── */}
             <div style={{
@@ -3083,45 +2833,6 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
           </>
         )}
       </div>
-
-      {photoModalOpen && (
-        <div className="mov" onClick={() => setPhotoModalOpen(false)}>
-          <div className="mod" onClick={e => e.stopPropagation()} style={{ maxHeight: '90vh' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-              <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, letterSpacing: '.05em' }}>FOTO PASTO (AI)</span>
-              <button className="bico" onClick={() => setPhotoModalOpen(false)}><IcClose /></button>
-            </div>
-
-            <div className="ig">
-              <label className="lbl">Seleziona immagine</label>
-              <input type="file" accept="image/*" onChange={e => { setPhotoFile(e.target.files[0] || null); setPhotoError(''); setPhotoItems([]); }} />
-            </div>
-
-            {photoError && <div style={{ color: 'var(--dan)', marginBottom: 12 }}>{photoError}</div>}
-
-            <button className="btn btn-p btn-full" style={{ marginBottom: 12 }} onClick={handlePhotoAnalyze} disabled={photoLoading || !photoFile}>
-              {photoLoading ? 'Analisi in corso...' : 'Avvia Analisi'}
-            </button>
-
-            {photoItems.length > 0 && (
-              <>
-                <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--mut)' }}>Alimenti riconosciuti:</div>
-                {photoItems.map((item, i) => (
-                  <div key={`${item.nome}-${i}`} className="frow" style={{ alignItems: 'center' }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 700 }}>{item.nome}</div>
-                      <div style={{ fontSize: 11, color: 'var(--dim)' }}>{item.grammi}g · {item.kcal} kcal</div>
-                    </div>
-                  </div>
-                ))}
-                <button className="btn btn-s btn-full" style={{ marginTop: 8 }} onClick={addPhotoItemsAsExtra}>
-                  Aggiungi tutti come Extra Mangiato
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
 
     </>
   );
