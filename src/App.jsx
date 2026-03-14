@@ -343,7 +343,7 @@ export default function App() {
   const [isLogged, setIsLogged] = useState(localStorage.getItem("rw_logged") === "true");
   const [pinInput, setPinInput] = useState("");
 
-  const [tab, setTab] = useState("home");
+  const [tab, setTab] = useState("profilo");
   const [schede, setSchede] = useState([]);
   const [sessioni, setSessioni] = useState([]);
   const [peso, setPeso] = useState([]);
@@ -388,6 +388,7 @@ export default function App() {
   const savePiani = async p => { setPiani(p); await db.setPiani(p); };
   const handleAddLogDieta = async l => { setLogDieta(prev => [l, ...prev]); await db.addLogDieta(l); };
   const handleDelLogDieta = async id => { setLogDieta(p => p.filter(x => x.id !== id)); await db.delLogDieta(id); };
+  const onOpenDietaLog = () => setSubview({ type: "dieta-log", data: null });
 
   const dark = settings.darkMode !== false;
   const cls = `app${dark ? "" : " light"}`;
@@ -501,7 +502,7 @@ export default function App() {
         {tab === "storico" && <Storico sessioni={sessioni} onDetail={s => setSubview({ type: "sessione", data: s })} onDelete={delSessione} />}
         {tab === "stats" && <Stats sessioni={sessioni} />}
         {tab === "peso" && <Peso peso={peso} onAdd={addPeso} onDelete={delPeso} />}
-        {tab === "profilo" && <Profilo settings={settings} peso={peso} onSave={saveSettings} />}
+        {tab === "profilo" && <Profilo settings={settings} peso={peso} piani={piani} logDieta={logDieta} onSave={saveSettings} onOpenDietaLog={onOpenDietaLog} />}
       </div>
       <nav className="nav">
         {[["home", "HOME", <IcHome />], ["schede", "SCHEDE", <IcBook />], ["dieta", "DIETA", <IcApple />], ["storico", "LOG", <IcHistory />], ["stats", "STATS", <IcChart />], ["peso", "PESO", <IcWeight />], ["profilo", "IO", <IcUser />]].map(([t, l, ic]) => (
@@ -1665,9 +1666,11 @@ function Peso({ peso, onAdd, onDelete }) {
 }
 
 // ─── PROFILO PERSONALE ────────────────────────────────────
-function Profilo({ settings, peso, onSave }) {
+function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(fmtIso(new Date()));
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [saving, setSaving] = useState(false);
   const [lightbox, setLightbox] = useState(null);
   const fileInputRef = useRef(null);
@@ -1790,6 +1793,64 @@ function Profilo({ settings, peso, onSave }) {
             ✏️ Completa il profilo con <b style={{ color: "var(--txt)" }}>{[!nome && "nome", !sesso && "sesso", !eta && "età", !altezza && "altezza"].filter(Boolean).join(", ")}</b>
           </div>
         )}
+      </div>
+
+      {/* DIETA - CALENDARIO SOLARE */}
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <div>
+            <div className="st">LOG DIETA</div>
+            <div style={{ fontSize: 11, color: "var(--dim)" }}>Calendario solare dei log alimentari</div>
+          </div>
+          <button className="btn btn-s" style={{ fontSize: 11, padding: "8px 12px" }} onClick={onOpenDietaLog}>
+            <IcApple /> APRI LOG DIETA
+          </button>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+          <button className="bico" onClick={() => setCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}>◀</button>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>{calendarMonth.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}</div>
+          <button className="bico" onClick={() => setCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}>▶</button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 4, marginBottom: 6 }}>
+          {['Lun','Mar','Mer','Gio','Ven','Sab','Dom'].map(d => <div key={d} style={{ fontSize: 11, textAlign: 'center', color:'var(--dim)' }}>{d}</div>)}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 4 }}>
+          {Array.from({ length: new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate() }, (_, i) => i + 1).map(day => {
+            const date = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day);
+            const idate = fmtIso(date);
+            const hasLog = (logDieta || []).some(l => l.data === idate);
+            const isSelected = selectedCalendarDate === idate;
+            return (
+              <button
+                key={idate}
+                className={`dpb${hasLog ? ' log' : ''}${isSelected ? ' on' : ''}`}
+                style={{ fontSize: 10, padding: '6px 2px', minHeight: 44, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}
+                onClick={() => setSelectedCalendarDate(idate)}
+              >
+                <div>{day}</div>
+                <div style={{ fontSize: 8, color: hasLog ? '#30D158' : 'var(--mut)' }}>{hasLog ? '●' : ''}</div>
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--bdr)', borderRadius: 10, background: 'var(--sur)' }}>
+          <div style={{ fontSize: 12, marginBottom: 6, color: 'var(--dim)' }}>
+            {new Date(selectedCalendarDate).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          </div>
+          {(logDieta || []).filter(l => l.data === selectedCalendarDate).length > 0 ? (
+            (logDieta || []).filter(l => l.data === selectedCalendarDate).map(l => (
+              <div key={l.id} style={{ fontSize: 12, marginBottom: 4, borderBottom: '1px solid var(--bdr)', paddingBottom: 4 }}>
+                {l.pianoNome || 'Log dieta'} · Giorno {l.giornoNumero} · {l.totKcalConsumate} kcal
+              </div>
+            ))
+          ) : (
+            <div style={{ fontSize: 12, color: 'var(--mut)', fontStyle: 'italic' }}>Nessun log per questa data.</div>
+          )}
+        </div>
       </div>
 
       {/* BOLLINO SALUTE */}
