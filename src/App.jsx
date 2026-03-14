@@ -1009,7 +1009,7 @@ function Allenamento({ scheda, sessioni, onComplete, onBack }) {
                 <div className="exn">{ex.nome}</div>
                 {ex.note && <div style={{ fontSize: 11, color: "var(--dim)", fontStyle: "italic", marginTop: 2 }}>{ex.note}</div>}
               </div>
-              <div style={{ display: "flex", gap: 6 }}>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 {ex.pausa > 0 && <div className="tag tag-m"><IcTimer />{ex.pausa}s</div>}
               </div>
             </div>
@@ -1535,7 +1535,6 @@ function Peso({ peso, onAdd, onDelete }) {
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                     {(p.foto_fronte || p.foto_retro) && <span style={{ fontSize: 12 }}>📷</span>}
                     {hasBody(p) && <span style={{ fontSize: 12 }}>📊</span>}
-                    <span style={{
                   </div>
                 </div>
 
@@ -2051,10 +2050,10 @@ function PianoEdit({ piano: init, onSave, onBack }) {
     const prev = giorniPasti[giorno - 1];
     if (!prev || prev.length === 0) return alert("Il giorno precedente non ha pasti da copiare");
     if (window.confirm(`Copiare i pasti di ${GIORNI_LABEL[giorno - 1]}?`)) {
-      setPC(JSON.parse(JSON.stringify(prev)).map(p => ({
-        ...p, id: genId(),
-        alimenti: p.alimenti.map(a => ({ ...a, id: genId() }))
-      }));
+   setPC(JSON.parse(JSON.stringify(prev)).map(p => ({
+  ...p, id: genId(),
+  alimenti: p.alimenti.map(a => ({ ...a, id: genId() }))
+})));
     }
   };
 
