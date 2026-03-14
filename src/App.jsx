@@ -152,28 +152,17 @@ async function analyzeMealPhoto(file) {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
       body: JSON.stringify(payloadVision)
     });
-    if (!res.ok) throw new Error(`Errore Vision (${res.status})`);
-    response = await res.json();
-  } catch (e) {
-    // Fallback su chat completions se Vision non è raggiungibile
-    const res = await fetch(fallbackEndpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          { role: 'system', content: GROQ_MEAL_PHOTO_PROMPT },
-          { role: 'user', content: `Image in base64: data:${file.type};base64,${base64}` }
-        ],
-        temperature: 0.2,
-        max_tokens: 1024
-      })
-    });
     if (!res.ok) {
-      const errData = await res.json().catch(() => null);
-      throw new Error(errData?.error?.message || `Errore fallback Groq (${res.status})`);
+      const errText = await res.text().catch(() => '');
+      throw new Error(`Errore Vision (${res.status}) ${errText}`);
     }
     response = await res.json();
+  } catch (e) {
+    const err = String(e.message || e);
+    if (err.toLowerCase().includes('please reduce') || err.toLowerCase().includes('length')) {
+      throw new Error('Errore modello: messaggio/completion troppo lungo (riduci risoluzione immagine o segmento PDF)');
+    }
+    throw new Error('Vision endpoint fallito. Assicurati che la Groq API key sia corretta e che il modello groq-vision-1.0 sia disponibile.');
   }
 
   const text = response?.choices?.[0]?.message?.content || response?.output?.text || JSON.stringify(response);
@@ -797,7 +786,7 @@ function SchedaPdfImportModal({ onApply, onClose }) {
           model: "llama-3.3-70b-versatile",
           messages: [
             { role: "system", content: GROQ_SCHEDA_PROMPT },
-            { role: "user", content: `Testo della scheda di allenamento:\n\n${testoPdf.slice(0, 10000)}` }
+            { role: "user", content: `Testo della scheda di allenamento:\n\n${testoPdf.slice(0, 6500)}` }
           ],
           temperature: 0.1, max_tokens: 4096
         })
@@ -3048,9 +3037,9 @@ function PdfImportModal({ onApply, onClose }) {
           model: "llama-3.3-70b-versatile",
           messages: [
             { role: "system", content: GROQ_PROMPT },
-            { role: "user", content: `Testo del piano alimentare:\n\n${testoPdf.slice(0, 18000)}` }
+            { role: "user", content: `Testo del piano alimentare:\n\n${testoPdf.slice(0, 6500)}` }
           ],
-          temperature: 0.1, max_tokens: 8192
+          temperature: 0.1, max_tokens: 4096
         })
       });
       if (!resp.ok) {
