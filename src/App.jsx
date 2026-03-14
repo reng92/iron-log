@@ -107,9 +107,10 @@ function FoodThumb({ nome }) {
 const GROQ_MEAL_PHOTO_PROMPT = `Sei un assistente nutrizionale che analizza la foto di un pasto.
 Rispondi esclusivamente con JSON valido:
 {"alimenti":[{"nome":"...","grammi":"...","kcal":"..."}, ...]}
-- Fornisci almeno 1 alimento.
-- Stima grammi e kcal in modo realistico.
-- Se non riconosci alimenti, restituisci un array vuoto.
+- Fornisci TUTTI i cibi visibili, almeno 3 se possibile, fino a 5.
+- Determina le porzioni in grammi e le kcal totali per ciascun alimento.
+- Se non riconosci cibi, indica almeno quelli principali.
+- Non scrivere testo extra, solo JSON.
 `;
 
 const toBase64 = (file) => new Promise((resolve, reject) => {
@@ -265,7 +266,37 @@ async function analyzeMealPhoto(file) {
   }
 
   const text = response?.choices?.[0]?.message?.content || response?.output?.text || JSON.stringify(response);
-  const parsed = parseJsonFromText(text);
+  let parsed = parseJsonFromText(text);
+
+  // se la prima estrazione produce pochi alimenti, facciamo retry con un prompt più esplicito
+  if (Array.isArray(parsed.alimenti) && parsed.alimenti.length < 3) {
+    const retryRes = await fetchWithTimeout(fallbackEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant',
+        messages: [
+          { role: 'system', content: GROQ_MEAL_PHOTO_PROMPT },
+          { role: 'user', content: 'Riprova: il pasto contiene più alimenti. Restituisci fino a 5 alimenti con nome, grammi e kcal in formato JSON esattamente come prima.' }
+        ],
+        temperature: 0.2,
+        max_tokens: 600
+      })
+    }, 30000);
+
+    if (retryRes.ok) {
+      const retryJson = await retryRes.json();
+      const retryText = retryJson?.choices?.[0]?.message?.content || retryJson?.output?.text || '';
+      try {
+        const maybeParsed = parseJsonFromText(retryText);
+        if (Array.isArray(maybeParsed.alimenti) && maybeParsed.alimenti.length > parsed.alimenti.length) {
+          parsed = maybeParsed;
+        }
+      } catch (e) {
+        // manteniamo il parsed originale se il retry fallisce
+      }
+    }
+  }
 
   if (!parsed?.alimenti || !Array.isArray(parsed.alimenti)) throw new Error('Formato alimenti non valido');
 
