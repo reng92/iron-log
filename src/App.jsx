@@ -233,9 +233,35 @@ async function analyzeMealPhoto(file) {
 
     if (!fallbackRes.ok) {
       const errData = await fallbackRes.json().catch(() => null);
-      throw new Error(errData?.error?.message || `Errore fallback Groq (${fallbackRes.status})`);
+      const fallbackErr = errData?.error?.message || `Errore fallback Groq (${fallbackRes.status})`;
+
+      if (String(fallbackErr).toLowerCase().includes('requested') && String(fallbackErr).toLowerCase().includes('tpm')) {
+        console.warn('Token limit superato, uso fallback testuale meno token.');
+        const fallbackTextRes = await fetchWithTimeout(fallbackEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+          body: JSON.stringify({
+            model: 'llama-3.1-8b-instant',
+            messages: [
+              { role: 'system', content: GROQ_MEAL_PHOTO_PROMPT },
+              { role: 'user', content: "Non posso inviare l'immagine a causa del limite token. Elenca 3 alimenti comuni di un pasto bilanciato con grammi e kcal stimati." }
+            ],
+            temperature: 0.2,
+            max_tokens: 600
+          })
+        }, 30000);
+
+        if (!fallbackTextRes.ok) {
+          const errTextData = await fallbackTextRes.json().catch(() => null);
+          throw new Error(errTextData?.error?.message || `Errore fallback testuale Groq (${fallbackTextRes.status})`);
+        }
+        response = await fallbackTextRes.json();
+      } else {
+        throw new Error(fallbackErr);
+      }
+    } else {
+      response = await fallbackRes.json();
     }
-    response = await fallbackRes.json();
   }
 
   const text = response?.choices?.[0]?.message?.content || response?.output?.text || JSON.stringify(response);
