@@ -104,10 +104,93 @@ function FoodThumb({ nome }) {
 }
 
 // ─── DB ───────────────────────────────────────────────────
+const GROQ_MEAL_PHOTO_PROMPT = `Sei un assistente nutrizionale che analizza la foto di un pasto.
+Rispondi esclusivamente con JSON valido:
+{"alimenti":[{"nome":"...","grammi":"...","kcal":"..."}, ...]}
+- Fornisci almeno 1 alimento.
+- Stima grammi e kcal in modo realistico.
+- Se non riconosci alimenti, restituisci un array vuoto.
+`;
+
+const toBase64 = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(reader.result.split(",")[1]);
+  reader.onerror = reject;
+  reader.readAsDataURL(file);
+});
+
+const parseJsonFromText = (text) => {
+  if (!text || typeof text !== 'string') throw new Error('Risposta non valida');
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('JSON non trovato nella risposta AI');
+  return JSON.parse(match[0]);
+};
+
+async function analyzeMealPhoto(file) {
+  if (!file) throw new Error('File immagine mancante');
+  const key = GROQ_KEY || localStorage.getItem('groq_key') || '';
+  if (!key) throw new Error('Inserisci la tua Groq API key nelle impostazioni');
+
+  const base64 = await toBase64(file);
+
+  // Proviamo l'endpoint Vision (Groq) se disponibile.
+  const visionEndpoint = 'https://api.groq.com/v1/vision';
+  const fallbackEndpoint = 'https://api.groq.com/openai/v1/chat/completions';
+
+  const payloadVision = {
+    model: 'groq-vision-1.0',
+    image: `data:${file.type};base64,${base64}`,
+    prompt: GROQ_MEAL_PHOTO_PROMPT,
+    temperature: 0.2,
+    max_tokens: 1024
+  };
+
+  let response = null;
+  try {
+    const res = await fetch(visionEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+      body: JSON.stringify(payloadVision)
+    });
+    if (!res.ok) throw new Error(`Errore Vision (${res.status})`);
+    response = await res.json();
+  } catch (e) {
+    // Fallback su chat completions se Vision non è raggiungibile
+    const res = await fetch(fallbackEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: GROQ_MEAL_PHOTO_PROMPT },
+          { role: 'user', content: `Image in base64: data:${file.type};base64,${base64}` }
+        ],
+        temperature: 0.2,
+        max_tokens: 1024
+      })
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => null);
+      throw new Error(errData?.error?.message || `Errore fallback Groq (${res.status})`);
+    }
+    response = await res.json();
+  }
+
+  const text = response?.choices?.[0]?.message?.content || response?.output?.text || JSON.stringify(response);
+  const parsed = parseJsonFromText(text);
+
+  if (!parsed?.alimenti || !Array.isArray(parsed.alimenti)) throw new Error('Formato alimenti non valido');
+
+  return parsed.alimenti.map(a => ({
+    nome: String(a.nome || '').trim(),
+    grammi: String(a.grammi || a.qty || a.weight || ''),
+    kcal: String(a.kcal || a.calorie || a.cal || '0')
+  })).filter(a => a.nome);
+}
+
 const db = {
   async getSchede() { const { data } = await sb.from("schede").select("*"); return data ? data.map(r => r.data) : []; },
-  async setSchede(a) { await sb.from("schede").delete().neq("id", "__x__"); if (a.length) await sb.from("schede").insert(a.map(s => ({ id: s.id, data: s }))); },
-  async getSessioni() { const { data } = await sb.from("sessioni").select("*").order("created_at", { ascending: false }); return data ? data.map(r => r.data) : []; },
+  async setSchede(a) { await sb.from("schede").delete().neq("id", "__x__"); if (a.length) await sb.from("schede").insert(a.map(s => ({ id: s.id, data: s }))); },  async getSessioni() { const { data } = await sb.from("sessioni").select("*").order("created_at", { ascending: false }); return data ? data.map(r => r.data) : []; },
   async addSessione(s) { await sb.from("sessioni").insert({ id: s.id, data: s }); },
   async delSessione(id) { await sb.from("sessioni").delete().eq("id", id); },
   async getPeso() { const { data } = await sb.from("peso").select("*").order("data", { ascending: true }); return data || []; },
@@ -2405,6 +2488,11 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
   const [showAddExtra, setShowAddExtra] = useState(false);
   const [extraNome, setExtraNome] = useState("");
   const [extraKcal, setExtraKcal] = useState("");
+  const [photoModalOpen, setPhotoModalOpen] = useState(false);
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoLoading, setPhotoLoading] = useState(false);
+  const [photoError, setPhotoError] = useState("");
+  const [photoItems, setPhotoItems] = useState([]);
   const [saved, setSaved] = useState(false);
 
   const piano = piani.find(p => p.id === selectedPianoId);
@@ -2485,6 +2573,46 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
     if (!extraNome.trim() || !extraKcal) return;
     setExtra(prev => [...prev, { id: genId(), nome: extraNome.trim(), kcal: +extraKcal, mangiato: true }]);
     setExtraNome(""); setExtraKcal(""); setShowAddExtra(false);
+  };
+
+  const resetPhotoAnalysis = () => {
+    setPhotoFile(null);
+    setPhotoItems([]);
+    setPhotoError("");
+    setPhotoLoading(false);
+  };
+
+  const handlePhotoAnalyze = async () => {
+    if (!photoFile) {
+      setPhotoError("Seleziona un'immagine del pasto da analizzare");
+      return;
+    }
+    setPhotoError("");
+    setPhotoLoading(true);
+    try {
+      const results = await analyzeMealPhoto(photoFile);
+      if (results.length === 0) {
+        setPhotoError("Nessun alimento riconosciuto, prova un'altra foto o descrizione.");
+      } else {
+        setPhotoItems(results);
+      }
+    } catch (e) {
+      setPhotoError(e.message || "Errore analisi foto");
+    } finally {
+      setPhotoLoading(false);
+    }
+  };
+
+  const addPhotoItemsAsExtra = () => {
+    if (!photoItems?.length) return;
+    setExtra(prev => [...prev, ...photoItems.map(item => ({
+      id: genId(),
+      nome: item.nome,
+      kcal: Number(item.kcal) || 0,
+      mangiato: true
+    }))]);
+    setPhotoModalOpen(false);
+    resetPhotoAnalysis();
   };
 
   // ─── Calcoli kcal ─────────────────────────────────────
@@ -2584,6 +2712,10 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
                 </button>
               ))}
             </div>
+
+            <button className="btn btn-p btn-full" style={{ background: '#1E90FF', marginBottom: 14 }} onClick={() => { setPhotoModalOpen(true); resetPhotoAnalysis(); }}>
+              <IcCamera /> ANALIZZA FOTO PASTO
+            </button>
 
             {/* ─── Box kcal ─── */}
             <div style={{
@@ -2832,6 +2964,46 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
           </>
         )}
       </div>
+
+      {photoModalOpen && (
+        <div className="mov" onClick={() => setPhotoModalOpen(false)}>
+          <div className="mod" onClick={e => e.stopPropagation()} style={{ maxHeight: '90vh' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+              <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, letterSpacing: '.05em' }}>FOTO PASTO (AI)</span>
+              <button className="bico" onClick={() => setPhotoModalOpen(false)}><IcClose /></button>
+            </div>
+
+            <div className="ig">
+              <label className="lbl">Seleziona immagine</label>
+              <input type="file" accept="image/*" onChange={e => { setPhotoFile(e.target.files[0] || null); setPhotoError(''); setPhotoItems([]); }} />
+            </div>
+
+            {photoError && <div style={{ color: 'var(--dan)', marginBottom: 12 }}>{photoError}</div>}
+
+            <button className="btn btn-p btn-full" style={{ marginBottom: 12 }} onClick={handlePhotoAnalyze} disabled={photoLoading || !photoFile}>
+              {photoLoading ? 'Analisi in corso...' : 'Avvia Analisi'}
+            </button>
+
+            {photoItems.length > 0 && (
+              <>
+                <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--mut)' }}>Alimenti riconosciuti:</div>
+                {photoItems.map((item, i) => (
+                  <div key={`${item.nome}-${i}`} className="frow" style={{ alignItems: 'center' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700 }}>{item.nome}</div>
+                      <div style={{ fontSize: 11, color: 'var(--dim)' }}>{item.grammi}g · {item.kcal} kcal</div>
+                    </div>
+                  </div>
+                ))}
+                <button className="btn btn-s btn-full" style={{ marginTop: 8 }} onClick={addPhotoItemsAsExtra}>
+                  Aggiungi tutti come Extra Mangiato
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
     </>
   );
 }
