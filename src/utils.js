@@ -113,3 +113,36 @@ export const compressImg = (file, maxPx = 800, quality = 0.72) => new Promise(re
   };
   img.src = url;
 });
+
+export const estimateKcalFromName = (name) => {
+  const n = name.toLowerCase();
+  if (n.includes("birra") || n.includes("gin") || n.includes("spritz")) return 200;
+  if (n.includes("pizza")) return 800;
+  if (n.includes("hamburger") || n.includes("panino")) return 600;
+  if (n.includes("torta") || n.includes("dolce") || n.includes("tiramis")) return 400;
+  if (n.includes("gelato")) return 250;
+  if (n.includes("mela") || n.includes("frutta")) return 80;
+  if (n.includes("caffè")) return 0;
+  return 0;
+};
+
+export const estimateKcalFromAI = async (name, GROQ_KEY) => {
+  if (!GROQ_KEY) return 150;
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant',
+        messages: [{ role: 'user', content: `Estimate only the number of calories for this food/drink item. Return ONLY the number, no text: "${name}"` }],
+        temperature: 0, max_tokens: 10
+      })
+    });
+    const data = await res.json();
+    const kcal = parseInt(data?.choices?.[0]?.message?.content?.trim());
+    return isNaN(kcal) ? 150 : kcal;
+  } catch (e) {
+    console.error("AI estimation error", e);
+    return 150;
+  }
+};

@@ -2,10 +2,9 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // Import utilities
-import {
-  genId, fmtDur, fmtDate, fmtShort, fmtIso, epley,
-  GG, GIORNI_LABEL, GIORNI_SHORT, fetchMealImg,
-  estraiTestoPdf, compressImg
+  genId, fmtDur, fmtDate, fmtShort, fmtIso, epley, 
+  GG, GIORNI_LABEL, GIORNI_SHORT, fetchMealImg, 
+  estraiTestoPdf, compressImg, estimateKcalFromName, estimateKcalFromAI 
 } from "./utils";
 
 // Import components
@@ -2392,7 +2391,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
       if (manualKcal > 0) {
         finalKcal = manualKcal;
       } else {
-        const aiKcal = await estimateKcalFromAI(nome);
+        const aiKcal = await estimateKcalFromAI(nome, GROQ_KEY);
         if (aiKcal && aiKcal > 0) {
           finalKcal = aiKcal;
         } else if (estimatedKcal > 0) {
