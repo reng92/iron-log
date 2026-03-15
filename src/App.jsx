@@ -1,77 +1,31 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { createClient } from "@supabase/supabase-js";
 
+// Import utilities
+import { 
+  genId, fmtDur, fmtDate, fmtShort, fmtIso, epley, 
+  GG, GIORNI_LABEL, GIORNI_SHORT, fetchMealImg, 
+  estraiTestoPdf, compressImg 
+} from "./utils";
+
+// Import components
+import { 
+  IcHome, IcBook, IcHistory, IcChart, IcWeight, IcPlus, 
+  IcTrash, IcEdit, IcCheck, IcChevL, IcClose, IcPlay, 
+  IcTimer, IcCamera, IcImg, IcSun, IcMoon, IcDownload, 
+  IcCalc, IcArrowUp, IcArrowDown, IcApple, IcUser, 
+  IcFile, IcUpload, Ico 
+} from "./components/Icons";
+import ChatAI from "./components/ChatAI";
+
 const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL;
 const SUPABASE_KEY = process.env.REACT_APP_SUPABASE_KEY;
 const GROQ_KEY = process.env.REACT_APP_GROQ_KEY || localStorage.getItem('groq_key') || '';
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ─── UTILS ────────────────────────────────────────────────
-const genId = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
-const fmtDur = s => { const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sc = s % 60; return h ? `${h}h ${m}m` : (m ? `${m}m ${sc}s` : `${sc}s`); };
-const fmtDate = d => new Date(d).toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-const fmtShort = d => new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' });
-const fmtIso = (d = new Date()) => { const dt = d instanceof Date ? d : new Date(d); return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`; };
-const epley = (kg, reps) => +reps === 1 ? +kg : Math.round(+kg * (1 + (+reps / 30)) * 10) / 10;
-const GG = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
-const GIORNI_LABEL = ["", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"];
-const GIORNI_SHORT = ["", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 
-// ─── MEDIA HELPERS ────────────────────────────────────────
-const foodCache = {};
-const pendingFoodRequests = {};
 
-async function fetchMealImg(rawName) {
-  if (!rawName || typeof rawName !== 'string') return null;
-  const nomePulito = rawName.replace(/\d+\s*g|\d+g|\d+\s*ml|\d+ml|[\d.,]+/gi, '').replace(/\s+/g, ' ').trim();
-  if (!nomePulito) return null;
-  if (foodCache[nomePulito]) return foodCache[nomePulito];
-  if (pendingFoodRequests[nomePulito]) return pendingFoodRequests[nomePulito];
 
-  const request = (async () => {
-    try {
-      let searchName = nomePulito;
-      if (GROQ_KEY) {
-        try {
-          const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: 'llama-3.1-8b-instant',
-              messages: [{ role: 'user', content: `Translate this food item to English. Return ONLY the single English ingredient name, no quantity, no punctuation: "${nomePulito}"` }],
-              temperature: 0, max_tokens: 10
-            })
-          });
-          const data = await res.json();
-          const translated = data?.choices?.[0]?.message?.content?.trim();
-          if (translated) searchName = translated;
-        } catch (e) { console.error("Translation error", e); }
-      }
-
-      let finalUrl = null;
-      try {
-        // 1. Prova endpoint ingredienti
-        const ingUrl = `https://www.themealdb.com/images/ingredients/${encodeURIComponent(searchName)}-Small.png`;
-        const check = await fetch(ingUrl, { method: 'HEAD' });
-        if (check.ok) finalUrl = ingUrl;
-        else {
-          // 2. Fallback ricerca ricetta
-          const r = await fetch(`https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(searchName)}`);
-          const d = await r.json();
-          if (d.meals?.[0]?.strMealThumb) finalUrl = d.meals[0].strMealThumb;
-        }
-      } catch (e) { console.error("Fetch error", e); }
-
-      foodCache[nomePulito] = finalUrl;
-      return finalUrl;
-    } finally {
-      delete pendingFoodRequests[nomePulito];
-    }
-  })();
-
-  pendingFoodRequests[nomePulito] = request;
-  return request;
-}
 
 
 function FoodThumb({ nome }) {
@@ -82,7 +36,7 @@ function FoodThumb({ nome }) {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    fetchMealImg(nome).then(u => {
+    fetchMealImg(nome, GROQ_KEY).then(u => {
       if (active) { setSrc(u); setLoading(false); }
     });
     return () => { active = false; };
@@ -145,32 +99,7 @@ const exportCSV = (sessioni) => {
   a.download = `renatos-workout-${fmtIso()}.csv`; a.click();
 };
 
-// ─── PDF HELPERS ──────────────────────────────────────────
-const loadPdfJs = () => new Promise((resolve, reject) => {
-  if (window.pdfjsLib) return resolve(window.pdfjsLib);
-  const script = document.createElement("script");
-  script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-  script.onload = () => {
-    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-    resolve(window.pdfjsLib);
-  };
-  script.onerror = () => reject(new Error("Impossibile caricare PDF.js"));
-  document.head.appendChild(script);
-});
 
-const estraiTestoPdf = async (file) => {
-  const pdfjsLib = await loadPdfJs();
-  const buffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
-  let testo = "";
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    testo += content.items.map(it => it.str).join(" ") + "\n";
-  }
-  return testo.trim();
-};
 
 // ─── CSS ──────────────────────────────────────────────────
 const CSS = `
@@ -269,39 +198,21 @@ textarea.inp{resize:vertical;min-height:64px;}
 @keyframes spin{to{transform:rotate(360deg)}}
 .ex-icon{filter:invert(1) brightness(1.8);}
 .app.light .ex-icon{filter:none;}
+.chat-fab{position:fixed;bottom:85px;right:20px;width:56px;height:56px;border-radius:28px;background:var(--acc);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 15px rgba(30,144,255,.4);cursor:pointer;z-index:100;transition:all .2s;border:none;}
+.chat-fab:active{transform:scale(.95);}
+.chat-win{position:fixed;inset:0;background:var(--bg);z-index:1100;display:flex;flex-direction:column;animation:slideUp .3s ease;}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.chat-h{padding:16px;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center;background:var(--sur);}
+.chat-msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;}
+.msg{max-width:85%;padding:10px 14px;border-radius:16px;font-size:14px;line-height:1.4;animation:fi .2s ease;}
+.msg.ai{align-self:flex-start;background:var(--card);border:1px solid var(--bdr);border-bottom-left-radius:4px;}
+.msg.user{align-self:flex-end;background:var(--acc);color:#fff;border-bottom-right-radius:4px;}
+.chat-f{padding:12px;border-top:1px solid var(--bdr);background:var(--sur);display:flex;gap:8px;}
 `;
 
 // ─── ICONS ────────────────────────────────────────────────
-const Ico = ({ d, size = 20, fill = "none", sw = 1.8, stroke = "currentColor" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">
-    {Array.isArray(d) ? d.map((p, i) => <path key={i} d={p} />) : <path d={d} />}
-  </svg>
-);
-const IcHome = () => <Ico d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z M9 22V12h6v10" />;
-const IcBook = () => <Ico d={["M4 19.5A2.5 2.5 0 016.5 17H20", "M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"]} />;
-const IcHistory = () => <Ico d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />;
-const IcChart = () => <Ico d="M18 20V10M12 20V4M6 20v-6" />;
-const IcWeight = () => <Ico d="M12 2a10 10 0 100 20A10 10 0 0012 2z M12 6a6 6 0 100 12A6 6 0 0012 6z" />;
-const IcPlus = () => <Ico d="M12 5v14M5 12h14" />;
-const IcTrash = () => <Ico d="M3 6h18M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2" />;
-const IcEdit = () => <Ico d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7 M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />;
-const IcCheck = () => <Ico d="M20 6L9 17l-5-5" />;
-const IcChevL = () => <Ico d="M15 18l-6-6 6-6" />;
-const IcClose = () => <Ico d="M18 6L6 18M6 6l12 12" />;
-const IcPlay = () => <Ico d="M5 3l14 9-14 9V3z" fill="currentColor" sw={0} />;
-const IcTimer = () => <Ico d="M12 6v6l4 2 M12 2a10 10 0 100 20A10 10 0 0012 2z" />;
-const IcCamera = () => <Ico d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z M12 17a4 4 0 100-8 4 4 0 000 8z" />;
-const IcImg = () => <Ico d={["M21 15l-5-5L5 21", "M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2z", "M8.5 8.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"]} />;
-const IcSun = () => <Ico d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42 M12 8a4 4 0 100 8 4 4 0 000-8z" />;
-const IcMoon = () => <Ico d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />;
-const IcDownload = () => <Ico d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />;
-const IcCalc = () => <Ico d={["M5 4a2 2 0 012-2h10a2 2 0 012 2v16a2 2 0 01-2 2H7a2 2 0 01-2-2V4z", "M9 9h6M9 13h3M9 17h1"]} />;
-const IcArrowUp = (props) => <Ico {...props} d="M18 15l-6-6-6 6" />;
-const IcArrowDown = (props) => <Ico {...props} d="M6 9l6 6 6-6" />;
-const IcApple = () => <Ico d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 2V6" />;
-const IcUser = () => <Ico d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2 M12 11a4 4 0 100-8 4 4 0 000 8z" />;
-const IcFile = () => <Ico d={["M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z", "M14 2v6h6", "M16 13H8M16 17H8M10 9H8"]} />;
-const IcUpload = () => <Ico d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" />;
+
+
 
 // ─── LINE CHART ───────────────────────────────────────────
 function LineChart({ data, color = "#1E90FF", height = 110 }) {
@@ -355,6 +266,8 @@ export default function App() {
 
   const [subview, setSubview] = useState(null);
   const [loaded, setLoaded] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+
 
   useEffect(() => {
     (async () => {
@@ -508,6 +421,9 @@ export default function App() {
           <button key={t} className={`nb${tab === t ? " on" : ""}`} onClick={() => setTab(t)}>{ic}<span>{l}</span></button>
         ))}
       </nav>
+      {!subview && <button className="chat-fab" onClick={() => setShowChat(true)}><Ico d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" fill="currentColor" sw={0} /></button>}
+      {showChat && <ChatAI settings={settings} peso={peso} logDieta={logDieta} piani={piani} sessioni={sessioni} onClose={() => setShowChat(false)} />}
+
     </div>
   );
 }
@@ -639,19 +555,7 @@ function Schede({ schede, onNew, onEdit, onDelete, onStart }) {
   );
 }
 
-// ─── IMAGE COMPRESS ──────────────────────────────────────
-const compressImg = (file, maxPx = 800, quality = 0.72) => new Promise(res => {
-  const img = new Image(), url = URL.createObjectURL(file);
-  img.onload = () => {
-    const r = Math.min(1, maxPx / Math.max(img.width, img.height));
-    const w = Math.round(img.width * r), h = Math.round(img.height * r);
-    const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
-    cv.getContext("2d").drawImage(img, 0, 0, w, h);
-    URL.revokeObjectURL(url);
-    res(cv.toDataURL("image/jpeg", quality));
-  };
-  img.src = url;
-});
+
 
 const ZEPP_PROMPT = `Analizza questo screenshot dell'app Zepp Life e restituisci SOLO JSON valido con TUTTI i valori numerici e le etichette di stato presenti. Usa null per i campi non trovati. Esempio formato:{"peso":86.8,"punteggio":46,"tipologia":"Robusto","imc":30.3,"imc_status":"Molto alto","massa_grassa":31.3,"massa_grassa_status":"Alto","acqua":49.1,"acqua_status":"Insufficiente","grasso_viscerale":13,"grasso_viscerale_status":"Alto","muscoli":56.62,"muscoli_status":"Buono","proteine":16.2,"proteine_status":"Normale","metabolismo":1753,"metabolismo_status":"Obiettivo raggiunto","massa_ossea":3.04,"massa_ossea_status":"Normale"}`;
 
@@ -2953,3 +2857,5 @@ function AlimentoModal({ init, mode, onSave, onClose }) {
     </div>
   );
 }
+
+
