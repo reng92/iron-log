@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // Import utilities
+import {
   genId, fmtDur, fmtDate, fmtShort, fmtIso, epley, 
   GG, GIORNI_LABEL, GIORNI_SHORT, fetchMealImg, 
   estraiTestoPdf, compressImg, estimateKcalFromName, estimateKcalFromAI 
