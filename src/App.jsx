@@ -247,6 +247,26 @@ function LineChart({ data, color = "#1E90FF", height = 110 }) {
   );
 }
 
+function localDateStr(dateInput) {
+  const d = dateInput ? new Date(dateInput) : new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function fmtDateLabel(dateStr) {
+  const d = new Date(dateStr + "T12:00:00");
+  return d.toLocaleDateString("it-IT", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric"
+  });
+}
+
+function fmtDateShortLabel(dateStr) {
+  const d = new Date(dateStr + "T12:00:00");
+  return d.toLocaleDateString("it-IT", { day: "numeric", month: "short" });
+}
+
 // ─── APP ──────────────────────────────────────────────────
 export default function App() {
   // Stati per il PIN
@@ -2674,497 +2694,209 @@ function PastoEditCard({ pasto: p, pi, isAlt, altIndex, canMoveUp, canMoveDown, 
 
 // ─── DIETA LOG ────────────────────────────────────────────
 function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
-  const todayDow = ((new Date().getDay() + 6) % 7) + 1;
-  const todayIso = fmtIso();
-  const [selectedDay, setSelectedDay] = useState(todayDow);
-  const [selectedPianoId, setSelectedPianoId] = useState(piani[0]?.id || "");
-  const [mangiato, setMangiato] = useState({});
-  const [selectedAlts, setSelectedAlts] = useState({}); // { groupId: pastoId }
-  const [extra, setExtra] = useState([]);
-  const [showAddExtra, setShowAddExtra] = useState(false);
-  const [extraNome, setExtraNome] = useState("");
-  const [extraKcal, setExtraKcal] = useState("");
-  const [extraEstimating, setExtraEstimating] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const oggiStr = localDateStr();
+  const [selectedDay, setSelectedDay] = useState(oggiStr);
+  const [showForm, setShowForm] = useState(false);
+  const [selectedPiano, setSelectedPiano] = useState(piani[0]?.id || "");
+  const [pastiCheck, setPastiCheck] = useState({});
+  const [saving, setSaving] = useState(false);
 
-  const piano = piani.find(p => p.id === selectedPianoId);
-
-  const pastiGiorno = useMemo(() => {
-    if (!piano) return [];
-    return piano.giorniPasti?.[selectedDay] || piano.pasti || [];
-  }, [piano, selectedDay]);
-
-  // Raggruppa: single o gruppi di alternative
-  const pastiGroups = useMemo(() => {
-    const groups = [];
-    const seen = new Set();
-    pastiGiorno.forEach((pasto, idx) => {
-      if (!pasto.altGroupId) {
-        groups.push({ type: 'single', items: [{ pasto, idx }] });
-      } else if (!seen.has(pasto.altGroupId)) {
-        seen.add(pasto.altGroupId);
-        const alts = pastiGiorno
-          .map((p, i) => ({ pasto: p, idx: i }))
-          .filter(({ pasto: p }) => p.altGroupId === pasto.altGroupId);
-        groups.push({ type: 'alternative', groupId: pasto.altGroupId, items: alts });
-      }
+  const ultimi14 = useMemo(() => {
+    return Array.from({ length: 14 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      return localDateStr(d);
     });
-    return groups;
-  }, [pastiGiorno]);
+  }, []);
 
-  // Pasto attualmente selezionato per un gruppo
-  const getSelItem = (group) => {
-    if (group.type === 'single') return group.items[0];
-    const selId = selectedAlts[group.groupId];
-    return group.items.find(i => i.pasto.id === selId) || group.items[0];
-  };
+  const logDelGiorno = useMemo(() => {
+    return logDieta.filter(entry => {
+      const campiData = [entry.dataLocale, entry.data, entry.giorno, entry.created_at];
+      for (const raw of campiData) {
+        if (!raw) continue;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) { if (raw === selectedDay) return true; continue; }
+        try { if (localDateStr(raw) === selectedDay) return true; } catch (_) {}
+      }
+      return false;
+    });
+  }, [logDieta, selectedDay]);
 
-  const existingLog = useMemo(() =>
-    logDieta.find(l => l.data === todayIso && l.pianoId === selectedPianoId && l.giornoNumero === selectedDay),
-    [logDieta, todayIso, selectedPianoId, selectedDay]
-  );
+  const piano = piani.find(p => p.id === selectedPiano) || piani[0];
+  const pastiPiano = piano?.pasti || [];
 
   useEffect(() => {
-    if (existingLog) {
-      const m = {};
-      existingLog.pastiLog?.forEach((pasto, pi) =>
-        pasto.alimenti?.forEach((al, ai) => { if (al.mangiato) m[`${pi}_${ai}`] = true; })
-      );
-      setMangiato(m);
-      setExtra(existingLog.extra || []);
-      setSelectedAlts(existingLog.selectedAlts || {});
-    } else {
-      setMangiato({});
-      setExtra([]);
-      setSelectedAlts({});
-    }
-  }, [existingLog, selectedDay, selectedPianoId]);
+    const init = {};
+    pastiPiano.forEach((_, i) => { init[i] = false; });
+    setPastiCheck(init);
+  }, [selectedPiano, piano]);
 
-  const toggleFood = (pi, ai) =>
-    setMangiato(prev => ({ ...prev, [`${pi}_${ai}`]: !prev[`${pi}_${ai}`] }));
+  const kcalForm = pastiPiano.filter((_, i) => pastiCheck[i]).reduce((a, p) => a + (p.kcal || 0), 0);
 
-  const selectAlt = (groupId, pastoId) => {
-    setSelectedAlts(prev => ({ ...prev, [groupId]: pastoId }));
-    // Resetta flag del gruppo quando cambi alternativa
-    const group = pastiGroups.find(g => g.groupId === groupId);
-    if (group) {
-      setMangiato(prev => {
-        const next = { ...prev };
-        group.items.forEach(({ idx, pasto }) =>
-          pasto.alimenti.forEach((_, ai) => delete next[`${idx}_${ai}`])
-        );
-        return next;
-      });
-    }
-  };
-
-  const toggleExtra = id => setExtra(prev => prev.map(e => e.id === id ? { ...e, mangiato: !e.mangiato } : e));
-  const delExtra = id => setExtra(prev => prev.filter(e => e.id !== id));
-
-  const addExtra = async () => {
-    const nome = extraNome.trim();
-    if (!nome || extraEstimating) return;
-
-    setExtraEstimating(true);
-    try {
-      const manualKcal = Number(extraKcal);
-      const estimatedKcal = estimateKcalFromName(nome);
-
-      let finalKcal;
-      if (manualKcal > 0) {
-        finalKcal = manualKcal;
-      } else {
-        const aiKcal = await estimateKcalFromAI(nome, GROQ_KEY);
-        if (aiKcal && aiKcal > 0) {
-          finalKcal = aiKcal;
-        } else if (estimatedKcal > 0) {
-          finalKcal = estimatedKcal;
-        } else {
-          finalKcal = 150; // fallback
-        }
-      }
-
-      setExtra(prev => [...prev, {
-        id: genId(),
-        nome,
-        kcal: Math.round(finalKcal),
-        mangiato: true
-      }]);
-
-      setExtraNome("");
-      setExtraKcal("");
-      setShowAddExtra(false);
-    } catch (e) {
-      console.error('addExtra error', e);
-      setExtraNome("");
-      setExtraKcal("");
-      setShowAddExtra(false);
-    } finally {
-      setExtraEstimating(false);
-    }
-  };
-
-
-
-  // ─── Calcoli kcal ─────────────────────────────────────
-  // Target = kcal del pasto selezionato per ogni gruppo
-  const totPreviste = useMemo(() =>
-    pastiGroups.reduce((a, group) => {
-      const sel = getSelItem(group);
-      return a + sel.pasto.alimenti.reduce((b, al) => b + (+al.kcal || 0), 0);
-    }, 0),
-    [pastiGroups, selectedAlts]
-  );
-
-  const totConsumatePiano = useMemo(() =>
-    pastiGroups.reduce((a, group) => {
-      const sel = getSelItem(group);
-      return a + sel.pasto.alimenti.reduce((b, al, ai) =>
-        b + (mangiato[`${sel.idx}_${ai}`] ? (+al.kcal || 0) : 0), 0
-      );
-    }, 0),
-    [pastiGroups, selectedAlts, mangiato]
-  );
-
-  const totConsumateExtra = extra.filter(e => e.mangiato).reduce((a, e) => a + (+e.kcal || 0), 0);
-  const totConsumate = totConsumatePiano + totConsumateExtra;
-  const delta = totConsumate - totPreviste;
-  const percTarget = totPreviste > 0 ? Math.min(120, Math.round(totConsumate / totPreviste * 100)) : 0;
-
-  const balanceColor = totPreviste === 0 ? 'var(--acc)'
-    : delta > 200 ? 'var(--dan)'
-      : delta > 0 ? '#FF9500'
-        : delta > -200 ? 'var(--ok)'
-          : 'var(--acc)';
-
-  const balanceLabel = totPreviste === 0
-    ? `${totConsumate} kcal totali`
-    : delta > 200 ? `+${delta} kcal sopra il target ⚠️`
-      : delta > 0 ? `+${delta} kcal — leggermente sopra`
-        : delta === 0 ? `In target perfetto ✓`
-          : delta > -200 ? `${delta} kcal — leggermente sotto`
-            : `${delta} kcal sotto il target`;
-
-  const daysWithLog = useMemo(() => {
-    const s = new Set();
-    logDieta.filter(l => l.data === todayIso && l.pianoId === selectedPianoId).forEach(l => s.add(l.giornoNumero));
-    return s;
-  }, [logDieta, todayIso, selectedPianoId]);
-
-  const handleSave = async () => {
-    if (!piano) return;
-    if (existingLog) await onDelete(existingLog.id);
-    const log = {
-      id: genId(), data: todayIso, pianoId: piano.id, pianoNome: piano.nome,
-      giornoNumero: selectedDay, totKcalPreviste: totPreviste,
-      totKcalConsumate: totConsumate, extra, selectedAlts,
-      pastiLog: pastiGiorno.map((p, pi) => ({
-        nome: p.nome,
-        alimenti: p.alimenti.map((al, ai) => ({ ...al, mangiato: !!mangiato[`${pi}_${ai}`] }))
-      }))
+  const handleSalva = async () => {
+    const pastiSelezionati = pastiPiano.map((p, i) => ({ ...p, checked: !!pastiCheck[i] })).filter(p => p.checked);
+    if (pastiSelezionati.length === 0) { alert("Seleziona almeno un pasto"); return; }
+    setSaving(true);
+    const entry = {
+      id: genId(),
+      dataLocale: selectedDay,
+      data: new Date().toISOString(),
+      pianoId: piano?.id || "",
+      pianoNome: piano?.nome || "",
+      pastiLog: pastiSelezionati.map(p => ({ nome: p.nome, kcal: p.kcal || 0, orario: p.orario || "" })),
+      kcalTotale: pastiSelezionati.reduce((a, p) => a + (p.kcal || 0), 0),
     };
-    await onAdd(log);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    await onAdd(entry);
+    setShowForm(false);
+    setSaving(false);
   };
 
   return (
-    <>
-      <div className="content fi">
-        <button className="bb" onClick={onBack}><IcChevL /> Indietro</button>
-        <h1 className="pt" style={{ marginBottom: 6 }}>TRACKING<br />DIETA</h1>
-        <p className="sub" style={{ marginBottom: 16 }}>
-          {new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })}
+    <div className="content fi">
+      <button className="bb" onClick={onBack}><IcChevL /> Dieta</button>
+      <div style={{ marginBottom: 16 }}>
+        <h1 className="pt">LOG<br />ALIMENTARE</h1>
+        <p className="sub" style={{ marginTop: 4, fontSize: 13, color: "var(--acc)", fontWeight: 700, textTransform: "capitalize" }}>
+          {fmtDateLabel(selectedDay)}
         </p>
+      </div>
 
-        {piani.length === 0 ? (
-          <div className="emp"><div className="emp-ic">🍎</div><div className="emp-t">Nessun piano creato</div></div>
-        ) : (
-          <>
-            {piani.length > 1 && (
-              <div className="ig">
-                <label className="lbl">Piano</label>
-                <select className="inp" value={selectedPianoId} onChange={e => {
-                  setSelectedPianoId(e.target.value); setMangiato({}); setExtra([]); setSelectedAlts({});
-                }}>
-                  {piani.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-                </select>
-              </div>
-            )}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".09em", textTransform: "uppercase", color: "var(--dim)", marginBottom: 8 }}>SELEZIONA GIORNO</div>
+        <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 6 }}>
+          {ultimi14.map(day => {
+            const hasLog = logDieta.some(entry => {
+              const campi = [entry.dataLocale, entry.data, entry.giorno, entry.created_at];
+              for (const raw of campi) {
+                if (!raw) continue;
+                if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) { if (raw === day) return true; continue; }
+                try { if (localDateStr(raw) === day) return true; } catch (_) {}
+              }
+              return false;
+            });
+            const isToday = day === oggiStr;
+            const isSelected = day === selectedDay;
+            const d = new Date(day + "T12:00:00");
+            const dayNum = d.getDate();
+            const dayName = d.toLocaleDateString("it-IT", { weekday: "short" }).slice(0, 3).toUpperCase();
+            return (
+              <button key={day} onClick={() => { setSelectedDay(day); setShowForm(false); }} style={{
+                flexShrink: 0, minWidth: 48, padding: "8px 6px", borderRadius: 10,
+                border: `2px solid ${isSelected ? "var(--acc)" : hasLog ? "rgba(48,209,88,0.5)" : "var(--bdr)"}`,
+                background: isSelected ? "var(--acc2)" : hasLog ? "rgba(48,209,88,0.07)" : "none",
+                color: isSelected ? "var(--acc)" : hasLog ? "var(--ok)" : isToday ? "var(--txt)" : "var(--mut)",
+                cursor: "pointer", textAlign: "center", fontFamily: "'Barlow',sans-serif", fontWeight: 700, transition: "all .15s"
+              }}>
+                <div style={{ fontSize: 9, letterSpacing: ".06em" }}>{dayName}</div>
+                <div style={{ fontSize: 18, fontFamily: "'Bebas Neue',cursive", lineHeight: 1.2, letterSpacing: ".05em" }}>{dayNum}</div>
+                {isToday && <div style={{ fontSize: 7, letterSpacing: ".05em", marginTop: 1 }}>OGGI</div>}
+                {hasLog && !isSelected && <div style={{ width: 4, height: 4, borderRadius: "50%", background: "var(--ok)", margin: "3px auto 0" }} />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
-            <div className="st">GIORNO</div>
-            <div className="day-pill">
-              {[1, 2, 3, 4, 5, 6, 7].map(d => (
-                <button key={d}
-                  className={`dpb${selectedDay === d ? " on" : ""}${daysWithLog.has(d) && selectedDay !== d ? " log" : ""}`}
-                  onClick={() => { setSelectedDay(d); setMangiato({}); setExtra([]); setSelectedAlts({}); }}>
-                  <div>{GIORNI_SHORT[d]}</div>
-                  <div style={{ fontSize: 8, marginTop: 2 }}>G{d}</div>
-                </button>
-              ))}
-            </div>
-
-            {/* ─── Box kcal ─── */}
-            <div style={{
-              background: 'var(--card)', border: `2px solid ${balanceColor}`,
-              borderRadius: 14, padding: 16, marginBottom: 16, transition: 'border-color .3s'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4 }}>
-                    Calorie giornata
+      {logDelGiorno.length > 0 && (
+        <>
+          <div className="st">PASTI LOGGATI</div>
+          {logDelGiorno.map(entry => {
+            const pasti = entry.pastiLog || entry.pasti || [];
+            const kcal = entry.kcalTotale || entry.kcal || pasti.reduce((a, p) => a + (p.kcal || 0), 0);
+            return (
+              <div key={entry.id} className="card" style={{ marginBottom: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>{entry.pianoNome || "Log"}</div>
+                    <div style={{ fontSize: 11, color: "var(--dim)" }}>
+                      {entry.data ? new Date(entry.data).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) : ""}
+                    </div>
                   </div>
-                  <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 42, color: balanceColor, lineHeight: 1, transition: 'color .3s' }}>
-                    {totConsumate}
-                    <span style={{ fontSize: 16, color: 'var(--dim)', fontFamily: "'Barlow',sans-serif", fontWeight: 400, marginLeft: 6 }}>kcal</span>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, color: "var(--ok)", letterSpacing: ".05em" }}>
+                      {kcal > 0 ? `${Math.round(kcal)} kcal` : ""}
+                    </div>
+                    <button className="bico d" onClick={() => { if (window.confirm("Eliminare questo log?")) onDelete(entry.id); }}><IcTrash /></button>
                   </div>
-                  {totPreviste > 0 && (
-                    <div style={{ fontSize: 12, color: 'var(--dim)', marginTop: 4 }}>target: {totPreviste} kcal</div>
-                  )}
                 </div>
-                {totPreviste > 0 && (
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 28, color: balanceColor }}>{percTarget}%</div>
-                    <div style={{ fontSize: 10, color: 'var(--dim)' }}>del target</div>
+                {pasti.length > 0 && (
+                  <div style={{ borderTop: "1px solid var(--bdr)", paddingTop: 8 }}>
+                    {pasti.map((p, i) => (
+                      <div key={i} className="frow">
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 16 }}>🍽</span>
+                          <span style={{ fontSize: 13, fontWeight: 600 }}>{p.nome}</span>
+                        </div>
+                        <span style={{ fontSize: 12, color: "var(--ok)", fontWeight: 700 }}>{p.kcal ? `${p.kcal} kcal` : ""}</span>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
+            );
+          })}
+        </>
+      )}
 
-              {totPreviste > 0 && (
-                <div style={{ height: 6, background: 'var(--bdr)', borderRadius: 3, marginBottom: 8, position: 'relative' }}>
-                  <div style={{
-                    height: '100%', borderRadius: 3, transition: 'width .4s, background .3s',
-                    width: `${Math.min(100, percTarget)}%`,
-                    background: percTarget > 110 ? 'var(--dan)' : percTarget > 100 ? '#FF9500' : '#30D158'
-                  }} />
-                  <div style={{ position: 'absolute', top: -4, right: 0, width: 2, height: 14, background: 'var(--dim)', borderRadius: 1 }} />
-                </div>
-              )}
+      {!showForm && (
+        <button className="btn btn-p btn-full" style={{ marginTop: 8, marginBottom: 16 }} onClick={() => setShowForm(true)}>
+          <IcPlus /> AGGIUNGI PASTI — {selectedDay === oggiStr ? "OGGI" : fmtDateShortLabel(selectedDay).toUpperCase()}
+        </button>
+      )}
 
-              <div style={{ fontSize: 12, fontWeight: 700, color: balanceColor }}>{balanceLabel}</div>
-
-              {totConsumateExtra > 0 && (
-                <div style={{ display: 'flex', gap: 16, marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--bdr)' }}>
-                  <div style={{ fontSize: 11, color: 'var(--dim)' }}>Piano: <b style={{ color: 'var(--txt)' }}>{totConsumatePiano} kcal</b></div>
-                  <div style={{ fontSize: 11, color: 'var(--dim)' }}>Extra: <b style={{ color: '#FF9500' }}>{totConsumateExtra} kcal</b></div>
-                </div>
-              )}
+      {showForm && (
+        <div className="card" style={{ marginBottom: 16, border: "1px solid var(--acc)" }}>
+          <div style={{ background: "var(--acc2)", borderRadius: 8, padding: "10px 14px", marginBottom: 14 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--acc)", marginBottom: 2 }}>
+              📅 STAI REGISTRANDO I PASTI DI
             </div>
-
-            {/* ─── Pasti ─── */}
-            {pastiGroups.length === 0 ? (
-              <div className="emp" style={{ padding: "24px 0" }}>
-                <div style={{ fontSize: 13, color: "var(--dim)" }}>Nessun pasto pianificato per {GIORNI_LABEL[selectedDay]}</div>
-              </div>
-            ) : (
-              <>
-                <div className="st" style={{ marginBottom: 10 }}>PASTI — {GIORNI_LABEL[selectedDay].toUpperCase()}</div>
-
-                {pastiGroups.map((group, gi) => {
-                  const selItem = getSelItem(group);
-                  const { pasto, idx: pi } = selItem;
-                  const pastoKcal = pasto.alimenti.reduce((a, al) => a + (+al.kcal || 0), 0);
-                  const pastoEaten = pasto.alimenti.reduce((a, al, ai) =>
-                    a + (mangiato[`${pi}_${ai}`] ? (+al.kcal || 0) : 0), 0
-                  );
-                  const tuttiMangiati = pasto.alimenti.length > 0
-                    && pasto.alimenti.every((_, ai) => mangiato[`${pi}_${ai}`]);
-                  const nessuno = pasto.alimenti.length > 0
-                    && pasto.alimenti.every((_, ai) => !mangiato[`${pi}_${ai}`]);
-
-                  return (
-                    <div key={gi} style={{
-                      background: 'var(--sur)',
-                      border: `1px solid ${tuttiMangiati ? '#30D158' : nessuno ? 'rgba(255,59,48,.35)' : 'var(--bdr)'}`,
-                      borderRadius: 10, padding: 12, marginBottom: 12, transition: 'border-color .2s'
-                    }}>
-                      {/* Header */}
-                      <div style={{
-                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--bdr)'
-                      }}>
-                        <div style={{
-                          fontFamily: "'Bebas Neue',cursive", fontSize: 18, letterSpacing: '.05em',
-                          color: tuttiMangiati ? '#30D158' : nessuno ? 'var(--dan)' : 'var(--txt)'
-                        }}>
-                          {pasto.nome} {tuttiMangiati ? '✓' : nessuno && group.type === 'single' ? '✗' : ''}
-                        </div>
-                        <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 15, color: 'var(--acc)' }}>
-                          {pastoEaten > 0 ? `${pastoEaten} / ` : ''}{pastoKcal} kcal
-                        </div>
-                      </div>
-
-                      {/* Pill selezione alternativa */}
-                      {group.type === 'alternative' && (
-                        <div style={{ marginBottom: 10 }}>
-                          <div style={{ fontSize: 10, fontWeight: 700, color: '#FF9500', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 6 }}>
-                            ⇄ Quale hai mangiato oggi?
-                          </div>
-                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                            {group.items.map(({ pasto: p }, altI) => {
-                              const isSelected = p.id === selItem.pasto.id;
-                              const kc = p.alimenti.reduce((a, al) => a + (+al.kcal || 0), 0);
-                              return (
-                                <button key={p.id} onClick={() => selectAlt(group.groupId, p.id)}
-                                  style={{
-                                    padding: '6px 14px', borderRadius: 20, border: 'none',
-                                    cursor: 'pointer', fontSize: 12, fontWeight: 700,
-                                    fontFamily: "'Barlow',sans-serif",
-                                    background: isSelected ? '#FF9500' : 'var(--bdr)',
-                                    color: isSelected ? '#fff' : 'var(--dim)',
-                                    transition: 'all .15s'
-                                  }}>
-                                  {altI === 0 ? 'A' : 'B'} · {p.nome}
-                                  <span style={{ fontSize: 10, opacity: .8, marginLeft: 5 }}>{kc} kcal</span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Alimenti del pasto selezionato */}
-                      {pasto.alimenti.map((al, ai) => {
-                        const eaten = !!mangiato[`${pi}_${ai}`];
-                        return (
-                          <div key={al.id || ai} className="frow">
-                            <FoodThumb nome={al.nome} />
-                            <div style={{ flex: 1, opacity: eaten ? .45 : 1, transition: 'opacity .15s', minWidth: 0 }}>
-                              <div style={{ fontWeight: 600, fontSize: 13, textDecoration: eaten ? 'line-through' : 'none' }}>{al.nome}</div>
-                              <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 1 }}>{al.grammi}g</div>
-                            </div>
-                            <div style={{
-                              fontFamily: "'Bebas Neue',cursive", fontSize: 16,
-                              color: eaten ? 'var(--dim)' : 'var(--acc)', flexShrink: 0,
-                              textDecoration: eaten ? 'line-through' : 'none'
-                            }}>
-                              {al.kcal} kcal
-                            </div>
-                            <button className={`fck${eaten ? ' ok' : ''}`} onClick={() => toggleFood(pi, ai)}>
-                              {eaten && <Ico d="M20 6L9 17l-5-5" size={12} stroke="#fff" sw={2.5} />}
-                            </button>
-                          </div>
-                        );
-                      })}
-
-                      {pasto.alimenti.length === 0 && (
-                        <div style={{ fontSize: 12, color: 'var(--mut)', fontStyle: 'italic', padding: '4px 0' }}>
-                          Nessun alimento configurato
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </>
-            )}
-
-            {/* ─── Extra ─── */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, marginTop: 4 }}>
-              <div className="st" style={{ margin: 0 }}>EXTRA / FUORI PIANO</div>
-              <button className="btn btn-s" style={{ fontSize: 11, padding: '7px 10px', gap: 4 }}
-                onClick={() => setShowAddExtra(v => !v)}>
-                <IcPlus /> AGGIUNGI
-              </button>
+            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 20, color: "var(--txt)", letterSpacing: ".05em", textTransform: "capitalize" }}>
+              {fmtDateLabel(selectedDay)}
             </div>
-
-            {showAddExtra && (
-              <div style={{ background: 'var(--sur)', border: '1px solid var(--acc)', borderRadius: 10, padding: 14, marginBottom: 12 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px', gap: 8, marginBottom: 10 }}>
-                  <div>
-                    <label className="lbl">Alimento / Bevanda</label>
-                    <input className="inp" placeholder="es. Gin Tonic, Tiramisù…" value={extraNome}
-                      onChange={e => setExtraNome(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && addExtra()} />
-                    {extraNome.trim() && !extraKcal && (
-                      <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 6 }}>
-                        Kcal stimate: {estimateKcalFromName(extraNome.trim()) || '150'} kcal
-                      </div>
-                    )}
+          </div>
+          {piani.length > 1 && (
+            <div className="ig">
+              <label className="lbl">Piano alimentare</label>
+              <select className="inp" value={selectedPiano} onChange={e => setSelectedPiano(e.target.value)}>
+                {piani.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+              </select>
+            </div>
+          )}
+          {pastiPiano.length === 0 ? (
+            <div style={{ fontSize: 13, color: "var(--mut)", padding: "8px 0" }}>Nessun pasto nel piano. Aggiungili prima dalla sezione Piani.</div>
+          ) : (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".09em", textTransform: "uppercase", color: "var(--dim)", marginBottom: 8 }}>SELEZIONA I PASTI CONSUMATI</div>
+              {pastiPiano.map((p, i) => (
+                <div key={i} className="frow" style={{ cursor: "pointer" }} onClick={() => setPastiCheck(prev => ({ ...prev, [i]: !prev[i] }))}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <button className={`fck${pastiCheck[i] ? " ok" : ""}`}>{pastiCheck[i] && <IcCheck />}</button>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 600 }}>{p.nome}</div>
+                      {p.orario && <div style={{ fontSize: 11, color: "var(--mut)" }}>{p.orario}</div>}
+                    </div>
                   </div>
-                  <div>
-                    <label className="lbl">Kcal (opzionale)</label>
-                    <input className="inp" type="number" min="0" placeholder="150" value={extraKcal}
-                      onChange={e => setExtraKcal(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && addExtra()} />
+                  <div style={{ textAlign: "right" }}>
+                    {p.kcal > 0 && <div style={{ fontSize: 13, fontWeight: 700, color: pastiCheck[i] ? "var(--ok)" : "var(--dim)" }}>{p.kcal} kcal</div>}
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8, flexDirection: 'column' }}>
-                  {extraEstimating && (
-                    <div style={{ fontSize: 12, color: 'var(--acc)', marginBottom: 6 }}>
-                      Calcolo kcal AI in corso...
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="btn btn-s" style={{ flex: 1, fontSize: 12 }}
-                      onClick={() => { setShowAddExtra(false); setExtraNome(''); setExtraKcal(''); }}>
-                      ANNULLA
-                    </button>
-                    <button className="btn btn-p" style={{ flex: 2, fontSize: 12, background: '#FF9500' }}
-                      onClick={addExtra} disabled={!extraNome.trim() || extraEstimating}>
-                      <IcPlus /> AGGIUNGI
-                    </button>
-                  </div>
-                </div>
+              ))}
+            </>
+          )}
+          {kcalForm > 0 && (
+            <div className="kcal-sum" style={{ marginTop: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ok)" }}>Totale selezionati</span>
+                <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 26, color: "var(--ok)", letterSpacing: ".05em" }}>{kcalForm} kcal</span>
               </div>
-            )}
-
-            {extra.length > 0 && (
-              <div style={{ background: 'var(--sur)', border: '1px solid var(--bdr)', borderRadius: 10, padding: 12, marginBottom: 12 }}>
-                {extra.map(e => (
-                  <div key={e.id} className="frow">
-                    <div style={{
-                      width: 44, height: 44, borderRadius: 8,
-                      background: 'rgba(255,149,0,.12)', border: '1px solid rgba(255,149,0,.3)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 20, flexShrink: 0
-                    }}>🍹</div>
-                    <div style={{ flex: 1, opacity: e.mangiato ? .45 : 1, transition: 'opacity .15s', minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13, textDecoration: e.mangiato ? 'line-through' : 'none' }}>{e.nome}</div>
-                      <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 1 }}>extra · fuori piano</div>
-                    </div>
-                    <div style={{
-                      fontFamily: "'Bebas Neue',cursive", fontSize: 16,
-                      color: e.mangiato ? 'var(--dim)' : '#FF9500', flexShrink: 0,
-                      textDecoration: e.mangiato ? 'line-through' : 'none'
-                    }}>
-                      {e.kcal} kcal
-                    </div>
-                    <button className={`fck${e.mangiato ? ' ok' : ''}`}
-                      style={{ borderColor: e.mangiato ? '#30D158' : 'rgba(255,149,0,.5)' }}
-                      onClick={() => toggleExtra(e.id)}>
-                      {e.mangiato && <Ico d="M20 6L9 17l-5-5" size={12} stroke="#fff" sw={2.5} />}
-                    </button>
-                    <button className="bico d" style={{ padding: 5, border: 'none', marginLeft: 4 }} onClick={() => delExtra(e.id)}>
-                      <IcTrash size={13} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {extra.length === 0 && !showAddExtra && (
-              <div style={{ fontSize: 12, color: 'var(--mut)', fontStyle: 'italic', marginBottom: 16, textAlign: 'center' }}>
-                Hai mangiato qualcosa fuori piano? Aggiungilo sopra.
-              </div>
-            )}
-
-            <button className="btn btn-p btn-full"
-              style={{ background: saved ? '#059669' : '#30D158', marginTop: 8, transition: 'background .3s' }}
-              onClick={handleSave}>
-              {saved
-                ? <><Ico d="M20 6L9 17l-5-5" size={16} stroke="#fff" sw={2.5} /> SALVATO!</>
-                : <><IcApple /> SALVA LOG GIORNATA</>}
-            </button>
-            {existingLog && (
-              <div style={{ textAlign: 'center', fontSize: 11, color: '#30D158', marginTop: 8 }}>
-                ✓ Log già salvato — il salvataggio sovrascriverà il precedente
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-    </>
+            </div>
+          )}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 14 }}>
+            <button className="btn btn-s" onClick={() => setShowForm(false)}>ANNULLA</button>
+            <button className="btn btn-p" disabled={saving} onClick={handleSalva}>{saving ? "..." : <><IcCheck /> SALVA</>}</button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
