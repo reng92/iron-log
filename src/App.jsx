@@ -17,6 +17,7 @@ import {
   IcFile, IcUpload, Ico
 } from "./components/Icons";
 import ChatAI from "./components/ChatAI";
+import CorsaTracker from "./components/CorsaTracker";
 
 const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL;
 const SUPABASE_KEY = process.env.REACT_APP_SUPABASE_KEY;
@@ -81,7 +82,12 @@ const db = {
   async setPiani(a) { await sb.from("piani_alimentari").delete().neq("id", "__x__"); if (a.length) await sb.from("piani_alimentari").insert(a.map(s => ({ id: s.id, data: s }))); },
   async getLogDieta() { const { data } = await sb.from("log_dieta").select("*").order("created_at", { ascending: false }); return data ? data.map(r => r.data) : []; },
   async addLogDieta(s) { await sb.from("log_dieta").insert({ id: s.id, data: s }); },
-  async delLogDieta(id) { await sb.from("log_dieta").delete().eq("id", id); }
+  async delLogDieta(id) { await sb.from("log_dieta").delete().eq("id", id); },
+
+  // -- CORSA GPS --
+  async getCorse() { const { data } = await sb.from("sessioni_corsa").select("*").order("created_at", { ascending: false }); return data ? data.map(r => r.data) : []; },
+  async addCorsa(c) { await sb.from("sessioni_corsa").insert({ id: c.id, data: c }); },
+  async delCorsa(id) { await sb.from("sessioni_corsa").delete().eq("id", id); }
 };
 
 // ─── CSV EXPORT ───────────────────────────────────────────
@@ -256,6 +262,7 @@ export default function App() {
   // -- Nuovi stati per la dieta --
   const [piani, setPiani] = useState([]);
   const [logDieta, setLogDieta] = useState([]);
+  const [corse, setCorse] = useState([]);
 
   const [subview, setSubview] = useState(null);
   const [loaded, setLoaded] = useState(false);
@@ -264,17 +271,19 @@ export default function App() {
 
   useEffect(() => {
     (async () => {
-      const [sc, ss, ps, st, pa, ld] = await Promise.all([
+      const [sc, ss, ps, st, pa, ld, co] = await Promise.all([
         db.getSchede().catch(() => []),
         db.getSessioni().catch(() => []),
         db.getPeso().catch(() => []),
         db.getSettings().catch(() => ({})),
         db.getPiani().catch(() => []),
-        db.getLogDieta().catch(() => [])
+        db.getLogDieta().catch(() => []),
+        db.getCorse().catch(() => [])
       ]);
       setSchede(sc || []); setSessioni(ss || []); setPeso(ps || []);
       setSettings({ darkMode: true, ...st });
       setPiani(pa || []); setLogDieta(ld || []);
+      setCorse(co || []);
       setLoaded(true);
     })();
   }, []);
@@ -295,6 +304,9 @@ export default function App() {
   const handleAddLogDieta = async l => { setLogDieta(prev => [l, ...prev]); await db.addLogDieta(l); };
   const handleDelLogDieta = async id => { setLogDieta(p => p.filter(x => x.id !== id)); await db.delLogDieta(id); };
   const onOpenDietaLog = () => setSubview({ type: "dieta-log", data: null });
+
+  const handleAddCorsa = async c => { setCorse(p => [c, ...p]); await db.addCorsa(c); };
+  const handleDelCorsa = async id => { setCorse(p => p.filter(x => x.id !== id)); await db.delCorsa(id); };
 
   const dark = settings.darkMode !== false;
   const cls = `app${dark ? "" : " light"}`;
@@ -383,6 +395,15 @@ export default function App() {
       />
     </div>
   );
+  if (subview?.type === "corsa") return (
+    <div className={cls}><style>{CSS}</style>
+      <CorsaTracker
+        dark={dark}
+        onBack={() => setSubview(null)}
+        onSave={handleAddCorsa}
+      />
+    </div>
+  );
   if (subview?.type === "dieta-log") return (
     <div className={cls}><style>{CSS}</style>
       <DietaLog
@@ -399,7 +420,7 @@ export default function App() {
     <div className={cls}>
       <style>{CSS}</style>
       <div className="content fi">
-        {tab === "home" && <Home schede={schede} sessioni={sessioni} peso={peso} piani={piani} dark={dark} onToggleDark={toggleDark} onStart={sc => setSubview({ type: "allenamento", data: sc })} onGoSchede={() => setTab("schede")} />}
+        {tab === "home" && <Home schede={schede} sessioni={sessioni} peso={peso} piani={piani} corse={corse} dark={dark} onToggleDark={toggleDark} onStart={sc => setSubview({ type: "allenamento", data: sc })} onGoSchede={() => setTab("schede")} onCorsa={() => setSubview({ type: "corsa" })} />}
         {tab === "schede" && <Schede schede={schede} onNew={() => setSubview({ type: "scheda-edit", data: { nome: "", giorni: [], esercizi: [] } })} onEdit={sc => setSubview({ type: "scheda-edit", data: sc })} onDelete={id => saveSchede(schede.filter(s => s.id !== id))} onStart={sc => setSubview({ type: "allenamento", data: sc })} />}
 
         {/* -- Nuova Tab Dieta -- */}
@@ -423,7 +444,7 @@ export default function App() {
 }
 
 // ─── HOME ─────────────────────────────────────────────────
-function Home({ schede, sessioni, peso, piani, dark, onToggleDark, onStart, onGoSchede }) {
+function Home({ schede, sessioni, peso, piani, corse, dark, onToggleDark, onStart, onGoSchede, onCorsa }) {
   const [pick, setPick] = useState(false);
   const totKg = sessioni.reduce((a, s) => a + s.esercizi.reduce((b, e) => b + e.serie.reduce((c, sr) => c + (sr.completata ? (+sr.kg || 0) * (+sr.reps || 0) : 0), 0), 0), 0);
   const avgMin = sessioni.length ? Math.round(sessioni.reduce((a, s) => a + (s.durata || 0), 0) / sessioni.length) : 0;
@@ -471,9 +492,12 @@ function Home({ schede, sessioni, peso, piani, dark, onToggleDark, onStart, onGo
       )}
 
       {schede.length > 0
-        ? <button className="btn btn-p btn-full" style={{ fontSize: 15, padding: "14px", marginBottom: 14 }} onClick={() => setPick(true)}><IcPlay /> INIZIA ALLENAMENTO</button>
-        : <button className="btn btn-s btn-full" style={{ marginBottom: 14 }} onClick={onGoSchede}><IcPlus /> CREA LA TUA PRIMA SCHEDA</button>
+        ? <button className="btn btn-p btn-full" style={{ fontSize: 15, padding: "14px", marginBottom: 10 }} onClick={() => setPick(true)}><IcPlay /> INIZIA ALLENAMENTO</button>
+        : <button className="btn btn-s btn-full" style={{ marginBottom: 10 }} onClick={onGoSchede}><IcPlus /> CREA LA TUA PRIMA SCHEDA</button>
       }
+      <button className="btn btn-s btn-full" style={{ marginBottom: 14, borderColor: "var(--ok)", color: "var(--ok)" }} onClick={onCorsa}>
+        🏃 AVVIA CORSA / CAMMINATA GPS
+      </button>
 
       {records.length > 0 && (
         <>
