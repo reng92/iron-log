@@ -426,7 +426,7 @@ export default function App() {
         {/* -- Nuova Tab Dieta -- */}
         {tab === "dieta" && <PianiAlimentari piani={piani} logDieta={logDieta} onNew={() => setSubview({ type: "piano-edit", data: { nome: "", durataGiorni: 56, pasti: [] } })} onEdit={p => setSubview({ type: "piano-edit", data: p })} onDelete={id => savePiani(piani.filter(p => p.id !== id))} onLog={() => setSubview({ type: "dieta-log", data: null })} />}
 
-        {tab === "storico" && <Storico sessioni={sessioni} onDetail={s => setSubview({ type: "sessione", data: s })} onDelete={delSessione} />}
+        {tab === "storico" && <Storico sessioni={sessioni} corse={corse} onDetail={s => setSubview({ type: "sessione", data: s })} onDelete={delSessione} onDeleteCorsa={handleDelCorsa} />}
         {tab === "stats" && <Stats sessioni={sessioni} />}
         {tab === "peso" && <Peso peso={peso} onAdd={addPeso} onDelete={delPeso} />}
         {tab === "profilo" && <Profilo settings={settings} peso={peso} piani={piani} logDieta={logDieta} onSave={saveSettings} onOpenDietaLog={onOpenDietaLog} />}
@@ -991,35 +991,209 @@ function Allenamento({ scheda, sessioni, onComplete, onBack }) {
 }
 
 // ─── STORICO ──────────────────────────────────────────────
-function Storico({ sessioni, onDetail, onDelete }) {
+function Storico({ sessioni, corse, onDetail, onDelete, onDeleteCorsa }) {
+  const [stab, setStab] = useState("palestra");
+
   return (
     <>
-      <div style={{ paddingTop: 20, paddingBottom: 16 }}>
+      <div style={{ paddingTop: 20, paddingBottom: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
-          <div><h1 className="pt">STORICO<br />LOG</h1><p className="sub">{sessioni.length} sessioni</p></div>
-          {sessioni.length > 0 && <button className="bico" onClick={() => exportCSV(sessioni)} title="Esporta CSV"><IcDownload /></button>}
+          <div>
+            <h1 className="pt">STORICO<br />LOG</h1>
+            <p className="sub">
+              {stab === "palestra" ? `${sessioni.length} sessioni palestra` : `${(corse || []).length} uscite`}
+            </p>
+          </div>
+          {stab === "palestra" && sessioni.length > 0 && (
+            <button className="bico" onClick={() => exportCSV(sessioni)} title="Esporta CSV">
+              <IcDownload />
+            </button>
+          )}
         </div>
       </div>
-      {sessioni.length === 0 ? (
-        <div className="emp"><div className="emp-ic">📊</div><div className="emp-t">Nessuna sessione</div><p style={{ fontSize: 13 }}>Completa un allenamento</p></div>
-      ) : sessioni.map(s => {
-        const tot = s.esercizi.reduce((a, e) => a + e.serie.filter(sr => sr.completata).length, 0);
-        const vol = s.esercizi.reduce((a, e) => a + e.serie.reduce((b, sr) => b + (sr.completata ? (+sr.kg || 0) * (+sr.reps || 0) : 0), 0), 0);
+
+      <div className="stab-row">
+        <button className={`stab${stab === "palestra" ? " on" : ""}`} onClick={() => setStab("palestra")}>🏋️ PALESTRA</button>
+        <button className={`stab${stab === "corsa" ? " on" : ""}`} onClick={() => setStab("corsa")}>🏃 CORSA / CAMMINATA</button>
+      </div>
+
+      {stab === "palestra" && (
+        sessioni.length === 0 ? (
+          <div className="emp">
+            <div className="emp-ic">📊</div>
+            <div className="emp-t">Nessuna sessione</div>
+            <p style={{ fontSize: 13 }}>Completa un allenamento</p>
+          </div>
+        ) : sessioni.map(s => {
+          const tot = s.esercizi.reduce((a, e) => a + e.serie.filter(sr => sr.completata).length, 0);
+          const vol = s.esercizi.reduce((a, e) => a + e.serie.reduce((b, sr) => b + (sr.completata ? (+sr.kg || 0) * (+sr.reps || 0) : 0), 0), 0);
+          return (
+            <div key={s.id} className="sc" onClick={() => onDetail(s)}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div>
+                  <div className="sd">{s.schedaNome}</div>
+                  <div className="sdn">{fmtDate(s.data)}</div>
+                </div>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <div className="tag tag-a">{s.durata || 0}min</div>
+                  <button className="bico d" onClick={e => { e.stopPropagation(); if (window.confirm("Eliminare?")) onDelete(s.id); }}><IcTrash /></button>
+                </div>
+              </div>
+              <div className="ss">
+                <div className="ssv"><b>{s.esercizi.length}</b>Eserc.</div>
+                <div className="ssv"><b>{tot}</b>Serie OK</div>
+                <div className="ssv"><b>{Math.round(vol)}</b>Vol kg×r</div>
+              </div>
+              {s.note && <div style={{ fontSize: 12, color: "var(--dim)", marginBottom: 8, fontStyle: "italic", borderTop: "1px solid var(--bdr)", paddingTop: 8 }}>{s.note}</div>}
+            </div>
+          );
+        })
+      )}
+
+      {stab === "corsa" && (
+        <StoricoCorsa corse={corse || []} onDelete={onDeleteCorsa} />
+      )}
+    </>
+  );
+}
+
+function StoricoCorsa({ corse, onDelete }) {
+  const [sel, setSel] = useState(null);
+
+  function fmtPaceDisplay(distKm, durSec) {
+    if (!distKm || distKm < 0.01 || !durSec) return "--:--";
+    const secPerKm = durSec / distKm;
+    const m = Math.floor(secPerKm / 60);
+    const s = Math.floor(secPerKm % 60);
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
+
+  function fmtDurSec(sec) {
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    if (h > 0) return `${h}h ${m}′`;
+    return `${m}′ ${String(s).padStart(2, "0")}″`;
+  }
+
+  const totDist = corse.reduce((a, c) => a + (c.distanza || 0), 0);
+  const totKcal = corse.reduce((a, c) => a + (c.calorie || 0), 0);
+  const bestDist = corse.length ? Math.max(...corse.map(c => c.distanza || 0)) : 0;
+
+  const chartData = useMemo(() => {
+    const days = {};
+    corse.forEach(c => {
+      const d = c.data ? c.data.slice(0, 10) : "";
+      if (d) days[d] = (days[d] || 0) + (c.distanza || 0);
+    });
+    return Array.from({ length: 10 }, (_, i) => {
+      const dt = new Date();
+      dt.setDate(dt.getDate() - (9 - i));
+      const key = dt.toISOString().slice(0, 10);
+      return { y: Math.round((days[key] || 0) * 100) / 100, label: dt.toLocaleDateString("it-IT", { day: "numeric", month: "numeric" }) };
+    });
+  }, [corse]);
+
+  if (corse.length === 0) {
+    return (
+      <div className="emp">
+        <div className="emp-ic">🏃</div>
+        <div className="emp-t">Nessuna uscita</div>
+        <p style={{ fontSize: 13 }}>Avvia una corsa o camminata dalla Home</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="hg" style={{ marginBottom: 14 }}>
+        {[
+          [`${totDist.toFixed(1)}km`, "Distanza tot."],
+          [corse.length, "Uscite"],
+          [`${bestDist.toFixed(2)}km`, "Miglior uscita"],
+          [`${totKcal}kcal`, "Calorie tot."],
+        ].map(([v, l]) => (
+          <div key={l} className="hsc">
+            <div className="hsv" style={{ fontSize: 24 }}>{v}</div>
+            <div className="hsl">{l}</div>
+          </div>
+        ))}
+      </div>
+
+      {corse.length >= 2 && (
+        <>
+          <div className="st">DISTANZA ULTIME 10 SESSIONI (km)</div>
+          <div className="chart-wrap" style={{ marginBottom: 16 }}>
+            <LineChart data={chartData} color="var(--ok)" height={100} />
+          </div>
+        </>
+      )}
+
+      <div className="st">USCITE</div>
+      {[...corse].sort((a, b) => (b.data || "").localeCompare(a.data || "")).map(c => {
+        const isOpen = sel === c.id;
+        const distKm = c.distanza || 0;
+        const tipoIcon = c.tipo === "corsa" ? "🏃" : "🚶";
         return (
-          <div key={s.id} className="sc" onClick={() => onDetail(s)}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div><div className="sd">{s.schedaNome}</div><div className="sdn">{fmtDate(s.data)}</div></div>
-              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                <div className="tag tag-a">{s.durata || 0}min</div>
-                <button className="bico d" onClick={e => { e.stopPropagation(); if (window.confirm("Eliminare?")) onDelete(s.id); }}><IcTrash /></button>
+          <div key={c.id} className="card" style={{ marginBottom: 10, padding: 0, overflow: "hidden" }}>
+            <div
+              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", cursor: "pointer" }}
+              onClick={() => setSel(isOpen ? null : c.id)}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{
+                  width: 42, height: 42, borderRadius: 10,
+                  background: c.tipo === "corsa" ? "var(--acc2)" : "rgba(48,209,88,0.12)",
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0
+                }}>
+                  {tipoIcon}
+                </div>
+                <div>
+                  <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 18, letterSpacing: ".05em" }}>
+                    {c.tipo === "corsa" ? "CORSA" : "CAMMINATA"} — {distKm >= 1 ? `${distKm.toFixed(2)}km` : `${Math.round(distKm * 1000)}m`}
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--dim)" }}>{c.data ? fmtDate(c.data) : ""}</div>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <div className="tag tag-a">{fmtDurSec(c.durata || 0)}</div>
+                <span style={{ color: "var(--mut)", fontSize: 16 }}>{isOpen ? "▲" : "▼"}</span>
               </div>
             </div>
-            <div className="ss">
-              <div className="ssv"><b>{s.esercizi.length}</b>Eserc.</div>
-              <div className="ssv"><b>{tot}</b>Serie OK</div>
-              <div className="ssv"><b>{Math.round(vol)}</b>Vol kg×r</div>
-            </div>
-            {s.note && <div style={{ fontSize: 12, color: "var(--dim)", marginBottom: 8, fontStyle: "italic", borderTop: "1px solid var(--bdr)", paddingTop: 8 }}>{s.note}</div>}
+
+            {isOpen && (
+              <div style={{ borderTop: "1px solid var(--bdr)", padding: "14px 16px", background: "var(--sur)" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
+                  {[
+                    ["DISTANZA", distKm >= 1 ? `${distKm.toFixed(2)}km` : `${Math.round(distKm * 1000)}m`],
+                    ["DURATA", fmtDurSec(c.durata || 0)],
+                    ["PASSO MEDIO", fmtPaceDisplay(distKm, c.durata)],
+                    ["VELOCITÀ", distKm && c.durata ? `${(distKm / (c.durata / 3600)).toFixed(1)}km/h` : "—"],
+                    ["CALORIE", `${c.calorie || 0}kcal`],
+                    ["DISLIVELLO", `${c.dislivello || 0}m`],
+                  ].map(([label, val]) => (
+                    <div key={label} style={{ textAlign: "center", background: "var(--card)", borderRadius: 8, padding: "8px 4px", border: "1px solid var(--bdr)" }}>
+                      <div style={{ fontSize: 8, color: "var(--mut)", fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", marginBottom: 3 }}>{label}</div>
+                      <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 17, color: "var(--acc)", letterSpacing: ".04em", lineHeight: 1 }}>{val}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {c.nota && (
+                  <div style={{ fontSize: 12, color: "var(--dim)", fontStyle: "italic", marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid var(--bdr)" }}>
+                    {c.nota}
+                  </div>
+                )}
+
+                <button
+                  className="btn btn-full"
+                  style={{ background: "var(--dan2)", color: "var(--dan)", border: "1px solid var(--dan)", fontSize: 12 }}
+                  onClick={() => { if (window.confirm("Eliminare questa uscita?")) { onDelete(c.id); setSel(null); } }}
+                >
+                  <IcTrash /> ELIMINA USCITA
+                </button>
+              </div>
+            )}
           </div>
         );
       })}
@@ -1915,63 +2089,247 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog }) {
 
 // ─── DIETA: PIANI ALIMENTARI ──────────────────────────────
 function PianiAlimentari({ piani, logDieta, onNew, onEdit, onDelete, onLog }) {
+  const [stab, setStab] = useState("piani");
+
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", paddingTop: 20, paddingBottom: 16 }}>
-        <div><h1 className="pt">I MIEI<br />PIANI</h1><p className="sub">{piani.length} piani alimentari</p></div>
-        <button className="btn btn-p" onClick={onNew}><IcPlus /> NUOVO</button>
+      <div style={{ paddingTop: 20, paddingBottom: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+          <div>
+            <h1 className="pt">DIETA &<br />NUTRIZIONE</h1>
+          </div>
+          {stab === "piani" && (
+            <button className="btn btn-p" onClick={onNew}><IcPlus /> NUOVO</button>
+          )}
+        </div>
       </div>
 
-      {piani.length > 0 && (
-        <button className="btn btn-p btn-full" style={{ fontSize: 15, padding: "14px", marginBottom: 14, background: "#30D158" }} onClick={onLog}>
-          <IcApple /> TRACCIA PASTI DI OGGI
-        </button>
+      <div className="stab-row">
+        <button className={`stab${stab === "piani" ? " on" : ""}`} onClick={() => setStab("piani")}>📋 PIANI</button>
+        <button className={`stab${stab === "storico" ? " on" : ""}`} onClick={() => setStab("storico")}>📅 STORICO</button>
+      </div>
+
+      {stab === "piani" && (
+        <>
+          <button className="btn btn-p btn-full" style={{ marginBottom: 14 }} onClick={onLog}>
+            🍽 LOG PASTO DI OGGI
+          </button>
+
+          {piani.length === 0 ? (
+            <div className="emp">
+              <div className="emp-ic">🥗</div>
+              <div className="emp-t">Nessun piano</div>
+              <p style={{ fontSize: 13 }}>Crea il tuo primo piano alimentare</p>
+            </div>
+          ) : piani.map(p => (
+            <div key={p.id} className="card" style={{ marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, letterSpacing: ".05em" }}>{p.nome}</div>
+                  <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 4 }}>
+                    {p.durataGiorni || 0} giorni · {p.pasti?.length || 0} pasti/giorno
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 7 }}>
+                  <button className="bico" onClick={() => onEdit(p)}><IcEdit /></button>
+                  <button className="bico d" onClick={() => { if (window.confirm(`Eliminare "${p.nome}"?`)) onDelete(p.id); }}><IcTrash /></button>
+                </div>
+              </div>
+              {p.pasti?.length > 0 && (
+                <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {p.pasti.map((pas, i) => (
+                    <span key={i} className="tag tag-m">
+                      {pas.nome}{pas.kcal ? ` · ${pas.kcal}kcal` : ""}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </>
       )}
 
-      {piani.length === 0 ? (
-        <div className="emp">
-          <div className="emp-ic">🍎</div>
-          <div className="emp-t">Nessun piano</div>
-          <button className="btn btn-p" style={{ marginTop: 16 }} onClick={onNew}><IcPlus /> CREA PIANO</button>
-        </div>
-      ) : piani.map(p => {
-        const hasWeekly = p.giorniPasti && Object.keys(p.giorniPasti).length > 0;
-        const kcalPerGiorno = hasWeekly
-          ? [1, 2, 3, 4, 5, 6, 7].map(d => {
-            const pasti = p.giorniPasti[d] || [];
-            const seen = new Set();
-            return pasti.reduce((a, pst) => {
-              if (pst.altGroupId && seen.has(pst.altGroupId)) return a;
-              if (pst.altGroupId) seen.add(pst.altGroupId);
-              return a + pst.alimenti.reduce((b, al) => b + (+al.kcal || 0), 0);
-            }, 0);
-          })
-          : [];
-        const maxKcal = Math.max(...kcalPerGiorno, 1);
+      {stab === "storico" && (
+        <StoricoDieta logDieta={logDieta} piani={piani} />
+      )}
+    </>
+  );
+}
+
+function StoricoDieta({ logDieta, piani }) {
+  const [selDay, setSelDay] = useState(null);
+
+  const giorni = useMemo(() => {
+    const map = {};
+    logDieta.forEach(entry => {
+      const raw = entry.data || entry.created_at || "";
+      const day = raw.slice(0, 10);
+      if (!day) return;
+      if (!map[day]) map[day] = { day, entries: [], kcalTot: 0 };
+      map[day].entries.push(entry);
+      const kcal =
+        entry.kcalTotale ||
+        entry.kcal ||
+        (entry.pastiLog ? entry.pastiLog.reduce((a, p) => a + (p.kcal || 0), 0) : 0) ||
+        (entry.pasti ? entry.pasti.reduce((a, p) => a + (p.kcal || 0), 0) : 0) ||
+        0;
+      map[day].kcalTot += kcal;
+    });
+    return Object.values(map).sort((a, b) => b.day.localeCompare(a.day));
+  }, [logDieta]);
+
+  const chartData = useMemo(() => {
+    const map = {};
+    giorni.forEach(g => { map[g.day] = g.kcalTot; });
+    return Array.from({ length: 7 }, (_, i) => {
+      const dt = new Date();
+      dt.setDate(dt.getDate() - (6 - i));
+      const key = dt.toISOString().slice(0, 10);
+      return { y: map[key] || 0, label: dt.toLocaleDateString("it-IT", { day: "numeric", month: "numeric" }) };
+    });
+  }, [giorni]);
+
+  const hasChart = chartData.some(d => d.y > 0);
+  const kcalMedia = giorni.length
+    ? Math.round(giorni.slice(0, 7).reduce((a, g) => a + g.kcalTot, 0) / Math.min(giorni.length, 7))
+    : 0;
+
+  if (giorni.length === 0) {
+    return (
+      <div className="emp">
+        <div className="emp-ic">📅</div>
+        <div className="emp-t">Nessun log</div>
+        <p style={{ fontSize: 13 }}>Inizia a loggare i pasti per vedere lo storico</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="hg" style={{ marginBottom: 14 }}>
+        {[
+          [giorni.length, "Giorni loggati"],
+          [`${kcalMedia}kcal`, "Media giornaliera"],
+        ].map(([v, l]) => (
+          <div key={l} className="hsc">
+            <div className="hsv" style={{ fontSize: 26 }}>{v}</div>
+            <div className="hsl">{l}</div>
+          </div>
+        ))}
+      </div>
+
+      {hasChart && (
+        <>
+          <div className="st">KCAL ULTIMI 7 GIORNI</div>
+          <div className="chart-wrap" style={{ marginBottom: 16 }}>
+            <LineChart data={chartData} color="#30D158" height={100} />
+          </div>
+          <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 72, padding: "6px 4px", background: "var(--sur)", borderRadius: 8, border: "1px solid var(--bdr)", marginBottom: 16 }}>
+            {chartData.map((d, i) => {
+              const maxKcal = Math.max(...chartData.map(x => x.y), 1);
+              const isToday = i === 6;
+              return (
+                <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                  <div style={{ width: "100%", borderRadius: 3, background: isToday ? "var(--ok)" : d.y > 0 ? "rgba(48,209,88,0.5)" : "var(--bdr)", height: `${Math.max((d.y / maxKcal) * 48, d.y > 0 ? 4 : 0)}px`, transition: "height .3s" }} />
+                  <div style={{ fontSize: 7, color: isToday ? "var(--ok)" : "var(--mut)", fontWeight: isToday ? 700 : 400 }}>{d.label}</div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      <div className="st">DETTAGLIO GIORNALIERO</div>
+      {giorni.map(g => {
+        const isOpen = selDay === g.day;
+        const dt = new Date(g.day + "T12:00:00");
+        const dateLabel = dt.toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
+        const isToday = g.day === new Date().toISOString().slice(0, 10);
+
+        const pastiDelGiorno = [];
+        g.entries.forEach(entry => {
+          const pasti =
+            entry.pastiLog ||
+            entry.pasti ||
+            (entry.nomePasto ? [{ nome: entry.nomePasto, kcal: entry.kcal || 0 }] : []);
+          pasti.forEach(p => pastiDelGiorno.push(p));
+        });
+
+        const kcalBar = Math.min((g.kcalTot / 2500) * 100, 100);
 
         return (
-          <div key={p.id} className="card" style={{ borderLeft: "3px solid #30D158" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 24, letterSpacing: ".05em" }}>{p.nome}</div>
-                <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 5 }}>Piano settimanale · 7 giorni</div>
+          <div key={g.day} className="card" style={{ marginBottom: 10, padding: 0, overflow: "hidden", borderColor: isToday ? "var(--ok)" : "var(--bdr)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", cursor: "pointer" }} onClick={() => setSelDay(isOpen ? null : g.day)}>
+              <div>
+                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 16, letterSpacing: ".05em", color: isToday ? "var(--ok)" : "var(--txt)" }}>
+                  {isToday ? "🟢 OGGI — " : ""}{dateLabel}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+                  <div style={{ width: 100, height: 4, background: "var(--bdr)", borderRadius: 2, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${kcalBar}%`, background: isToday ? "var(--ok)" : "var(--acc)", borderRadius: 2 }} />
+                  </div>
+                  <span style={{ fontSize: 12, color: "var(--dim)", fontWeight: 700 }}>
+                    {g.kcalTot > 0 ? `${Math.round(g.kcalTot)} kcal` : "—"}
+                  </span>
+                </div>
               </div>
-              <div style={{ display: "flex", gap: 7 }}>
-                <button className="bico" onClick={() => onEdit(p)}><IcEdit /></button>
-                <button className="bico d" onClick={() => { if (window.confirm(`Eliminare "${p.nome}"?`)) onDelete(p.id); }}><IcTrash /></button>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div className="tag tag-m">{pastiDelGiorno.length || g.entries.length} pasti</div>
+                <span style={{ color: "var(--mut)", fontSize: 16 }}>{isOpen ? "▲" : "▼"}</span>
               </div>
             </div>
-            {hasWeekly && (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4, marginTop: 12 }}>
-                {[1, 2, 3, 4, 5, 6, 7].map((d, i) => (
-                  <div key={d} style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 9, color: "var(--mut)", fontWeight: 700, marginBottom: 4 }}>{GIORNI_SHORT[d]}</div>
-                    <div style={{ height: 32, background: "var(--bdr)", borderRadius: 4, overflow: "hidden", display: "flex", alignItems: "flex-end" }}>
-                      <div style={{ width: "100%", height: `${Math.round(kcalPerGiorno[i] / maxKcal * 100)}%`, background: "#30D158", opacity: .8, borderRadius: 4, minHeight: kcalPerGiorno[i] > 0 ? 3 : 0, transition: "height .3s" }} />
-                    </div>
-                    <div style={{ fontSize: 8, color: "var(--dim)", marginTop: 3 }}>{kcalPerGiorno[i] > 0 ? kcalPerGiorno[i] + "k" : "-"}</div>
+
+            {isOpen && (
+              <div style={{ borderTop: "1px solid var(--bdr)", padding: "12px 16px", background: "var(--sur)" }}>
+                <div style={{ background: "rgba(48,209,88,0.08)", border: "1px solid rgba(48,209,88,0.25)", borderRadius: 10, padding: "10px 14px", marginBottom: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ok)", letterSpacing: ".06em", textTransform: "uppercase" }}>Totale giorno</span>
+                    <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 28, color: "var(--ok)", letterSpacing: ".05em" }}>
+                      {Math.round(g.kcalTot)} kcal
+                    </span>
                   </div>
-                ))}
+                  <div style={{ height: 4, background: "var(--bdr)", borderRadius: 2, overflow: "hidden", marginTop: 8 }}>
+                    <div style={{ height: "100%", width: `${kcalBar}%`, background: "var(--ok)", borderRadius: 2, transition: "width .4s" }} />
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--mut)", marginTop: 4 }}>su ~2500 kcal obiettivo</div>
+                </div>
+
+                {pastiDelGiorno.length > 0 ? (
+                  <>
+                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".09em", textTransform: "uppercase", color: "var(--dim)", marginBottom: 8 }}>PASTI LOGGATI</div>
+                    {pastiDelGiorno.map((p, i) => (
+                      <div key={i} className="frow">
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <div style={{ fontSize: 18 }}>🍽</div>
+                          <div>
+                            <div style={{ fontSize: 14, fontWeight: 600 }}>{p.nome || p.name || "Pasto"}</div>
+                            {p.orario && <div style={{ fontSize: 11, color: "var(--mut)" }}>{p.orario}</div>}
+                          </div>
+                        </div>
+                        <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 18, color: "var(--ok)", flexShrink: 0 }}>
+                          {p.kcal ? `${p.kcal} kcal` : ""}
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  g.entries.map((entry, i) => {
+                    const kcalEntry =
+                      entry.kcalTotale || entry.kcal ||
+                      (entry.pasti ? entry.pasti.reduce((a, p) => a + (p.kcal || 0), 0) : 0) ||
+                      0;
+                    const nomeEntry =
+                      entry.nomePasto || entry.pianoNome || entry.nome || `Log ${i + 1}`;
+                    return (
+                      <div key={entry.id || i} className="frow">
+                        <div style={{ fontSize: 14, fontWeight: 600 }}>{nomeEntry}</div>
+                        <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 18, color: "var(--ok)" }}>
+                          {kcalEntry > 0 ? `${kcalEntry} kcal` : ""}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             )}
           </div>
