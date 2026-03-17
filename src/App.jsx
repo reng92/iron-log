@@ -80,7 +80,10 @@ const db = {
   // -- NUOVE CHIAMATE PER LA DIETA --
   async getPiani() { const { data } = await sb.from("piani_alimentari").select("*"); return data ? data.map(r => r.data) : []; },
   async setPiani(a) { await sb.from("piani_alimentari").delete().neq("id", "__x__"); if (a.length) await sb.from("piani_alimentari").insert(a.map(s => ({ id: s.id, data: s }))); },
-  async getLogDieta() { const { data } = await sb.from("log_dieta").select("*").order("created_at", { ascending: false }); return data ? data.map(r => r.data) : []; },
+  async getLogDieta() {
+    const { data } = await sb.from("log_dieta").select("*").order("created_at", { ascending: false });
+    return data ? data.map(r => ({ ...r.data, _created_at: r.created_at })) : [];
+  },
   async addLogDieta(s) { await sb.from("log_dieta").insert({ id: s.id, data: s }); },
   async delLogDieta(id) { await sb.from("log_dieta").delete().eq("id", id); },
 
@@ -2216,13 +2219,19 @@ function StoricoDieta({ logDieta, piani, onLog }) {
   const giorni = useMemo(() => {
     const map = {};
     logDieta.forEach(entry => {
-      const raw = entry.data || entry.created_at || entry.createdat || "";
+      const raw = entry.data || entry._created_at || "";
       const day = raw.slice(0, 10);
       if (!day) return;
-      if (!map[day]) map[day] = { day, entries: [], kcalTot: 0 };
-      map[day].entries.push(entry);
-      const kcal = calcEntryKcal(entry);
-      map[day].kcalTot += kcal;
+      const existing = map[day];
+      // tieni solo l'entry più recente per quel giorno (ultimo log salvato)
+      if (!existing || (entry._created_at && existing._created_at && entry._created_at > existing._created_at)) {
+        map[day] = {
+          day,
+          entries: [entry],
+          kcalTot: calcEntryKcal(entry),
+          _created_at: entry._created_at || existing?._created_at || raw
+        };
+      }
     });
     return Object.values(map).sort((a, b) => b.day.localeCompare(a.day));
   }, [logDieta]);
