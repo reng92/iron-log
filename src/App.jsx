@@ -2178,21 +2178,19 @@ function StoricoDieta({ logDieta, piani, onLog }) {
       if (!day) return;
       if (!map[day]) map[day] = { day, entries: [], kcalTot: 0 };
       map[day].entries.push(entry);
-      // Ricalcolo sempre le kcal dal contenuto del log per evitare vecchi valori errati
+      // 1) se esiste pastiLog, mi fido del campo p.kcal (già calcolato dal DietaLog in base a mangiato)
       let kcal = 0;
       if (Array.isArray(entry.pastiLog)) {
-        kcal += entry.pastiLog.reduce((a, p) => {
-          if (Array.isArray(p.alimenti) && p.alimenti.length > 0) {
-            return a + p.alimenti.reduce((s, al) => {
-              // Se il flag mangiato esiste, conta solo quelli true; altrimenti considera tutti
-              const eaten = typeof al.mangiato === "boolean" ? al.mangiato : true;
-              return s + (eaten ? (+al.kcal || 0) : 0);
-            }, 0);
-          }
-          return a + (+p.kcal || 0);
-        }, 0);
+        kcal += entry.pastiLog.reduce((a, p) => a + (+p.kcal || 0), 0);
       } else if (Array.isArray(entry.pasti)) {
-        kcal += entry.pasti.reduce((a, p) => a + (+p.kcal || 0), 0);
+        // vecchi log senza pastiLog: sommo i kcal dei pasti, altrimenti provo dagli alimenti
+        kcal += entry.pasti.reduce((a, p) => {
+          if (p.kcal != null && p.kcal !== "") return a + (+p.kcal || 0);
+          if (Array.isArray(p.alimenti)) {
+            return a + p.alimenti.reduce((s, al) => s + (+al.kcal || 0), 0);
+          }
+          return a;
+        }, 0);
       }
       if (Array.isArray(entry.extra)) {
         kcal += entry.extra
@@ -2353,9 +2351,12 @@ function StoricoDieta({ logDieta, piani, onLog }) {
                     <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".09em", textTransform: "uppercase", color: "var(--dim)", marginBottom: 8 }}>PASTI LOGGATI</div>
                     {pastiDelGiorno.map((p, i) => {
                       const hasAlimenti = Array.isArray(p.alimenti) && p.alimenti.length > 0;
-                      const kcalPasto = hasAlimenti
-                        ? p.alimenti.reduce((a, al) => a + (+al.kcal || 0), 0)
-                        : (p.kcal || 0);
+                      // Se il log proviene da DietaLog, p.kcal è già "mangiato"; in caso contrario, ricado sugli alimenti
+                      const kcalPasto = p.kcal != null && p.kcal !== ""
+                        ? (+p.kcal || 0)
+                        : hasAlimenti
+                          ? p.alimenti.reduce((a, al) => a + (+al.kcal || 0), 0)
+                          : 0;
                       return (
                         <div key={i} style={{ marginBottom: 10, borderBottom: "1px solid var(--bdr)", paddingBottom: 8 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: hasAlimenti ? 6 : 0 }}>
@@ -2395,15 +2396,8 @@ function StoricoDieta({ logDieta, piani, onLog }) {
                   g.entries.map((entry, i) => {
                     let kcalEntry = 0;
                     if (Array.isArray(entry.pastiLog)) {
-                      kcalEntry += entry.pastiLog.reduce((a, p) => {
-                        if (Array.isArray(p.alimenti) && p.alimenti.length > 0) {
-                          return a + p.alimenti.reduce((s, al) => {
-                            const eaten = typeof al.mangiato === "boolean" ? al.mangiato : true;
-                            return s + (eaten ? (+al.kcal || 0) : 0);
-                          }, 0);
-                        }
-                        return a + (+p.kcal || 0);
-                      }, 0);
+                      // di nuovo, se esiste p.kcal lo uso direttamente
+                      kcalEntry += entry.pastiLog.reduce((a, p) => a + (+p.kcal || 0), 0);
                     } else if (Array.isArray(entry.pasti)) {
                       kcalEntry += entry.pasti.reduce((a, p) => a + (+p.kcal || 0), 0);
                     }
