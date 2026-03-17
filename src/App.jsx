@@ -2687,6 +2687,11 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
   const [extraEstimating, setExtraEstimating] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  const existingLog = useMemo(() =>
+    logDieta.find(l => l.data === todayIso && l.pianoId === selectedPianoId && l.giornoNumero === selectedDay),
+    [logDieta, todayIso, selectedPianoId, selectedDay]
+  );
+
   const piano = piani.find(p => p.id === selectedPianoId);
 
   const pastiGiorno = useMemo(() => {
@@ -2718,11 +2723,6 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
     const selId = selectedAlts[group.groupId];
     return group.items.find(i => i.pasto.id === selId) || group.items[0];
   };
-
-  const existingLog = useMemo(() =>
-    logDieta.find(l => l.data === todayIso && l.pianoId === selectedPianoId && l.giornoNumero === selectedDay),
-    [logDieta, todayIso, selectedPianoId, selectedDay]
-  );
 
   useEffect(() => {
     if (existingLog) {
@@ -2892,6 +2892,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
               </div>
             )}
 
+            <div className="div" />
             <div className="st">GIORNO</div>
             <div className="day-pill">
               {[1, 2, 3, 4, 5, 6, 7].map(d => (
@@ -3148,18 +3149,14 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
               </div>
             )}
 
-            <button className="btn btn-p btn-full"
-              style={{ background: saved ? '#059669' : '#30D158', marginTop: 8, transition: 'background .3s' }}
-              onClick={handleSave}>
-              {saved
-                ? <><Ico d="M20 6L9 17l-5-5" size={16} stroke="#fff" sw={2.5} /> SALVATO!</>
-                : <><IcApple /> SALVA LOG GIORNATA</>}
-            </button>
             {existingLog && (
-              <div style={{ textAlign: 'center', fontSize: 11, color: '#30D158', marginTop: 8 }}>
-                ✓ Log già salvato — il salvataggio sovrascriverà il precedente
+              <div style={{background:'rgba(255,59,48,0.12)', border:'1px solid #FF3B30', borderRadius:10, padding:'10px 14px', marginBottom:12, fontSize:13, color:'#FF3B30', fontWeight:700}}>
+                ⚠️ Hai già un log per oggi con questo piano. Salvando sovrascriverai quello esistente.
               </div>
             )}
+            <button className="btn btn-p btn-full" style={{background: saved ? '#30D158' : existingLog ? '#FF9500' : '#30D158', padding:16, fontSize:15}} onClick={handleSave}>
+              {saved ? '✓ SALVATO' : existingLog ? 'AGGIORNA LOG' : 'SALVA LOG GIORNATA'}
+            </button>
           </>
         )}
       </div>
