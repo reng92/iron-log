@@ -2681,7 +2681,8 @@ function PastoEditCard({ pasto: p, pi, isAlt, altIndex, canMoveUp, canMoveDown, 
 function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
   const todayDow = ((new Date().getDay() + 6) % 7) + 1;
   const todayIso = fmtIso();
-  const [selectedDay, setSelectedDay] = useState(todayDow);
+  const todayDayOfWeek = (() => { const d = new Date().getDay(); return d === 0 ? 7 : d; })();
+  const [selectedDay, setSelectedDay] = useState(todayDayOfWeek);
   const [selectedPianoId, setSelectedPianoId] = useState(piani[0]?.id || "");
   const [mangiato, setMangiato] = useState({});
   const [selectedAlts, setSelectedAlts] = useState({}); // { groupId: pastoId }
@@ -2862,14 +2863,19 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
   const handleSave = async () => {
     if (!piano) return;
     if (existingLog) await onDelete(existingLog.id);
+    const pastiLog = pastiGiorno.map((p, pi) => ({
+      nome: p.nome,
+      alimenti: p.alimenti.map((al, ai) => ({ ...al, mangiato: !!mangiato[`${pi}_${ai}`] }))
+    }));
+    const totKcal = pastiLog.reduce((acc, p) => acc + (p.kcal || 0), 0);
     const log = {
       id: genId(), data: todayIso, pianoId: piano.id, pianoNome: piano.nome,
       giornoNumero: selectedDay, totKcalPreviste: totPreviste,
-      totKcalConsumate: totConsumate, extra, selectedAlts,
-      pastiLog: pastiGiorno.map((p, pi) => ({
-        nome: p.nome,
-        alimenti: p.alimenti.map((al, ai) => ({ ...al, mangiato: !!mangiato[`${pi}_${ai}`] }))
-      }))
+      kcal: totKcal,
+      kcalTotale: totKcal,
+      totKcalConsumate: totKcal,
+      extra, selectedAlts,
+      pastiLog: pastiLog
     };
     await onAdd(log);
     setSaved(true);
