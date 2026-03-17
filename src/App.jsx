@@ -2863,20 +2863,35 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
   const handleSave = async () => {
     if (!piano) return;
     if (existingLog) await onDelete(existingLog.id);
-    const pastiLog = pastiGiorno.map((p, pi) => ({
-      nome: p.nome,
-      alimenti: p.alimenti.map((al, ai) => ({ ...al, mangiato: !!mangiato[`${pi}_${ai}`] }))
-    }));
-    const totKcal = pastiLog.reduce((acc, p) => acc + (p.kcal || 0), 0);
+
+    // Calcola kcal consumate direttamente al momento del salvataggio
+    const kcalConsumate = pastiGiorno.reduce((tot, p, pi) => {
+      return tot + p.alimenti.reduce((s, al, ai) => {
+        return s + (mangiato[pi]?.[ai] ? (al.kcal || 0) : 0);
+      }, 0);
+    }, 0);
+    const kcalExtra = extra.filter(e => e.mangiato).reduce((a, e) => a + (e.kcal || 0), 0);
+    const totKcal = kcalConsumate + kcalExtra;
+
     const log = {
-      id: genId(), data: todayIso, pianoId: piano.id, pianoNome: piano.nome,
-      giornoNumero: selectedDay, totKcalPreviste: totPreviste,
-      kcal: totKcal,
-      kcalTotale: totKcal,
+      id: genId(),
+      data: todayIso,
+      pianoId: piano.id,
+      pianoNome: piano.nome,
+      giornoNumero: selectedDay,
+      totKcalPreviste: totPreviste,
       totKcalConsumate: totKcal,
-      extra, selectedAlts,
-      pastiLog: pastiLog
+      kcalTotale: totKcal,
+      kcal: totKcal,
+      extra,
+      selectedAlts,
+      pastiLog: pastiGiorno.map((p, pi) => ({
+        nome: p.nome,
+        kcal: p.alimenti.reduce((s, al, ai) => s + (mangiato[pi]?.[ai] ? (al.kcal || 0) : 0), 0),
+        alimenti: p.alimenti.map((al, ai) => ({ ...al, mangiato: !!mangiato[pi]?.[ai] })),
+      })),
     };
+
     await onAdd(log);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
