@@ -2298,20 +2298,45 @@ function StoricoDieta({ logDieta, piani }) {
                 {pastiDelGiorno.length > 0 ? (
                   <>
                     <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".09em", textTransform: "uppercase", color: "var(--dim)", marginBottom: 8 }}>PASTI LOGGATI</div>
-                    {pastiDelGiorno.map((p, i) => (
-                      <div key={i} className="frow">
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <div style={{ fontSize: 18 }}>🍽</div>
-                          <div>
-                            <div style={{ fontSize: 14, fontWeight: 600 }}>{p.nome || p.name || "Pasto"}</div>
-                            {p.orario && <div style={{ fontSize: 11, color: "var(--mut)" }}>{p.orario}</div>}
+                    {pastiDelGiorno.map((p, i) => {
+                      const hasAlimenti = Array.isArray(p.alimenti) && p.alimenti.length > 0;
+                      const kcalPasto = hasAlimenti
+                        ? p.alimenti.reduce((a, al) => a + (+al.kcal || 0), 0)
+                        : (p.kcal || 0);
+                      return (
+                        <div key={i} style={{ marginBottom: 10, borderBottom: "1px solid var(--bdr)", paddingBottom: 8 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: hasAlimenti ? 6 : 0 }}>
+                            <div>
+                              <div style={{ fontSize: 14, fontWeight: 600 }}>{p.nome || p.name || "Pasto"}</div>
+                              {p.orario && <div style={{ fontSize: 11, color: "var(--mut)" }}>{p.orario}</div>}
+                            </div>
+                            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 18, color: "var(--ok)", flexShrink: 0 }}>
+                              {kcalPasto ? `${kcalPasto} kcal` : ""}
+                            </div>
                           </div>
+                          {hasAlimenti && (
+                            <div style={{ marginTop: 4 }}>
+                              {p.alimenti.map((al, ai) => (
+                                <div key={al.id || ai} className="frow">
+                                  <FoodThumb nome={al.nome} />
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: 13, fontWeight: 600 }}>{al.nome}</div>
+                                    {al.grammi && (
+                                      <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 1 }}>
+                                        {al.grammi}g
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 16, color: "var(--acc)", flexShrink: 0 }}>
+                                    {al.kcal ? `${al.kcal} kcal` : ""}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                        <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 18, color: "var(--ok)", flexShrink: 0 }}>
-                          {p.kcal ? `${p.kcal} kcal` : ""}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </>
                 ) : (
                   g.entries.map((entry, i) => {
@@ -2681,8 +2706,7 @@ function PastoEditCard({ pasto: p, pi, isAlt, altIndex, canMoveUp, canMoveDown, 
 function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
   const todayDow = ((new Date().getDay() + 6) % 7) + 1;
   const todayIso = fmtIso();
-  const todayDayOfWeek = (() => { const d = new Date().getDay(); return d === 0 ? 7 : d; })();
-  const [selectedDay, setSelectedDay] = useState(todayDayOfWeek);
+  const [selectedDate, setSelectedDate] = useState(todayIso); // giornata solare selezionata (YYYY-MM-DD)
   const [selectedPianoId, setSelectedPianoId] = useState(piani[0]?.id || "");
   const [mangiato, setMangiato] = useState({});
   const [selectedAlts, setSelectedAlts] = useState({}); // { groupId: pastoId }
@@ -2693,12 +2717,18 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
   const [extraEstimating, setExtraEstimating] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  const selectedDay = useMemo(() => {
+    const d = new Date(selectedDate + "T12:00:00");
+    const dow = d.getDay();
+    return dow === 0 ? 7 : dow; // 1=Lun ... 7=Dom
+  }, [selectedDate]);
+
   const existingLog = useMemo(() =>
     logDieta.find(l => {
       const d = l.data ? l.data.slice(0, 10) : (l.createdat ? l.createdat.slice(0, 10) : null);
-      return d === todayIso && l.pianoId === selectedPianoId && l.giornoNumero === selectedDay;
+      return d === selectedDate && l.pianoId === selectedPianoId && l.giornoNumero === selectedDay;
     }),
-    [logDieta, todayIso, selectedPianoId, selectedDay]
+    [logDieta, selectedDate, selectedPianoId, selectedDay]
   );
 
   const piano = piani.find(p => p.id === selectedPianoId);
@@ -2854,12 +2884,6 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
           : delta > -200 ? `${delta} kcal — leggermente sotto`
             : `${delta} kcal sotto il target`;
 
-  const daysWithLog = useMemo(() => {
-    const s = new Set();
-    logDieta.filter(l => l.data === todayIso && l.pianoId === selectedPianoId).forEach(l => s.add(l.giornoNumero));
-    return s;
-  }, [logDieta, todayIso, selectedPianoId]);
-
   const handleSave = async () => {
     if (!piano) return;
     if (existingLog) await onDelete(existingLog.id);
@@ -2867,7 +2891,8 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
     // Calcola kcal consumate direttamente al momento del salvataggio
     const kcalConsumate = pastiGiorno.reduce((tot, p, pi) => {
       return tot + p.alimenti.reduce((s, al, ai) => {
-        return s + (mangiato[pi]?.[ai] ? (al.kcal || 0) : 0);
+        const key = `${pi}_${ai}`;
+        return s + (mangiato[key] ? (al.kcal || 0) : 0);
       }, 0);
     }, 0);
     const kcalExtra = extra.filter(e => e.mangiato).reduce((a, e) => a + (e.kcal || 0), 0);
@@ -2875,7 +2900,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
 
     const log = {
       id: genId(),
-      data: todayIso,
+      data: selectedDate,
       pianoId: piano.id,
       pianoNome: piano.nome,
       giornoNumero: selectedDay,
@@ -2887,8 +2912,14 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
       selectedAlts,
       pastiLog: pastiGiorno.map((p, pi) => ({
         nome: p.nome,
-        kcal: p.alimenti.reduce((s, al, ai) => s + (mangiato[pi]?.[ai] ? (al.kcal || 0) : 0), 0),
-        alimenti: p.alimenti.map((al, ai) => ({ ...al, mangiato: !!mangiato[pi]?.[ai] })),
+        kcal: p.alimenti.reduce((s, al, ai) => {
+          const key = `${pi}_${ai}`;
+          return s + (mangiato[key] ? (al.kcal || 0) : 0);
+        }, 0),
+        alimenti: p.alimenti.map((al, ai) => {
+          const key = `${pi}_${ai}`;
+          return { ...al, mangiato: !!mangiato[key] };
+        }),
       })),
     };
 
@@ -2902,9 +2933,41 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
       <div className="content fi">
         <button className="bb" onClick={onBack}><IcChevL /> Indietro</button>
         <h1 className="pt" style={{ marginBottom: 6 }}>TRACKING<br />DIETA</h1>
-        <p className="sub" style={{ marginBottom: 16 }}>
-          {new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })}
+        <p className="sub" style={{ marginBottom: 8 }}>
+          {new Date(selectedDate + "T12:00:00").toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
         </p>
+
+        {/* Selettore giorno solare */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+          <button
+            className="bico"
+            onClick={() => {
+              const d = new Date(selectedDate + "T12:00:00");
+              d.setDate(d.getDate() - 1);
+              setSelectedDate(d.toISOString().slice(0, 10));
+            }}
+          >
+            ◀
+          </button>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 12, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+              Giorno solare
+            </div>
+            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 20, letterSpacing: '.06em' }}>
+              {GIORNI_LABEL[selectedDay]} · {selectedDate}
+            </div>
+          </div>
+          <button
+            className="bico"
+            onClick={() => {
+              const d = new Date(selectedDate + "T12:00:00");
+              d.setDate(d.getDate() + 1);
+              setSelectedDate(d.toISOString().slice(0, 10));
+            }}
+          >
+            ▶
+          </button>
+        </div>
 
         {piani.length === 0 ? (
           <div className="emp"><div className="emp-ic">🍎</div><div className="emp-t">Nessun piano creato</div></div>
@@ -2922,12 +2985,15 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
             )}
 
             <div className="div" />
-            <div className="st">GIORNO</div>
+            <div className="st">GIORNO DEL PIANO</div>
             <div className="day-pill">
               {[1, 2, 3, 4, 5, 6, 7].map(d => (
-                <button key={d}
-                  className={`dpb${selectedDay === d ? " on" : ""}${daysWithLog.has(d) && selectedDay !== d ? " log" : ""}`}
-                  onClick={() => { setSelectedDay(d); setMangiato({}); setExtra([]); setSelectedAlts({}); }}>
+                <button
+                  key={d}
+                  className={`dpb${selectedDay === d ? " on" : ""}`}
+                  disabled
+                  style={{ opacity: selectedDay === d ? 1 : 0.4, cursor: 'default' }}
+                >
                   <div>{GIORNI_SHORT[d]}</div>
                   <div style={{ fontSize: 8, marginTop: 2 }}>G{d}</div>
                 </button>
