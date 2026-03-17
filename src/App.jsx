@@ -2244,7 +2244,8 @@ function StoricoDieta({ logDieta, piani }) {
         const isOpen = selDay === g.day;
         const dt = new Date(g.day + "T12:00:00");
         const dateLabel = dt.toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
-        const isToday = g.day === new Date().toISOString().slice(0, 10);
+        const todayLocal = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
+        const isToday = g.day === todayLocal;
 
         const pastiDelGiorno = [];
         g.entries.forEach(entry => {
@@ -2318,13 +2319,17 @@ function StoricoDieta({ logDieta, piani }) {
                       entry.kcalTotale || entry.kcal ||
                       (entry.pasti ? entry.pasti.reduce((a, p) => a + (p.kcal || 0), 0) : 0) ||
                       0;
-                    const nomeEntry =
-                      entry.nomePasto || entry.pianoNome || entry.nome || `Log ${i + 1}`;
+                    const nomeEntry = entry.nomePasto ?? entry.pianoNome ?? entry.nome ?? `Log ${i + 1}`;
+                    const dataEntry = entry.data ? entry.data.slice(0, 10) : (entry.createdat ? entry.createdat.slice(0, 10) : null);
+                    const dataLabel = dataEntry ? new Date(dataEntry + 'T12:00:00').toLocaleDateString('it-IT', {day:'numeric', month:'short'}) : '';
                     return (
-                      <div key={entry.id || i} className="frow">
-                        <div style={{ fontSize: 14, fontWeight: 600 }}>{nomeEntry}</div>
-                        <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 18, color: "var(--ok)" }}>
-                          {kcalEntry > 0 ? `${kcalEntry} kcal` : ""}
+                      <div key={entry.id + i} className="frow">
+                        <div style={{display:'flex', flexDirection:'column', gap:2}}>
+                          <div style={{fontSize:14, fontWeight:600}}>{nomeEntry}</div>
+                          {dataLabel ? <div style={{fontSize:11, color:'var(--dim)'}}>{dataLabel}</div> : null}
+                        </div>
+                        <div style={{fontFamily:'Bebas Neue,cursive', fontSize:18, color:'var(--ok)'}}>
+                          {kcalEntry > 0 ? `${kcalEntry} kcal` : ''}
                         </div>
                       </div>
                     );
@@ -2688,7 +2693,10 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
   const [saved, setSaved] = useState(false);
 
   const existingLog = useMemo(() =>
-    logDieta.find(l => l.data === todayIso && l.pianoId === selectedPianoId && l.giornoNumero === selectedDay),
+    logDieta.find(l => {
+      const d = l.data ? l.data.slice(0, 10) : (l.createdat ? l.createdat.slice(0, 10) : null);
+      return d === todayIso && l.pianoId === selectedPianoId && l.giornoNumero === selectedDay;
+    }),
     [logDieta, todayIso, selectedPianoId, selectedDay]
   );
 
