@@ -412,6 +412,8 @@ export default function App() {
         onAdd={handleAddLogDieta}
         onDelete={handleDelLogDieta}
         onBack={() => setSubview(null)}
+        initialDate={subview.data?.date}
+        initialPianoId={subview.data?.pianoId}
       />
     </div>
   );
@@ -424,7 +426,16 @@ export default function App() {
         {tab === "schede" && <Schede schede={schede} onNew={() => setSubview({ type: "scheda-edit", data: { nome: "", giorni: [], esercizi: [] } })} onEdit={sc => setSubview({ type: "scheda-edit", data: sc })} onDelete={id => saveSchede(schede.filter(s => s.id !== id))} onStart={sc => setSubview({ type: "allenamento", data: sc })} />}
 
         {/* -- Nuova Tab Dieta -- */}
-        {tab === "dieta" && <PianiAlimentari piani={piani} logDieta={logDieta} onNew={() => setSubview({ type: "piano-edit", data: { nome: "", durataGiorni: 56, pasti: [] } })} onEdit={p => setSubview({ type: "piano-edit", data: p })} onDelete={id => savePiani(piani.filter(p => p.id !== id))} onLog={() => setSubview({ type: "dieta-log", data: null })} />}
+        {tab === "dieta" && (
+          <PianiAlimentari
+            piani={piani}
+            logDieta={logDieta}
+            onNew={() => setSubview({ type: "piano-edit", data: { nome: "", durataGiorni: 56, pasti: [] } })}
+            onEdit={p => setSubview({ type: "piano-edit", data: p })}
+            onDelete={id => savePiani(piani.filter(p => p.id !== id))}
+            onLog={(opts) => setSubview({ type: "dieta-log", data: opts || null })}
+          />
+        )}
 
         {tab === "storico" && <Storico sessioni={sessioni} corse={corse} onDetail={s => setSubview({ type: "sessione", data: s })} onDelete={delSessione} onDeleteCorsa={handleDelCorsa} />}
         {tab === "stats" && <Stats sessioni={sessioni} />}
@@ -2150,13 +2161,13 @@ function PianiAlimentari({ piani, logDieta, onNew, onEdit, onDelete, onLog }) {
       )}
 
       {stab === "storico" && (
-        <StoricoDieta logDieta={logDieta} piani={piani} />
+        <StoricoDieta logDieta={logDieta} piani={piani} onLog={onLog} />
       )}
     </>
   );
 }
 
-function StoricoDieta({ logDieta, piani }) {
+function StoricoDieta({ logDieta, piani, onLog }) {
   const [selDay, setSelDay] = useState(null);
 
   const giorni = useMemo(() => {
@@ -2168,12 +2179,11 @@ function StoricoDieta({ logDieta, piani }) {
       if (!map[day]) map[day] = { day, entries: [], kcalTot: 0 };
       map[day].entries.push(entry);
       const kcal =
-        entry.kcalTotale ||
-        entry.kcal ||
-        (entry.pastiLog ? entry.pastiLog.reduce((a, p) => a + (p.kcal || 0), 0) : 0) ||
-        (entry.pasti ? entry.pasti.reduce((a, p) => a + (p.kcal || 0), 0) : 0) ||
+        Number(entry.totKcalConsumate ?? entry.kcalTotale ?? entry.kcal ?? 0) ||
+        (entry.pastiLog ? entry.pastiLog.reduce((a, p) => a + (+p.kcal || 0), 0) : 0) ||
+        (entry.pasti ? entry.pasti.reduce((a, p) => a + (+p.kcal || 0), 0) : 0) ||
         0;
-      map[day].kcalTot += kcal;
+      map[day].kcalTot += Number.isFinite(kcal) ? kcal : 0;
     });
     return Object.values(map).sort((a, b) => b.day.localeCompare(a.day));
   }, [logDieta]);
@@ -2191,8 +2201,13 @@ function StoricoDieta({ logDieta, piani }) {
 
   const hasChart = chartData.some(d => d.y > 0);
   const kcalMedia = giorni.length
-    ? Math.round(giorni.slice(0, 7).reduce((a, g) => a + g.kcalTot, 0) / Math.min(giorni.length, 7))
+    ? Math.round(giorni.slice(0, 7).reduce((a, g) => a + (+g.kcalTot || 0), 0) / Math.min(giorni.length, 7))
     : 0;
+
+  const giorniAsc = useMemo(
+    () => [...giorni].sort((a, b) => a.day.localeCompare(b.day)),
+    [giorni]
+  );
 
   if (giorni.length === 0) {
     return (
@@ -2256,7 +2271,7 @@ function StoricoDieta({ logDieta, piani }) {
           pasti.forEach(p => pastiDelGiorno.push(p));
         });
 
-        const kcalBar = Math.min((g.kcalTot / 2500) * 100, 100);
+        const kcalBar = Math.min((((+g.kcalTot) || 0) / 2500) * 100, 100);
 
         return (
           <div key={g.day} className="card" style={{ marginBottom: 10, padding: 0, overflow: "hidden", borderColor: isToday ? "var(--ok)" : "var(--bdr)" }}>
@@ -2286,13 +2301,35 @@ function StoricoDieta({ logDieta, piani }) {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ok)", letterSpacing: ".06em", textTransform: "uppercase" }}>Totale giorno</span>
                     <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 28, color: "var(--ok)", letterSpacing: ".05em" }}>
-                      {Math.round(g.kcalTot)} kcal
+                      {Math.round(+g.kcalTot || 0)} kcal
                     </span>
                   </div>
                   <div style={{ height: 4, background: "var(--bdr)", borderRadius: 2, overflow: "hidden", marginTop: 8 }}>
                     <div style={{ height: "100%", width: `${kcalBar}%`, background: "var(--ok)", borderRadius: 2, transition: "width .4s" }} />
                   </div>
                   <div style={{ fontSize: 10, color: "var(--mut)", marginTop: 4 }}>su ~2500 kcal obiettivo</div>
+
+                  <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ fontSize: 11, color: "var(--dim)" }}>
+                      {g.entries[0]?.pianoNome && (
+                        <span>
+                          Piano: <b style={{ color: "var(--txt)" }}>{g.entries[0].pianoNome}</b>
+                        </span>
+                      )}
+                    </div>
+                    {onLog && (
+                      <button
+                        className="btn btn-s"
+                        style={{ fontSize: 11, padding: "6px 10px" }}
+                        onClick={() => {
+                          const pianoId = g.entries[0]?.pianoId || null;
+                          onLog({ date: g.day, pianoId });
+                        }}
+                      >
+                        <IcEdit /> MODIFICA GIORNATA
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {pastiDelGiorno.length > 0 ? (
@@ -2341,8 +2378,8 @@ function StoricoDieta({ logDieta, piani }) {
                 ) : (
                   g.entries.map((entry, i) => {
                     const kcalEntry =
-                      entry.kcalTotale || entry.kcal ||
-                      (entry.pasti ? entry.pasti.reduce((a, p) => a + (p.kcal || 0), 0) : 0) ||
+                      Number(entry.totKcalConsumate ?? entry.kcalTotale ?? entry.kcal ?? 0) ||
+                      (entry.pasti ? entry.pasti.reduce((a, p) => a + (+p.kcal || 0), 0) : 0) ||
                       0;
                     const nomeEntry = entry.nomePasto ?? entry.pianoNome ?? entry.nome ?? `Log ${i + 1}`;
                     const dataEntry = entry.data ? entry.data.slice(0, 10) : (entry.createdat ? entry.createdat.slice(0, 10) : null);
@@ -2365,6 +2402,23 @@ function StoricoDieta({ logDieta, piani }) {
           </div>
         );
       })}
+
+      {/* Lista giorni in ordine cronologico (dal più vecchio al più recente) */}
+      <div className="st" style={{ marginTop: 18 }}>CRONOLOGIA COMPLETA</div>
+      <div style={{ background: "var(--sur)", borderRadius: 10, border: "1px solid var(--bdr)", padding: "8px 10px", fontSize: 12 }}>
+        {giorniAsc.map(g => {
+          const dt = new Date(g.day + "T12:00:00");
+          const label = dt.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "2-digit" });
+          return (
+            <div key={g.day} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", borderBottom: "1px solid var(--bdr)" }}>
+              <span style={{ color: "var(--dim)" }}>{label}</span>
+              <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 16, color: "var(--ok)" }}>
+                {g.kcalTot > 0 ? `${Math.round(+g.kcalTot || 0)} kcal` : "—"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </>
   );
 }
@@ -2703,11 +2757,11 @@ function PastoEditCard({ pasto: p, pi, isAlt, altIndex, canMoveUp, canMoveDown, 
 }
 
 // ─── DIETA LOG ────────────────────────────────────────────
-function DietaLog({ piani, logDieta, onAdd, onDelete, onBack }) {
+function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initialPianoId }) {
   const todayDow = ((new Date().getDay() + 6) % 7) + 1;
   const todayIso = fmtIso();
-  const [selectedDate, setSelectedDate] = useState(todayIso); // giornata solare selezionata (YYYY-MM-DD)
-  const [selectedPianoId, setSelectedPianoId] = useState(piani[0]?.id || "");
+  const [selectedDate, setSelectedDate] = useState(initialDate || todayIso); // giornata solare selezionata (YYYY-MM-DD)
+  const [selectedPianoId, setSelectedPianoId] = useState(initialPianoId || piani[0]?.id || "");
   const [mangiato, setMangiato] = useState({});
   const [selectedAlts, setSelectedAlts] = useState({}); // { groupId: pastoId }
   const [extra, setExtra] = useState([]);
