@@ -1,254 +1,24 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { createClient } from "@supabase/supabase-js";
-
-// Import utilities
-import {
-  genId, fmtDur, fmtDate, fmtShort, fmtIso, epley, 
-  GG, GIORNI_LABEL, GIORNI_SHORT, fetchMealImg, 
-  estraiTestoPdf, compressImg, estimateKcalFromName, estimateKcalFromAI 
-} from "./utils";
-
-// Import components
-import {
-  IcHome, IcBook, IcHistory, IcChart, IcWeight, IcPlus,
-  IcTrash, IcEdit, IcCheck, IcChevL, IcClose, IcPlay,
-  IcTimer, IcCamera, IcImg, IcSun, IcMoon, IcDownload,
-  IcCalc, IcArrowUp, IcArrowDown, IcApple, IcUser,
-  IcFile, IcUpload, Ico
-} from "./components/Icons";
+import ConfirmModal from "./components/modals/ConfirmModal";
+import { genId, fmtDur, fmtDate, fmtShort, fmtIso, epley, GG, GIORNI_LABEL, GIORNI_SHORT, fetchMealImg, estraiTestoPdf, compressImg, estimateKcalFromName, estimateKcalFromAI } from "./utils";
+import { IcHome, IcBook, IcHistory, IcChart, IcWeight, IcPlus, IcTrash, IcEdit, IcCheck, IcChevL, IcClose, IcPlay, IcTimer, IcCamera, IcImg, IcSun, IcMoon, IcDownload, IcCalc, IcArrowUp, IcArrowDown, IcApple, IcUser, IcFile, IcUpload, Ico } from "./components/Icons";
 import ChatAI from "./components/ChatAI";
 import CorsaTracker from "./components/CorsaTracker";
+import { db } from "./db";
+import { CSS, ZEPP_PROMPT, GROQ_SCHEDA_PROMPT, GROQ_PROMPT, STATUS_OPTS } from "./constants";
+import LineChart from "./components/LineChart";
+import FoodThumb from "./components/FoodThumb";
+import StatusBadge from "./components/StatusBadge";
+import CalcRM from "./components/CalcRM";
+import EsercizioModal from "./components/modals/EsercizioModal";
+import AlimentoModal from "./components/modals/AlimentoModal";
+import SchedaPdfImportModal from "./components/modals/SchedaPdfImportModal";
+import PdfImportModal from "./components/modals/PdfImportModal";
 
-const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL;
-const SUPABASE_KEY = process.env.REACT_APP_SUPABASE_KEY;
 const GROQ_KEY = process.env.REACT_APP_GROQ_KEY || localStorage.getItem('groq_key') || '';
-const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
-
-
-
-function FoodThumb({ nome }) {
-  const [src, setSrc] = useState(null);
-  const [err, setErr] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    fetchMealImg(nome, GROQ_KEY).then(u => {
-      if (active) { setSrc(u); setLoading(false); }
-    });
-    return () => { active = false; };
-  }, [nome]);
-
-  return (
-    <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", background: "var(--sur)", flexShrink: 0, border: "1px solid var(--bdr)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      {loading ? (
-        <span style={{ fontSize: 10, opacity: 0.5 }}>...</span>
-      ) : (src && !err) ? (
-        <img
-          src={src}
-          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-          onError={() => setErr(true)}
-        />
-      ) : <div style={{ fontSize: 16 }}>🍎</div>}
-    </div>
-  );
-}
-
-// ─── DB ───────────────────────────────────────────────────
-const db = {
-  async getSchede() { const { data } = await sb.from("schede").select("*"); return data ? data.map(r => r.data) : []; },
-  async setSchede(a) { await sb.from("schede").delete().neq("id", "__x__"); if (a.length) await sb.from("schede").insert(a.map(s => ({ id: s.id, data: s }))); }, async getSessioni() { const { data } = await sb.from("sessioni").select("*").order("created_at", { ascending: false }); return data ? data.map(r => r.data) : []; },
-  async addSessione(s) { await sb.from("sessioni").insert({ id: s.id, data: s }); },
-  async delSessione(id) { await sb.from("sessioni").delete().eq("id", id); },
-  async getPeso() { const { data } = await sb.from("peso").select("*").order("data", { ascending: true }); return data || []; },
-  async addPeso(p) {
-    const res = await sb.from("peso").insert(p);
-    if (res.error && res.error.code === 'PGRST204') {
-      const { proteine, proteine_status, metabolismo, metabolismo_status, massa_ossea, massa_ossea_status, ...rest } = p;
-      const res2 = await sb.from("peso").insert(rest);
-      if (res2.error) throw new Error(res2.error.message);
-      alert("ATTENZIONE: Supabase non ha le colonne per Proteine, Metabolismo e Massa Ossea nella tabella 'peso'. Il peso è stato salvato senza questi campi. Aggiungi le colonne in Supabase per salvarli in futuro.");
-    } else if (res.error) {
-      throw new Error(res.error.message);
-    }
-  },
-  async delPeso(id) { await sb.from("peso").delete().eq("id", id); },
-  async getSettings() { try { const { data } = await sb.from("impostazioni").select("*").eq("id", "settings").single(); return data?.data || {}; } catch { return {}; } },
-  async saveSettings(s) { await sb.from("impostazioni").upsert({ id: "settings", data: s }); },
-
-  // -- NUOVE CHIAMATE PER LA DIETA --
-  async getPiani() { const { data } = await sb.from("piani_alimentari").select("*"); return data ? data.map(r => r.data) : []; },
-  async setPiani(a) { await sb.from("piani_alimentari").delete().neq("id", "__x__"); if (a.length) await sb.from("piani_alimentari").insert(a.map(s => ({ id: s.id, data: s }))); },
-  async getLogDieta() {
-    const { data } = await sb.from("log_dieta").select("*").order("created_at", { ascending: false });
-    return data ? data.map(r => ({ ...r.data, _created_at: r.created_at })) : [];
-  },
-  async addLogDieta(s) { await sb.from("log_dieta").insert({ id: s.id, data: s }); },
-  async delLogDieta(id) { await sb.from("log_dieta").delete().eq("id", id); },
-
-  // -- CORSA GPS --
-  async getCorse() { const { data } = await sb.from("sessioni_corsa").select("*").order("created_at", { ascending: false }); return data ? data.map(r => r.data) : []; },
-  async addCorsa(c) { await sb.from("sessioni_corsa").insert({ id: c.id, data: c }); },
-  async delCorsa(id) { await sb.from("sessioni_corsa").delete().eq("id", id); }
-};
-
-// ─── CSV EXPORT ───────────────────────────────────────────
-const exportCSV = (sessioni) => {
-  const rows = [["Data", "Scheda", "Durata (min)", "Esercizio", "Serie", "KG", "Reps", "RPE", "Completata"]];
-  sessioni.forEach(s => s.esercizi.forEach(e => e.serie.forEach((sr, i) => {
-    rows.push([new Date(s.data).toLocaleDateString('it-IT'), s.schedaNome, s.durata || 0, e.nome, i + 1, sr.kg || "", sr.reps || "", sr.rpe || "", sr.completata ? "Sì" : "No"]);
-  })));
-  const csv = "\ufeff" + rows.map(r => r.join(";")).join("\n");
-  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
-  a.download = `renatos-workout-${fmtIso()}.csv`; a.click();
-};
-
-
-
-// ─── CSS ──────────────────────────────────────────────────
-const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@300;400;500;600;700&display=swap');
-*{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'Barlow',sans-serif;}
-.app{--bg:#080808;--sur:#111;--card:#181818;--bdr:#252525;--acc:#1E90FF;--acc2:rgba(30,144,255,.14);--dan:#FF3B30;--dan2:rgba(255,59,48,.12);--ok:#30D158;--txt:#F0F0F0;--dim:#BBBBBB;--mut:#888888;max-width:480px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;background:var(--bg);color:var(--txt);transition:background .25s,color .25s;}
-.app.light{--bg:#F0F2F5;--sur:#FFFFFF;--card:#FFFFFF;--bdr:#E0E4EC;--acc:#1570EF;--acc2:rgba(21,112,239,.1);--dan:#EF4444;--dan2:rgba(239,68,68,.1);--ok:#059669;--txt:#111827;--dim:#6B7280;--mut:#9CA3AF;}
-.nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:var(--sur);border-top:1px solid var(--bdr);display:flex;z-index:100;}
-.nb{flex:1;padding:10px 2px 8px;background:none;border:none;color:var(--mut);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;font-family:'Barlow',sans-serif;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;transition:color .15s;}
-.nb.on{color:var(--acc);}
-.content{flex:1;padding:16px 16px 88px;overflow-y:auto;}
-h1.pt{font-family:'Bebas Neue',cursive;font-size:36px;letter-spacing:.05em;line-height:1;}
-.sub{font-size:12px;color:var(--dim);margin-top:3px;}
-.card{background:var(--card);border:1px solid var(--bdr);border-radius:12px;padding:16px;margin-bottom:12px;}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:11px 16px;border-radius:10px;border:none;cursor:pointer;font-family:'Barlow',sans-serif;font-weight:700;font-size:13px;letter-spacing:.05em;text-transform:uppercase;transition:all .15s;}
-.btn-p{background:var(--acc);color:#fff;}.btn-p:hover{opacity:.9;}
-.btn-s{background:var(--card);color:var(--txt);border:1px solid var(--bdr);}.btn-s:hover{border-color:var(--acc);color:var(--acc);}
-.btn-full{width:100%;}
-.bico{padding:7px;border-radius:8px;background:var(--card);border:1px solid var(--bdr);color:var(--dim);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s;line-height:0;}
-.bico:hover{border-color:var(--acc);color:var(--acc);}.bico.d:hover{border-color:var(--dan);color:var(--dan);}
-.lbl{display:block;font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--dim);margin-bottom:5px;}
-.inp{width:100%;background:var(--sur);border:1px solid var(--bdr);border-radius:8px;padding:10px 13px;color:var(--txt);font-family:'Barlow',sans-serif;font-size:15px;outline:none;transition:border-color .15s;}
-.inp:focus{border-color:var(--acc);}.inp::placeholder{color:var(--mut);}
-.ig{margin-bottom:14px;}
-.tag{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;}
-.tag-a{background:var(--acc2);color:var(--acc);}.tag-m{background:var(--bdr);color:var(--dim);}.tag-ok{background:rgba(5,150,105,.12);color:var(--ok);}
-.exn{font-family:'Bebas Neue',cursive;font-size:22px;letter-spacing:.05em;}
-.exs{display:flex;gap:12px;margin-top:5px;flex-wrap:wrap;}
-.ep{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--dim);}.ep b{color:var(--txt);font-weight:700;}
-.set-r{display:grid;grid-template-columns:22px 1fr 1fr 38px 28px;gap:6px;padding:6px 0;border-bottom:1px solid var(--bdr);align-items:center;}.set-r:last-child{border-bottom:none;}
-.set-n{font-family:'Bebas Neue',cursive;font-size:20px;color:var(--mut);line-height:1;}.set-n.ok{color:var(--acc);}
-.sinp{background:var(--card);border:1px solid var(--bdr);border-radius:6px;padding:7px 4px;color:var(--txt);font-family:'Barlow',sans-serif;font-size:15px;font-weight:700;width:100%;text-align:center;outline:none;transition:border-color .15s;}
-.sinp:focus{border-color:var(--acc);}
-.sck{width:28px;height:28px;border-radius:50%;border:2px solid var(--bdr);background:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;margin:0 auto;}
-.sck.ok{background:var(--acc);border-color:var(--acc);}
-.rest-ov{position:fixed;inset:0;background:rgba(0,0,0,.94);display:flex;align-items:center;justify-content:center;z-index:200;flex-direction:column;gap:12px;cursor:pointer;}
-.rest-t{font-family:'Bebas Neue',cursive;font-size:110px;color:var(--acc);line-height:1;}
-.rest-l{font-size:13px;color:var(--dim);text-transform:uppercase;letter-spacing:.12em;}
-.mu{border:2px dashed var(--bdr);border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:8px;}.mu:hover{border-color:var(--acc);}
-.mpv{width:100%;max-height:160px;object-fit:cover;border-radius:8px;margin-top:8px;}
-.pbar{height:4px;background:var(--bdr);border-radius:2px;overflow:hidden;margin:8px 0;}
-.pfil{height:100%;background:var(--acc);border-radius:2px;transition:width .4s;}
-.div{height:1px;background:var(--bdr);margin:16px 0;}
-.emp{text-align:center;padding:40px 20px;color:var(--mut);}
-.emp-ic{font-size:40px;margin-bottom:10px;}
-.emp-t{font-family:'Bebas Neue',cursive;font-size:20px;letter-spacing:.05em;color:var(--dim);margin-bottom:6px;}
-.sc{background:var(--card);border:1px solid var(--bdr);border-radius:12px;padding:16px;margin-bottom:10px;cursor:pointer;transition:border-color .15s;}.sc:hover{border-color:var(--acc);}
-.bb{display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:var(--dim);cursor:pointer;font-family:'Barlow',sans-serif;font-size:12px;font-weight:600;padding:0;margin-bottom:14px;text-transform:uppercase;letter-spacing:.07em;transition:color .15s;}.bb:hover{color:var(--acc);}
-.mov{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:150;display:flex;align-items:flex-end;justify-content:center;}
-.mod{background:var(--card);border:1px solid var(--bdr);border-radius:20px 20px 0 0;padding:22px;width:100%;max-width:480px;max-height:88vh;overflow-y:auto;}
-.wh{background:linear-gradient(135deg,var(--acc2) 0%,transparent 60%);border:1px solid var(--acc);border-radius:16px;padding:18px;margin-bottom:16px;}
-.wt{font-family:'Bebas Neue',cursive;font-size:20px;letter-spacing:.05em;}
-.wlv{font-family:'Bebas Neue',cursive;font-size:48px;color:var(--acc);letter-spacing:.05em;line-height:1;}
-.st{font-family:'Bebas Neue',cursive;font-size:13px;letter-spacing:.15em;color:var(--mut);text-transform:uppercase;margin-bottom:9px;}
-.hg{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
-.hsc{background:var(--card);border:1px solid var(--bdr);border-radius:14px;padding:14px;}
-.hsv{font-family:'Bebas Neue',cursive;font-size:36px;color:var(--acc);letter-spacing:.05em;line-height:1;}
-.hsl{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.08em;margin-top:3px;}
-.sd{font-family:'Bebas Neue',cursive;font-size:19px;letter-spacing:.05em;}
-.sdn{font-size:13px;color:var(--dim);margin-top:2px;}
-.ss{display:flex;gap:16px;margin-top:10px;}
-.ssv{font-size:13px;color:var(--mut);}.ssv b{display:block;font-size:18px;font-family:'Bebas Neue',cursive;color:var(--acc);letter-spacing:.05em;}
-.chip-row{display:flex;flex-wrap:wrap;gap:7px;margin-top:6px;}
-.chip{padding:5px 12px;border-radius:20px;border:1px solid var(--bdr);background:none;color:var(--dim);font-family:'Barlow',sans-serif;font-size:12px;cursor:pointer;transition:all .15s;font-weight:600;}
-.chip.on{background:var(--acc2);border-color:var(--acc);color:var(--acc);}
-.stab-row{display:flex;gap:7px;margin-bottom:18px;overflow-x:auto;padding-bottom:2px;}
-.stab{padding:7px 14px;border-radius:20px;border:1px solid var(--bdr);background:none;color:var(--dim);font-family:'Barlow',sans-serif;font-size:11px;cursor:pointer;font-weight:700;letter-spacing:.06em;text-transform:uppercase;transition:all .15s;white-space:nowrap;}
-.stab.on{background:var(--acc2);border-color:var(--acc);color:var(--acc);}
-.rpe-row{display:flex;gap:5px;flex-wrap:wrap;}
-.rpe-btn{width:30px;height:30px;border-radius:6px;border:1px solid var(--bdr);background:none;color:var(--dim);font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;font-family:'Barlow',sans-serif;}
-.rpe-btn.on{background:var(--acc);border-color:var(--acc);color:#fff;}
-.chart-wrap{width:100%;overflow:hidden;border-radius:8px;background:var(--sur);border:1px solid var(--bdr);padding:10px 8px 6px;}
-.cmp-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
-.cmp-card{background:var(--sur);border:1px solid var(--bdr);border-radius:10px;padding:12px;}
-.cmp-h{font-size:10px;color:var(--dim);font-weight:700;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;}
-select.inp{appearance:none;cursor:pointer;}
-textarea.inp{resize:vertical;min-height:64px;}
-::-webkit-scrollbar{width:3px;}::-webkit-scrollbar-thumb{background:var(--bdr);}
-@keyframes fi{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}.fi{animation:fi .25s ease;}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}.pls{animation:pulse 1.5s infinite;}
-.day-pill{display:flex;gap:5px;overflow-x:auto;margin-bottom:16px;padding-bottom:4px;}
-.dpb{min-width:42px;padding:7px 6px;border-radius:8px;border:1px solid var(--bdr);background:none;color:var(--dim);font-family:'Barlow',sans-serif;font-size:10px;font-weight:700;cursor:pointer;transition:all .15s;text-align:center;white-space:nowrap;flex-shrink:0;}
-.dpb.on{background:rgba(48,209,88,.15);border-color:#30D158;color:#30D158;}
-.dpb.log{background:rgba(48,209,88,.06);border-color:rgba(48,209,88,.4);color:#30D158;}
-.frow{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--bdr);gap:10px;}
-.frow:last-child{border-bottom:none;}
-.fck{width:26px;height:26px;border-radius:50%;border:2px solid var(--bdr);background:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0;}
-.fck.ok{background:#30D158;border-color:#30D158;}
-.kcal-sum{background:rgba(48,209,88,.1);border:1px solid rgba(48,209,88,.3);border-radius:10px;padding:12px;margin:12px 0;}
-.kcal-bar{height:6px;background:var(--bdr);border-radius:3px;overflow:hidden;margin-top:8px;}
-.kcal-fill{height:100%;background:#30D158;border-radius:3px;transition:width .4s;}
-.import-step{display:flex;align-items:center;gap:8px;padding:10px;border-radius:8px;background:var(--sur);border:1px solid var(--bdr);margin-bottom:8px;}
-.import-num{width:24px;height:24px;border-radius:50%;background:var(--acc2);color:var(--acc);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-.spin{display:inline-block;animation:spin .8s linear infinite;}
-@keyframes spin{to{transform:rotate(360deg)}}
-.ex-icon{filter:invert(1) brightness(1.8);}
-.app.light .ex-icon{filter:none;}
-.chat-fab{position:fixed;bottom:85px;right:20px;width:56px;height:56px;border-radius:28px;background:var(--acc);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 15px rgba(30,144,255,.4);cursor:pointer;z-index:100;transition:all .2s;border:none;}
-.chat-fab:active{transform:scale(.95);}
-.chat-win{position:fixed;inset:0;background:var(--bg);z-index:1100;display:flex;flex-direction:column;animation:slideUp .3s ease;}
-@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
-.chat-h{padding:16px;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center;background:var(--sur);}
-.chat-msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;}
-.msg{max-width:85%;padding:10px 14px;border-radius:16px;font-size:14px;line-height:1.4;animation:fi .2s ease;}
-.msg.ai{align-self:flex-start;background:var(--card);border:1px solid var(--bdr);border-bottom-left-radius:4px;}
-.msg.user{align-self:flex-end;background:var(--acc);color:#fff;border-bottom-right-radius:4px;}
-.chat-f{padding:12px;border-top:1px solid var(--bdr);background:var(--sur);display:flex;gap:8px;}
-`;
 
 
 // ─── LINE CHART ───────────────────────────────────────────
-function LineChart({ data, color = "#1E90FF", height = 110 }) {
-  if (!data || data.length < 2) return (
-    <div style={{ textAlign: "center", padding: "16px", color: "var(--mut)", fontSize: 12 }}>Almeno 2 rilevazioni per il grafico</div>
-  );
-  const W = 300, H = height, PL = 34, PR = 6, PT = 14, PB = 22;
-  const iW = W - PL - PR, iH = H - PT - PB;
-  const vals = data.map(d => +d.y);
-  const mn = Math.min(...vals), mx = Math.max(...vals), rng = mx - mn || 1;
-  const px = i => PL + i / (data.length - 1) * iW;
-  const py = v => PT + (1 - (v - mn) / rng) * iH;
-  const pts = data.map((d, i) => `${px(i)},${py(+d.y)}`).join(" ");
-  const step = Math.max(1, Math.ceil(data.length / 6));
-  const yTicks = [mn, mn + rng / 2, mx];
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", display: "block", height }}>
-      <polygon points={`${PL},${PT + iH} ${pts} ${px(data.length - 1)},${PT + iH}`} fill={color} opacity=".08" />
-      {yTicks.map((v, i) => (
-        <line key={i} x1={PL} x2={W - PR} y1={py(v)} y2={py(v)} stroke="var(--bdr)" strokeWidth=".5" />
-      ))}
-      <polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-      {data.map((d, i) => (
-        <g key={i}>
-          <circle cx={px(i)} cy={py(+d.y)} r="3" fill={color} />
-          {i % step === 0 && <text x={px(i)} y={H - 4} textAnchor="middle" fill="var(--mut)" fontSize="7.5" fontFamily="Barlow,sans-serif">{d.label}</text>}
-        </g>
-      ))}
-      {yTicks.map((v, i) => (
-        <text key={i} x={PL - 3} y={py(v) + 3} textAnchor="end" fill="var(--mut)" fontSize="7" fontFamily="Barlow,sans-serif">{Math.round(v * 10) / 10}</text>
-      ))}
-    </svg>
-  );
-}
 
 // ─── APP ──────────────────────────────────────────────────
 export default function App() {
@@ -567,6 +337,8 @@ function Home({ schede, sessioni, peso, piani, corse, dark, onToggleDark, onStar
 
 // ─── SCHEDE ───────────────────────────────────────────────
 function Schede({ schede, onNew, onEdit, onDelete, onStart }) {
+  const [confirmState, setConfirmState] = useState(null);
+
   return (
     <>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", paddingTop: 20, paddingBottom: 16 }}>
@@ -586,175 +358,22 @@ function Schede({ schede, onNew, onEdit, onDelete, onStart }) {
             </div>
             <div style={{ display: "flex", gap: 7 }}>
               <button className="bico" onClick={() => onEdit(sc)}><IcEdit /></button>
-              <button className="bico d" onClick={() => { if (window.confirm(`Eliminare "${sc.nome}"?`)) onDelete(sc.id); }}><IcTrash /></button>
+              <button className="bico d" onClick={() => {
+                setConfirmState({ msg: `Eliminare "${sc.nome}"?`, onConfirm: () => { onDelete(sc.id); } });
+              }}><IcTrash /></button>
             </div>
           </div>
           {sc.esercizi?.length > 0 && <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 6 }}>{sc.esercizi.map(e => <span key={e.id} className="tag tag-m">{e.nome}</span>)}</div>}
           <button className="btn btn-s btn-full" style={{ marginTop: 12 }} onClick={() => onStart(sc)}><IcPlay /> ALLENA ORA</button>
         </div>
       ))}
+      {confirmState && <ConfirmModal message={confirmState.msg} onConfirm={() => { confirmState.onConfirm(); setConfirmState(null); }} onCancel={() => setConfirmState(null)} />}
     </>
   );
 }
 
 
 
-const ZEPP_PROMPT = `Analizza questo screenshot dell'app Zepp Life e restituisci SOLO JSON valido con TUTTI i valori numerici e le etichette di stato presenti. Usa null per i campi non trovati. Esempio formato:{"peso":86.8,"punteggio":46,"tipologia":"Robusto","imc":30.3,"imc_status":"Molto alto","massa_grassa":31.3,"massa_grassa_status":"Alto","acqua":49.1,"acqua_status":"Insufficiente","grasso_viscerale":13,"grasso_viscerale_status":"Alto","muscoli":56.62,"muscoli_status":"Buono","proteine":16.2,"proteine_status":"Normale","metabolismo":1753,"metabolismo_status":"Obiettivo raggiunto","massa_ossea":3.04,"massa_ossea_status":"Normale"}`;
-
-const STATUS_OPTS = ["", "Molto alto", "Alto", "Normale", "Basso", "Molto basso", "Insufficiente", "Buono", "Obiettivo raggiunto"];
-
-function StatusBadge({ label }) {
-  if (!label) return null;
-  const l = label.toLowerCase();
-  const [bg, col] = l.includes("molto alto") ? ["rgba(255,59,48,.15)", "var(--dan)"] :
-    l.includes("alto") ? ["rgba(255,149,0,.15)", "#FF9500"] :
-      l.includes("insufficiente") || l.includes("basso") ? ["rgba(255,59,48,.15)", "var(--dan)"] :
-        ["rgba(48,209,88,.15)", "var(--ok)"];
-  return <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: bg, color: col, letterSpacing: ".05em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{label}</span>;
-}
-
-// ─── SCHEDA PDF IMPORT MODAL ──────────────────────────────
-const GROQ_SCHEDA_PROMPT = `Sei un assistente fitness. L'utente ti fornisce il testo estratto da un PDF di una scheda di allenamento in palestra.
-Estrai TUTTI gli elementi della scheda nell'ordine in cui appaiono, inclusi: riscaldamento (warm-up), cardio iniziale, esercizi con i pesi, cardio finale, defaticamento, stretching — qualunque attività presente nel PDF va inclusa.
-Per ogni elemento indica: nome, numero di serie (per cardio usa 1), ripetizioni o durata come stringa (es. "10 min", "8-12", "15"), pausa in secondi tra le serie, note opzionali.
-Se la pausa non è specificata usa 60 per cardio/riscaldamento e 90 per esercizi con i pesi. Se le serie non sono specificate usa 3 per esercizi e 1 per cardio.
-Non omettere nessuna voce presente nel PDF, anche se sembra generica (es. "Cardio Warm Up 10 min", "Defaticamento").
-Rispondi SOLO con JSON valido (nessun testo aggiuntivo, nessun markdown):
-{"nomeScheda":"nome della scheda","esercizi":[{"nome":"Cardio Warm Up","serie":1,"ripetizioni":"10 min","pausa":0,"note":""},{"nome":"Panca Piana","serie":4,"ripetizioni":"8-10","pausa":120,"note":""}]}`;
-
-function SchedaPdfImportModal({ onApply, onClose }) {
-  const [fase, setFase] = useState(1);
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem("groq_key") || "");
-  const [file, setFile] = useState(null);
-  const [loadingMsg, setLoadingMsg] = useState("");
-  const [errore, setErrore] = useState("");
-  const [parsed, setParsed] = useState(null);
-
-  const analizza = async () => {
-    if (!file) return setErrore("Seleziona un file PDF");
-    const activeKey = GROQ_KEY || apiKey.trim();
-    if (!activeKey) return setErrore("Inserisci la tua Groq API key (console.groq.com)");
-    if (!file.name.toLowerCase().endsWith(".pdf")) return setErrore("Il file deve essere un PDF");
-    setErrore(""); setFase(2);
-    try {
-      setLoadingMsg("Lettura del PDF...");
-      const testoPdf = await estraiTestoPdf(file);
-      if (!testoPdf || testoPdf.length < 20) throw new Error("Testo non estraibile dal PDF. Verifica che non sia solo-immagine.");
-
-      setLoadingMsg("Analisi con Groq AI...");
-      const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${activeKey}` },
-        body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages: [
-            { role: "system", content: GROQ_SCHEDA_PROMPT },
-            { role: "user", content: `Testo della scheda di allenamento:\n\n${testoPdf.slice(0, 6500)}` }
-          ],
-          temperature: 0.1, max_tokens: 4096
-        })
-      });
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        throw new Error(err?.error?.message || `Errore Groq: ${resp.status}`);
-      }
-      const data = await resp.json();
-      const testo = data?.choices?.[0]?.message?.content || "";
-      const match = testo.match(/\{[\s\S]+\}/);
-      if (!match) throw new Error("Il modello non ha restituito JSON valido. Riprova.");
-      const obj = JSON.parse(match[0]);
-      if (!Array.isArray(obj.esercizi) || obj.esercizi.length === 0) throw new Error("Nessun esercizio trovato nel PDF.");
-      localStorage.setItem("groq_key", apiKey.trim());
-      setParsed(obj); setFase(3);
-    } catch (e) { setErrore(e.message || "Errore sconosciuto"); setFase(1); }
-  };
-
-  const applica = () => {
-    if (!parsed) return;
-    const ex = parsed.esercizi.map(e => ({
-      id: genId(),
-      nome: String(e.nome || ""),
-      serie: +e.serie || 3,
-      ripetizioni: String(e.ripetizioni || "10"),
-      pausa: +e.pausa || 90,
-      note: String(e.note || "")
-    }));
-    onApply({ nomeScheda: parsed.nomeScheda || "", esercizi: ex });
-    onClose();
-  };
-
-  return (
-    <div className="mov" onClick={onClose}>
-      <div className="mod" onClick={e => e.stopPropagation()} style={{ maxHeight: "90vh" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-          <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, letterSpacing: ".05em" }}>IMPORTA SCHEDA DA PDF</span>
-          <button className="bico" onClick={onClose}><IcClose /></button>
-        </div>
-
-        {fase === 1 && (
-          <>
-            <div style={{ marginBottom: 16 }}>
-              <div className="import-step"><span className="import-num">1</span><span style={{ fontSize: 13 }}>Key gratuita su <b>console.groq.com</b> → API Keys</span></div>
-              <div className="import-step"><span className="import-num">2</span><span style={{ fontSize: 13 }}>Carica il PDF della tua scheda di allenamento</span></div>
-              <div className="import-step"><span className="import-num">3</span><span style={{ fontSize: 13 }}>LLaMA 3.3 estrae automaticamente esercizi, serie e reps</span></div>
-            </div>
-            <div className="ig">
-              <label className="lbl">Groq API Key{apiKey && " ✓ salvata"}</label>
-              <input className="inp" type="password" placeholder="gsk_..." value={apiKey} onChange={e => setApiKey(e.target.value)} />
-              <div style={{ fontSize: 11, color: "var(--mut)", marginTop: 4 }}>Salvata solo nel tuo browser · Free tier: 14.400 req/giorno</div>
-            </div>
-            <div className="ig">
-              <label className="lbl">PDF scheda allenamento</label>
-              <div
-                style={{ border: "2px dashed var(--bdr)", borderRadius: 10, padding: "18px", textAlign: "center", cursor: "pointer", transition: "all .15s", background: file ? "var(--acc2)" : "none", borderColor: file ? "var(--acc)" : "var(--bdr)" }}
-                onClick={() => document.getElementById("pdf-scheda-input").click()}
-              >
-                {file
-                  ? <><IcFile /><div style={{ fontSize: 13, fontWeight: 600, marginTop: 6, color: "var(--acc)" }}>{file.name}</div><div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{(file.size / 1024).toFixed(0)} KB</div></>
-                  : <><IcUpload /><div style={{ fontSize: 13, color: "var(--dim)", marginTop: 6 }}>Tocca per selezionare il PDF</div></>
-                }
-                <input id="pdf-scheda-input" type="file" accept=".pdf,application/pdf" style={{ display: "none" }} onChange={e => { setFile(e.target.files[0] || null); setErrore(""); }} />
-              </div>
-            </div>
-            {errore && <div style={{ color: "var(--dan)", fontSize: 13, marginBottom: 12, padding: "10px", background: "var(--dan2)", borderRadius: 8 }}>{errore}</div>}
-            <button className="btn btn-p btn-full" onClick={analizza}><IcUpload /> ANALIZZA PDF</button>
-          </>
-        )}
-
-        {fase === 2 && (
-          <div style={{ textAlign: "center", padding: "32px 16px" }}>
-            <div className="spin" style={{ fontSize: 36, marginBottom: 16 }}>⚙️</div>
-            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, letterSpacing: ".05em", marginBottom: 8 }}>ANALISI IN CORSO</div>
-            <div style={{ fontSize: 13, color: "var(--dim)", marginBottom: 4 }}>{loadingMsg}</div>
-            <div style={{ fontSize: 11, color: "var(--mut)" }}>10-20 secondi</div>
-          </div>
-        )}
-
-        {fase === 3 && parsed && (
-          <>
-            <div style={{ background: "var(--acc2)", border: "1px solid var(--acc)", borderRadius: 10, padding: 12, marginBottom: 16 }}>
-              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 16, color: "var(--acc)", marginBottom: 4 }}>✓ {parsed.esercizi.length} ESERCIZI ESTRATTI</div>
-              {parsed.nomeScheda && <div style={{ fontSize: 13, fontWeight: 600 }}>{parsed.nomeScheda}</div>}
-            </div>
-            <div className="st" style={{ marginBottom: 8 }}>ANTEPRIMA ESERCIZI</div>
-            <div style={{ maxHeight: 260, overflowY: "auto" }}>
-              {parsed.esercizi.map((e, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--bdr)" }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{e.nome}</div>
-                  <div style={{ fontSize: 11, color: "var(--dim)", flexShrink: 0, marginLeft: 8 }}>{e.serie}×{e.ripetizioni} · {e.pausa}s</div>
-                </div>
-              ))}
-            </div>
-            <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
-              <button className="btn btn-s" style={{ flex: 1 }} onClick={() => { setParsed(null); setFase(1); }}>RIPROVA</button>
-              <button className="btn btn-p" style={{ flex: 2 }} onClick={applica}><IcCheck /> APPLICA ALLA SCHEDA</button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
 
 // ─── SCHEDA EDIT ──────────────────────────────────────────
 function SchedaEdit({ scheda: init, onSave, onBack }) {
@@ -826,6 +445,7 @@ function SchedaEdit({ scheda: init, onSave, onBack }) {
       </div>
       {modal && <EsercizioModal init={modal.data} mode={modal.mode} onSave={applyModal} onClose={() => setModal(null)} />}
       {pdfModal && <SchedaPdfImportModal
+        groqKey={GROQ_KEY}
         onApply={({ nomeScheda, esercizi: ex }) => {
           if (nomeScheda && !nome.trim()) setNome(nomeScheda);
           else if (nomeScheda) setNome(nomeScheda);
@@ -834,37 +454,6 @@ function SchedaEdit({ scheda: init, onSave, onBack }) {
         onClose={() => setPdfModal(false)}
       />}
     </>
-  );
-}
-
-// ─── ESERCIZIO MODAL ──────────────────────────────────────
-function EsercizioModal({ init, mode, onSave, onClose }) {
-  const [d, setD] = useState({ ...init });
-  const upd = (k, v) => setD(p => ({ ...p, [k]: v }));
-
-  return (
-    <div className="mov" onClick={onClose}>
-      <div className="mod" onClick={e => e.stopPropagation()}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-          <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, letterSpacing: ".05em", color: "#30D158" }}>
-            {mode === "new" ? "NUOVO ESERCIZIO" : "MODIFICA"}
-          </span>
-          <button className="bico" onClick={onClose}><IcClose /></button>
-        </div>
-        <div className="ig">
-          <label className="lbl">Nome *</label>
-          <input className="inp" placeholder="es. Panca Piana, Squat…" value={d.nome} onChange={e => upd("nome", e.target.value)} />
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 9, marginBottom: 14 }}>
-          <div><label className="lbl">Serie</label><input className="inp" type="number" min="1" value={d.serie} onChange={e => upd("serie", +e.target.value)} /></div>
-          <div><label className="lbl">Reps</label><input className="inp" placeholder="10" value={d.ripetizioni} onChange={e => upd("ripetizioni", e.target.value)} /></div>
-          <div><label className="lbl">Pausa (s)</label><input className="inp" type="number" min="0" value={d.pausa} onChange={e => upd("pausa", +e.target.value)} /></div>
-        </div>
-        <div className="ig"><label className="lbl">Note / tecnica</label><textarea className="inp" rows={2} value={d.note} onChange={e => upd("note", e.target.value)} placeholder="Indicazioni tecniche…" /></div>
-
-        <button className="btn btn-p btn-full" onClick={() => onSave(d)}><IcCheck /> {mode === "new" ? "AGGIUNGI" : "SALVA"}</button>
-      </div>
-    </div>
   );
 }
 
@@ -891,6 +480,7 @@ function Allenamento({ scheda, sessioni, onComplete, onBack }) {
   const [rest, setRest] = useState(null);
   const [noteSess, setNoteSess] = useState("");
   const [rpeOpen, setRpeOpen] = useState(null);
+  const [confirmState, setConfirmState] = useState(null);
   const tiRef = useRef(); const reRef = useRef();
 
   useEffect(() => { tiRef.current = setInterval(() => setElapsed(p => p + 1), 1000); return () => clearInterval(tiRef.current); }, []);
@@ -927,7 +517,9 @@ function Allenamento({ scheda, sessioni, onComplete, onBack }) {
     <>
       <div className="content fi">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 16, marginBottom: 16 }}>
-          <button className="bb" style={{ margin: 0 }} onClick={() => { if (window.confirm("Interrompere l'allenamento?")) onBack(); }}><IcClose /> ESCI</button>
+          <button className="bb" style={{ margin: 0 }} onClick={() => {
+            setConfirmState({ msg: "Interrompere l'allenamento?", onConfirm: () => { onBack(); } });
+          }}><IcClose /> ESCI</button>
           <div className="pls" style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 13, color: "var(--acc)", letterSpacing: ".1em" }}>● LIVE</div>
         </div>
         <div className="wh">
@@ -999,7 +591,7 @@ function Allenamento({ scheda, sessioni, onComplete, onBack }) {
           <div className="rest-l">📳 tocca per saltare</div>
         </div>
       )}
-
+      {confirmState && <ConfirmModal message={confirmState.msg} onConfirm={() => { confirmState.onConfirm(); setConfirmState(null); }} onCancel={() => setConfirmState(null)} />}
     </>
   );
 }
@@ -1007,6 +599,7 @@ function Allenamento({ scheda, sessioni, onComplete, onBack }) {
 // ─── STORICO ──────────────────────────────────────────────
 function Storico({ sessioni, corse, onDetail, onDelete, onDeleteCorsa }) {
   const [stab, setStab] = useState("palestra");
+  const [confirmState, setConfirmState] = useState(null);
 
   return (
     <>
@@ -1050,7 +643,10 @@ function Storico({ sessioni, corse, onDetail, onDelete, onDeleteCorsa }) {
                 </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <div className="tag tag-a">{s.durata || 0}min</div>
-                  <button className="bico d" onClick={e => { e.stopPropagation(); if (window.confirm("Eliminare?")) onDelete(s.id); }}><IcTrash /></button>
+                  <button className="bico d" onClick={e => {
+                    e.stopPropagation();
+                    setConfirmState({ msg: "Eliminare?", onConfirm: () => { onDelete(s.id); } });
+                  }}><IcTrash /></button>
                 </div>
               </div>
               <div className="ss">
@@ -1067,12 +663,15 @@ function Storico({ sessioni, corse, onDetail, onDelete, onDeleteCorsa }) {
       {stab === "corsa" && (
         <StoricoCorsa corse={corse || []} onDelete={onDeleteCorsa} />
       )}
+
+      {confirmState && <ConfirmModal message={confirmState.msg} onConfirm={() => { confirmState.onConfirm(); setConfirmState(null); }} onCancel={() => setConfirmState(null)} />}
     </>
   );
 }
 
 function StoricoCorsa({ corse, onDelete }) {
   const [sel, setSel] = useState(null);
+  const [confirmState, setConfirmState] = useState(null);
 
   function fmtPaceDisplay(distKm, durSec) {
     if (!distKm || distKm < 0.01 || !durSec) return "--:--";
@@ -1202,7 +801,9 @@ function StoricoCorsa({ corse, onDelete }) {
                 <button
                   className="btn btn-full"
                   style={{ background: "var(--dan2)", color: "var(--dan)", border: "1px solid var(--dan)", fontSize: 12 }}
-                  onClick={() => { if (window.confirm("Eliminare questa uscita?")) { onDelete(c.id); setSel(null); } }}
+                  onClick={() => {
+                    setConfirmState({ msg: "Eliminare questa uscita?", onConfirm: () => { onDelete(c.id); setSel(null); } });
+                  }}
                 >
                   <IcTrash /> ELIMINA USCITA
                 </button>
@@ -1211,6 +812,8 @@ function StoricoCorsa({ corse, onDelete }) {
           </div>
         );
       })}
+
+      {confirmState && <ConfirmModal message={confirmState.msg} onConfirm={() => { confirmState.onConfirm(); setConfirmState(null); }} onCancel={() => setConfirmState(null)} />}
     </>
   );
 }
@@ -1438,41 +1041,6 @@ function FreqTab({ sessioni }) {
   );
 }
 
-function CalcRM() {
-  const [kg, setKg] = useState(""); const [reps, setReps] = useState("");
-  const rm = kg && reps && +reps >= 1 ? epley(+kg, +reps) : null;
-  const pcts = [100, 95, 90, 85, 80, 75, 70, 65, 60];
-  return (
-    <>
-      <div className="st">CALCOLATORE 1RM (Formula Epley)</div>
-      <div className="card">
-        <p style={{ fontSize: 13, color: "var(--dim)", marginBottom: 14 }}>Inserisci il peso sollevato e le ripetizioni eseguite per stimare il tuo massimale teorico.</p>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
-          <div><label className="lbl">Kg sollevati</label><input className="inp" type="number" min="0" step="0.5" placeholder="80" value={kg} onChange={e => setKg(e.target.value)} /></div>
-          <div><label className="lbl">Ripetizioni</label><input className="inp" type="number" min="1" max="30" placeholder="8" value={reps} onChange={e => setReps(e.target.value)} /></div>
-        </div>
-        {rm && (
-          <>
-            <div style={{ textAlign: "center", padding: "18px 0", background: "var(--acc2)", borderRadius: 10, marginBottom: 14, borderBottom: "1px solid var(--bdr)" }}>
-              <div style={{ fontSize: 12, color: "var(--acc)", fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase" }}>Massimale stimato</div>
-              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 58, color: "var(--acc)", letterSpacing: ".05em", lineHeight: 1 }}>{rm} kg</div>
-            </div>
-            <div className="st">PERCENTUALI DI CARICO</div>
-            {pcts.map(p => (
-              <div key={p} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: "1px solid var(--bdr)" }}>
-                <div style={{ fontSize: 13, color: "var(--dim)", fontWeight: 600 }}>{p}%</div>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-                  <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, color: p === 100 ? "var(--acc)" : "var(--txt)", letterSpacing: ".05em" }}>{Math.round(rm * p / 100 * 2) / 2}</div>
-                  <div style={{ fontSize: 11, color: "var(--dim)" }}>kg</div>
-                </div>
-              </div>
-            ))}
-          </>
-        )}
-      </div>
-    </>
-  );
-}
 
 // ─── PESO CORPOREO ────────────────────────────────────────
 function Peso({ peso, onAdd, onDelete }) {
@@ -1494,6 +1062,7 @@ function Peso({ peso, onAdd, onDelete }) {
   const [showModal, setShowModal] = useState(false);
   const [expanded, setExpanded] = useState(null);
   const [lightbox, setLightbox] = useState(null);
+  const [confirmState, setConfirmState] = useState(null);
   const [scanning, setScanning] = useState(false);
   const apiKey = localStorage.getItem("groq_key") || "";
 
@@ -1678,14 +1247,19 @@ function Peso({ peso, onAdd, onDelete }) {
                       </div>
                     )}
 
-                    <button className="btn" style={{ marginTop: 6, fontSize: 12, padding: "7px 14px", color: "var(--dan)", border: "1px solid rgba(255,59,48,.25)", background: "rgba(255,59,48,.07)" }} onClick={() => { if (window.confirm("Eliminare?")) onDelete(p.id); }}>
+                    <button className="btn" style={{ marginTop: 6, fontSize: 12, padding: "7px 14px", color: "var(--dan)", border: "1px solid rgba(255,59,48,.25)", background: "rgba(255,59,48,.07)" }} onClick={() => {
+                      setConfirmState({ msg: "Eliminare?", onConfirm: () => { onDelete(p.id); } });
+                    }}>
                       <IcTrash /> Elimina
                     </button>
                   </div>
                 )}
 
                 {!isExp && <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
-                  <button className="bico d" onClick={e => { e.stopPropagation(); if (window.confirm("Eliminare questa rilevazione?")) onDelete(p.id); }}><IcTrash /></button>
+                  <button className="bico d" onClick={e => {
+                    e.stopPropagation();
+                    setConfirmState({ msg: "Eliminare questa rilevazione?", onConfirm: () => { onDelete(p.id); } });
+                  }}><IcTrash /></button>
                 </div>}
               </div>
             );
@@ -2097,6 +1671,8 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog }) {
           </div>
         </div>
       )}
+
+      {confirmState && <ConfirmModal message={confirmState.msg} onConfirm={() => { confirmState.onConfirm(); setConfirmState(null); }} onCancel={() => setConfirmState(null)} />}
     </>
   );
 }
@@ -2104,6 +1680,7 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog }) {
 // ─── DIETA: PIANI ALIMENTARI ──────────────────────────────
 function PianiAlimentari({ piani, logDieta, onNew, onEdit, onDelete, onLog }) {
   const [stab, setStab] = useState("piani");
+  const [confirmState, setConfirmState] = useState(null);
 
   return (
     <>
@@ -2146,7 +1723,9 @@ function PianiAlimentari({ piani, logDieta, onNew, onEdit, onDelete, onLog }) {
                 </div>
                 <div style={{ display: "flex", gap: 7 }}>
                   <button className="bico" onClick={() => onEdit(p)}><IcEdit /></button>
-                  <button className="bico d" onClick={() => { if (window.confirm(`Eliminare "${p.nome}"?`)) onDelete(p.id); }}><IcTrash /></button>
+                  <button className="bico d" onClick={() => {
+                    setConfirmState({ msg: `Eliminare "${p.nome}"?`, onConfirm: () => { onDelete(p.id); } });
+                  }}><IcTrash /></button>
                 </div>
               </div>
               {p.pasti?.length > 0 && (
@@ -2166,6 +1745,8 @@ function PianiAlimentari({ piani, logDieta, onNew, onEdit, onDelete, onLog }) {
       {stab === "storico" && (
         <StoricoDieta logDieta={logDieta} piani={piani} onLog={onLog} />
       )}
+
+      {confirmState && <ConfirmModal message={confirmState.msg} onConfirm={() => { confirmState.onConfirm(); setConfirmState(null); }} onCancel={() => setConfirmState(null)} />}
     </>
   );
 }
@@ -2401,7 +1982,7 @@ function StoricoDieta({ logDieta, piani, onLog }) {
                             <div style={{ marginTop: 4 }}>
                               {p.alimenti.map((al, ai) => (
                                 <div key={al.id || ai} className="frow">
-                                  <FoodThumb nome={al.nome} />
+                                  <FoodThumb nome={al.nome} groqKey={GROQ_KEY} />
                                   <div style={{ flex: 1, minWidth: 0 }}>
                                     <div style={{ fontSize: 13, fontWeight: 600 }}>{al.nome}</div>
                                     {al.grammi && (
@@ -2472,6 +2053,7 @@ function PianoEdit({ piano: init, onSave, onBack }) {
   const [giorno, setGiorno] = useState(1);
   const [alModal, setAlModal] = useState(null);
   const [pdfModal, setPdfModal] = useState(false);
+  const [confirmState, setConfirmState] = useState(null);
 
   const initGP = () => {
     if (init.giorniPasti) return JSON.parse(JSON.stringify(init.giorniPasti));
@@ -2508,19 +2090,19 @@ function PianoEdit({ piano: init, onSave, onBack }) {
   };
 
   const delPasto = i => {
-    if (window.confirm("Eliminare questo pasto?")) setPC(pastiCorrente.filter((_, j) => j !== i));
+    setConfirmState({ msg: "Eliminare questo pasto?", onConfirm: () => { setPC(pastiCorrente.filter((_, j) => j !== i)); } });
   };
 
   const copyFromPrev = () => {
     if (giorno <= 1) return;
     const prev = giorniPasti[giorno - 1];
     if (!prev || prev.length === 0) return alert("Il giorno precedente non ha pasti da copiare");
-    if (window.confirm(`Copiare i pasti di ${GIORNI_LABEL[giorno - 1]}?`)) {
+    setConfirmState({ msg: `Copiare i pasti di ${GIORNI_LABEL[giorno - 1]}?`, onConfirm: () => {
       setPC(JSON.parse(JSON.stringify(prev)).map(p => ({
         ...p, id: genId(),
         alimenti: p.alimenti.map(a => ({ ...a, id: genId() }))
       })));
-    }
+    } });
   };
 
   const saveAlimento = food => {
@@ -2705,6 +2287,7 @@ function PianoEdit({ piano: init, onSave, onBack }) {
       )}
       {pdfModal && (
         <PdfImportModal
+          groqKey={GROQ_KEY}
           onApply={({ nomePiano, giorniPasti: gp }) => {
             if (nomePiano) setNome(nomePiano);
             setGiorniPasti(gp);
@@ -2713,6 +2296,7 @@ function PianoEdit({ piano: init, onSave, onBack }) {
           onClose={() => setPdfModal(false)}
         />
       )}
+      {confirmState && <ConfirmModal message={confirmState.msg} onConfirm={() => { confirmState.onConfirm(); setConfirmState(null); }} onCancel={() => setConfirmState(null)} />}
     </>
   );
 }
@@ -2769,7 +2353,7 @@ function PastoEditCard({ pasto: p, pi, isAlt, altIndex, canMoveUp, canMoveDown, 
           display: "flex", alignItems: "center", gap: 10,
           background: "var(--sur)", padding: "8px 10px", borderRadius: 8, marginBottom: 6
         }}>
-          <FoodThumb nome={al.nome} />
+          <FoodThumb nome={al.nome} groqKey={GROQ_KEY} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 600, fontSize: 14 }}>{al.nome}</div>
             <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{al.grammi}g · {al.kcal} kcal</div>
@@ -3221,7 +2805,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                         const eaten = !!mangiato[`${pi}_${ai}`];
                         return (
                           <div key={al.id || ai} className="frow">
-                            <FoodThumb nome={al.nome} />
+                            <FoodThumb nome={al.nome} groqKey={GROQ_KEY} />
                             <div style={{ flex: 1, opacity: eaten ? .45 : 1, transition: 'opacity .15s', minWidth: 0 }}>
                               <div style={{ fontWeight: 600, fontSize: 13, textDecoration: eaten ? 'line-through' : 'none' }}>{al.nome}</div>
                               <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 1 }}>{al.grammi}g</div>
@@ -3358,212 +2942,9 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
 }
 
 // ─── PDF IMPORT MODAL ─────────────────────────────────────
-const GROQ_PROMPT = `Sei un assistente nutrizionale esperto. Estrai il piano alimentare settimanale da una tabella PDF che ha colonne per i pasti e colonne per le ALTERNATIVE (es. "PRANZO" e "ALT. PRANZO").
-
-REGOLE DI ESTRAZIONE:
-1. MAPPING: 1=Lun, 2=Mar, 3=Mer, 4=Gio, 5=Ven, 6=Sab, 7=Dom.
-2. ALTERNATIVE: Se vedi colonne come "ALT. PRANZO", "ALT. CENA" o "ALT. SPUNTINO", estraili come pasti separati ma assegna loro lo STESSO 'altGroupId' del pasto principale corrispondente.
-3. ESTIMAZIONE KCAL (FONDAMENTALE): Se nel testo i valori kcal mancano, DEVI STIMARLI tu basandoti sui grammi e l'alimento (es: 100g riso = 350 kcal, 10g olio = 90 kcal, 200g pollo = 220 kcal). Non lasciare mai kcal a 0.
-4. DETTAGLI: Includi sempre grammi e kcal per ogni singolo alimento.
-
-Rispondi SOLO con JSON valido:
-{"nomePiano":"Nome","giorniPasti":{"1":[{"nome":"Pranzo","altGroupId":"p1","alimenti":[{"nome":"Riso","grammi":"80","kcal":"280"}]},{"nome":"Alternativa Pranzo","altGroupId":"p1","alimenti":[{"nome":"Pasta","grammi":"70","kcal":"250"}]}],"2":[],...}}`;
 
 
-function PdfImportModal({ onApply, onClose }) {
-  const [fase, setFase] = useState(1);
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem("groq_key") || "");
-  const [file, setFile] = useState(null);
-  const [loadingMsg, setLoadingMsg] = useState("");
-  const [errore, setErrore] = useState("");
-  const [parsed, setParsed] = useState(null);
-
-  const analizza = async () => {
-    if (!file) return setErrore("Seleziona un file PDF");
-    const activeKey = GROQ_KEY || apiKey.trim();
-    if (!activeKey) return setErrore("Inserisci la tua Groq API key");
-    if (!file.name.toLowerCase().endsWith(".pdf")) return setErrore("Il file deve essere un PDF");
-    setErrore(""); setFase(2);
-    try {
-      setLoadingMsg("Lettura del PDF in corso...");
-      const testoPdf = await estraiTestoPdf(file);
-      if (!testoPdf || testoPdf.length < 50) throw new Error("Testo non estraibile — verifica che il PDF non sia solo-immagine.");
-
-      setLoadingMsg("Analisi con Groq AI (LLaMA 3)...");
-      const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${activeKey}` },
-        body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages: [
-            { role: "system", content: GROQ_PROMPT },
-            { role: "user", content: `Testo del piano alimentare:\n\n${testoPdf.slice(0, 6500)}` }
-          ],
-          temperature: 0.1, max_tokens: 4096
-        })
-      });
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        throw new Error(err?.error?.message || `Errore Groq: ${resp.status}`);
-      }
-      const data = await resp.json();
-      const testo = data?.choices?.[0]?.message?.content || "";
-      const match = testo.match(/\{[\s\S]+\}/);
-      if (!match) throw new Error("Il modello non ha restituito JSON valido. Riprova.");
-      const obj = JSON.parse(match[0]);
-      if (!obj.giorniPasti) throw new Error("Struttura JSON non riconosciuta.");
-      localStorage.setItem("groq_key", apiKey.trim());
-      setParsed(obj); setFase(3);
-    } catch (e) { setErrore(e.message || "Errore sconosciuto"); setFase(1); }
-  };
-
-  const applica = () => {
-    if (!parsed) return;
-    const gp = {};
-    for (let d = 1; d <= 7; d++) {
-      gp[d] = (parsed.giorniPasti[d] || parsed.giorniPasti[String(d)] || []).map(p => ({
-        ...p, id: genId(),
-        altGroupId: p.altGroupId || null,
-        alimenti: (p.alimenti || []).map(a => {
-          const name = a.nome || a.alimento || a.food || a.name || "";
-          const qty = a.grammi || a.peso || a.weight || a.qta || a.amount || "";
-          const cal = a.kcal || a.calorie || a.calories || a.cal || "";
-          return { ...a, id: genId(), nome: String(name), grammi: String(qty), kcal: String(cal) };
-        })
-      }));
-    }
-    onApply({ nomePiano: parsed.nomePiano || "", giorniPasti: gp });
-    onClose();
-  };
-
-  return (
-    <div className="mov" onClick={onClose}>
-      <div className="mod" onClick={e => e.stopPropagation()} style={{ maxHeight: "90vh" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-          <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, letterSpacing: ".05em" }}>IMPORTA DA PDF</span>
-          <button className="bico" onClick={onClose}><IcClose /></button>
-        </div>
-
-        {fase === 1 && (
-          <>
-            <div style={{ marginBottom: 16 }}>
-              <div className="import-step"><span className="import-num">1</span><span style={{ fontSize: 13 }}>Key gratuita su <b>console.groq.com</b> → API Keys</span></div>
-              <div className="import-step"><span className="import-num">2</span><span style={{ fontSize: 13 }}>Carica il PDF — l'AI estrae pasti, alternative e kcal automaticamente</span></div>
-            </div>
-            {!GROQ_KEY && (
-              <div className="ig">
-                <label className="lbl">Groq API Key{apiKey && " ✓ salvata"}</label>
-                <input className="inp" type="password" placeholder="gsk_..." value={apiKey} onChange={e => setApiKey(e.target.value)} />
-              </div>
-            )}
-            <div className="ig">
-              <label className="lbl">File PDF</label>
-              <div
-                style={{
-                  border: "2px dashed var(--bdr)", borderRadius: 10, padding: "18px",
-                  textAlign: "center", cursor: "pointer",
-                  background: file ? "var(--acc2)" : "none", borderColor: file ? "var(--acc)" : "var(--bdr)"
-                }}
-                onClick={() => document.getElementById("pdf-input").click()}
-              >
-                {file
-                  ? <><IcFile /><div style={{ fontSize: 13, fontWeight: 600, marginTop: 6, color: "var(--acc)" }}>{file.name}</div><div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{(file.size / 1024).toFixed(0)} KB</div></>
-                  : <><IcUpload /><div style={{ fontSize: 13, color: "var(--dim)", marginTop: 6 }}>Tocca per selezionare il PDF</div></>
-                }
-                <input id="pdf-input" type="file" accept=".pdf,application/pdf" style={{ display: "none" }}
-                  onChange={e => { setFile(e.target.files[0] || null); setErrore(""); }} />
-              </div>
-            </div>
-            {errore && (
-              <div style={{ color: "var(--dan)", fontSize: 13, marginBottom: 12, padding: "10px", background: "var(--dan2)", borderRadius: 8 }}>{errore}</div>
-            )}
-            <button className="btn btn-p btn-full" onClick={analizza}><IcUpload /> ANALIZZA PDF</button>
-          </>
-        )}
-
-        {fase === 2 && (
-          <div style={{ textAlign: "center", padding: "32px 16px" }}>
-            <div className="spin" style={{ fontSize: 36, marginBottom: 16 }}>⚙️</div>
-            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, letterSpacing: ".05em", marginBottom: 8 }}>ANALISI IN CORSO</div>
-            <div style={{ fontSize: 13, color: "var(--dim)", marginBottom: 4 }}>{loadingMsg}</div>
-          </div>
-        )}
-
-        {fase === 3 && parsed && (
-          <>
-            <div style={{ background: "rgba(48,209,88,.1)", border: "1px solid #30D158", borderRadius: 10, padding: 12, marginBottom: 16 }}>
-              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 16, color: "#30D158", marginBottom: 4 }}>✓ ESTRATTO CON SUCCESSO</div>
-              {parsed.nomePiano && <div style={{ fontSize: 13, fontWeight: 600 }}>{parsed.nomePiano}</div>}
-            </div>
-
-            <div className="st" style={{ marginBottom: 8 }}>ANTEPRIMA</div>
-            {[1, 2, 3, 4, 5, 6, 7].map(d => {
-              const pasti = parsed.giorniPasti[d] || parsed.giorniPasti[String(d)] || [];
-              const seen = new Set();
-              const kcal = pasti.reduce((a, p) => {
-                if (p.altGroupId && seen.has(p.altGroupId)) return a;
-                if (p.altGroupId) seen.add(p.altGroupId);
-                return a + p.alimenti.reduce((b, al) => b + (+al.kcal || 0), 0);
-              }, 0);
-              const hasAlts = pasti.some(p => p.altGroupId);
-              return (
-                <div key={d} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--bdr)" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{GIORNI_LABEL[d]}</div>
-                    {hasAlts && (
-                      <span style={{ fontSize: 9, fontWeight: 700, background: "rgba(255,149,0,.15)", color: "#FF9500", padding: "2px 6px", borderRadius: 20 }}>⇄ ALT</span>
-                    )}
-                  </div>
-                  <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                    <span style={{ fontSize: 11, color: "var(--dim)" }}>{pasti.length} pasti</span>
-                    <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 16, color: "#30D158" }}>{kcal > 0 ? `${kcal} kcal` : "—"}</span>
-                  </div>
-                </div>
-              );
-            })}
-
-            <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
-              <button className="btn btn-s" style={{ flex: 1 }} onClick={() => { setParsed(null); setFase(1); }}>RIPROVA</button>
-              <button className="btn btn-p" style={{ flex: 2, background: "#30D158" }} onClick={applica}><IcCheck /> APPLICA AL PIANO</button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
 
 // ─── ALIMENTO MODAL ───────────────────────────────────────
-function AlimentoModal({ init, mode, onSave, onClose }) {
-  const [d, setD] = useState({ ...init });
-  const upd = (k, v) => setD(p => ({ ...p, [k]: v }));
-
-  return (
-    <div className="mov" onClick={onClose}>
-      <div className="mod" onClick={e => e.stopPropagation()}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-          <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, letterSpacing: ".05em", color: "#30D158" }}>
-            {mode === "new" ? "NUOVO ALIMENTO" : "MODIFICA"}
-          </span>
-          <button className="bico" onClick={onClose}><IcClose /></button>
-        </div>
-        <div className="ig">
-          <label className="lbl">Nome alimento *</label>
-          <input className="inp" placeholder="es. Pollo, Riso Basmati, Uova..." value={d.nome} onChange={e => upd("nome", e.target.value)} />
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-          <div><label className="lbl">Grammi / Qtà</label><input className="inp" type="number" min="0" placeholder="100" value={d.grammi} onChange={e => upd("grammi", e.target.value)} /></div>
-          <div><label className="lbl">Kcal Totali</label><input className="inp" type="number" min="0" placeholder="350" value={d.kcal} onChange={e => upd("kcal", e.target.value)} /></div>
-        </div>
-        <p style={{ fontSize: 11, color: "var(--mut)", marginBottom: 18, fontStyle: "italic" }}>
-          Inserisci le Kcal totali relative alla porzione indicata.
-        </p>
-        <button className="btn btn-p btn-full" style={{ background: "#30D158" }} onClick={() => onSave(d)}>
-          <IcCheck /> {mode === "new" ? "AGGIUNGI" : "SALVA"}
-        </button>
-      </div>
-    </div>
-  );
-}
 
 
