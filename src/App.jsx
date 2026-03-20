@@ -207,6 +207,7 @@ export default function App() {
             onEdit={p => setSubview({ type: "piano-edit", data: p })}
             onDelete={id => savePiani(piani.filter(p => p.id !== id))}
             onLog={(opts) => setSubview({ type: "dieta-log", data: opts || null })}
+            settings={settings}
           />
         )}
 
@@ -1501,6 +1502,9 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog }) {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 4 }}>
+          {Array.from({ length: (new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1).getDay() + 6) % 7 }, (_, i) => (
+            <div key={"empty-" + i} />
+          ))}
           {Array.from({ length: new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate() }, (_, i) => i + 1).map(day => {
             const date = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day);
             const idate = fmtIso(date);
@@ -1678,7 +1682,7 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog }) {
 }
 
 // ─── DIETA: PIANI ALIMENTARI ──────────────────────────────
-function PianiAlimentari({ piani, logDieta, onNew, onEdit, onDelete, onLog }) {
+function PianiAlimentari({ piani, logDieta, onNew, onEdit, onDelete, onLog, settings }) {
   const [stab, setStab] = useState("piani");
   const [confirmState, setConfirmState] = useState(null);
 
@@ -1743,7 +1747,7 @@ function PianiAlimentari({ piani, logDieta, onNew, onEdit, onDelete, onLog }) {
       )}
 
       {stab === "storico" && (
-        <StoricoDieta logDieta={logDieta} piani={piani} onLog={onLog} />
+        <StoricoDieta logDieta={logDieta} piani={piani} onLog={onLog} targetKcal={settings?.targetKcal || 1420} />
       )}
 
       {confirmState && <ConfirmModal message={confirmState.msg} onConfirm={() => { confirmState.onConfirm(); setConfirmState(null); }} onCancel={() => setConfirmState(null)} />}
@@ -1751,7 +1755,7 @@ function PianiAlimentari({ piani, logDieta, onNew, onEdit, onDelete, onLog }) {
   );
 }
 
-function StoricoDieta({ logDieta, piani, onLog }) {
+function StoricoDieta({ logDieta, piani, onLog, targetKcal = 1420 }) {
   const [selDay, setSelDay] = useState(null);
 
   // Helpers per calcolare kcal in modo robusto anche per log vecchi/corrotti
@@ -1900,7 +1904,7 @@ function StoricoDieta({ logDieta, piani, onLog }) {
           pasti.forEach(p => pastiDelGiorno.push(p));
         });
 
-        const kcalBar = Math.min((((+g.kcalTot) || 0) / 2500) * 100, 100);
+        const kcalBar = Math.min((((+g.kcalTot) || 0) / (targetKcal || 1420)) * 100, 100);
 
         return (
           <div key={g.day} className="card" style={{ marginBottom: 10, padding: 0, overflow: "hidden", borderColor: isToday ? "var(--ok)" : "var(--bdr)" }}>
@@ -1936,7 +1940,7 @@ function StoricoDieta({ logDieta, piani, onLog }) {
                   <div style={{ height: 4, background: "var(--bdr)", borderRadius: 2, overflow: "hidden", marginTop: 8 }}>
                     <div style={{ height: "100%", width: `${kcalBar}%`, background: "var(--ok)", borderRadius: 2, transition: "width .4s" }} />
                   </div>
-                  <div style={{ fontSize: 10, color: "var(--mut)", marginTop: 4 }}>su ~2500 kcal obiettivo</div>
+                  <div style={{ fontSize: 10, color: "var(--mut)", marginTop: 4 }}>su ~{targetKcal || 1420} kcal obiettivo</div>
 
                   <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ fontSize: 11, color: "var(--dim)" }}>
