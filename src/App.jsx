@@ -1382,6 +1382,7 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog }) {
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [saving, setSaving] = useState(false);
   const [lightbox, setLightbox] = useState(null);
+  const [confirmState, setConfirmState] = useState(null);
   const fileInputRef = useRef(null);
   const [currentPhoto, setCurrentPhoto] = useState(settings.foto_profilo || null);
 
