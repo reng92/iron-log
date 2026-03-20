@@ -195,7 +195,7 @@ export default function App() {
     <div className={cls}>
       <style>{CSS}</style>
       <div className="content fi">
-        {tab === "home" && <Home schede={schede} sessioni={sessioni} peso={peso} piani={piani} corse={corse} dark={dark} onToggleDark={toggleDark} onStart={sc => setSubview({ type: "allenamento", data: sc })} onGoSchede={() => setTab("schede")} onCorsa={() => setSubview({ type: "corsa" })} />}
+        {tab === "home" && <Home schede={schede} sessioni={sessioni} peso={peso} piani={piani} corse={corse} dark={dark} onToggleDark={toggleDark} onStart={sc => setSubview({ type: "allenamento", data: sc })} onGoSchede={() => setTab("schede")} onCorsa={() => setSubview({ type: "corsa" })} logDieta={logDieta} settings={settings} />}
         {tab === "schede" && <Schede schede={schede} onNew={() => setSubview({ type: "scheda-edit", data: { nome: "", giorni: [], esercizi: [] } })} onEdit={sc => setSubview({ type: "scheda-edit", data: sc })} onDelete={id => saveSchede(schede.filter(s => s.id !== id))} onStart={sc => setSubview({ type: "allenamento", data: sc })} />}
 
         {/* -- Nuova Tab Dieta -- */}
@@ -229,7 +229,7 @@ export default function App() {
 }
 
 // ─── HOME ─────────────────────────────────────────────────
-function Home({ schede, sessioni, peso, piani, corse, dark, onToggleDark, onStart, onGoSchede, onCorsa }) {
+function Home({ schede, sessioni, peso, piani, corse, dark, onToggleDark, onStart, onGoSchede, onCorsa, logDieta, settings }) {
   const [pick, setPick] = useState(false);
   const totKg = sessioni.reduce((a, s) => a + s.esercizi.reduce((b, e) => b + e.serie.reduce((c, sr) => c + (sr.completata ? (+sr.kg || 0) * (+sr.reps || 0) : 0), 0), 0), 0);
   const avgMin = sessioni.length ? Math.round(sessioni.reduce((a, s) => a + (s.durata || 0), 0) / sessioni.length) : 0;
@@ -267,6 +267,31 @@ function Home({ schede, sessioni, peso, piani, corse, dark, onToggleDark, onStar
           <div key={l} className="hsc"><div className="hsv">{v}</div><div className="hsl">{l}</div></div>
         ))}
       </div>
+
+      {piani.length > 0 && (() => {
+        const todayIso = new Date().toISOString().slice(0, 10);
+        const todayLog = logDieta.find(l => (l.data || "").slice(0, 10) === todayIso);
+        const kcalOggi = todayLog ? (todayLog.totKcalConsumate || todayLog.kcalTotale || todayLog.kcal || 0) : 0;
+        const target = settings?.targetKcal || 1420;
+        const perc = Math.min(Math.round((kcalOggi / target) * 100), 120);
+        const barColor = perc > 110 ? "var(--dan)" : perc > 100 ? "#FF9500" : "var(--ok)";
+        return (
+          <div className="card" style={{ marginBottom: 12, padding: "12px 16px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".08em" }}>🍽 KCAL OGGI</div>
+              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, color: barColor, letterSpacing: ".05em" }}>
+                {kcalOggi} <span style={{ fontSize: 12, color: "var(--dim)", fontFamily: "'Barlow',sans-serif", fontWeight: 400 }}>/ {target}</span>
+              </div>
+            </div>
+            <div style={{ height: 6, background: "var(--bdr)", borderRadius: 3, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${Math.min(perc, 100)}%`, background: barColor, borderRadius: 3, transition: "width .4s" }} />
+            </div>
+            <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 5 }}>
+              {perc >= 100 ? `Target raggiunto ✓` : `${target - kcalOggi} kcal rimanenti`}
+            </div>
+          </div>
+        );
+      })()}
 
       {suggested && (
         <div className="card" style={{ background: "var(--acc2)", borderColor: "var(--acc)", marginBottom: 12 }}>
