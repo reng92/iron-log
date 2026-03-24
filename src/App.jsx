@@ -5,7 +5,7 @@ import { IcHome, IcBook, IcHistory, IcChart, IcWeight, IcPlus, IcTrash, IcEdit, 
 import ChatAI from "./components/ChatAI";
 import CorsaTracker from "./components/CorsaTracker";
 import { db } from "./db";
-import { CSS, ZEPP_PROMPT, GROQ_SCHEDA_PROMPT, GROQ_PROMPT, STATUS_OPTS } from "./constants";
+import { CSS, ZEPP_PROMPT, GROQ_SCHEDA_PROMPT, GROQ_PROMPT, STATUS_OPTS, CIRC_PROMPT } from "./constants";
 import LineChart from "./components/LineChart";
 import FoodThumb from "./components/FoodThumb";
 import StatusBadge from "./components/StatusBadge";
@@ -1392,6 +1392,108 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog }) {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  // Circonferenze corporee
+  const [showCircModal, setShowCircModal] = useState(false);
+  const [circForm, setCircForm] = useState({});
+  const [circScanning, setCircScanning] = useState(false);
+
+  const CIRC_FIELDS = [
+    { key: "testa", label: "Testa", icon: "🧠" },
+    { key: "torace", label: "Torace", icon: "🫁" },
+    { key: "braccio_rilassato", label: "Braccio Rilassato", icon: "💪" },
+    { key: "braccio_flesso", label: "Braccio Flesso", icon: "💪" },
+    { key: "avambraccio", label: "Avambraccio", icon: "🦾" },
+    { key: "polso", label: "Polso", icon: "⌚" },
+    { key: "vita", label: "Vita", icon: "📏" },
+    { key: "addome", label: "Addome", icon: "🔶" },
+    { key: "fianchi", label: "Fianchi", icon: "🔸" },
+    { key: "coscia_max", label: "Coscia Max", icon: "🦵" },
+    { key: "coscia_med", label: "Coscia Media", icon: "🦵" },
+    { key: "polpaccio", label: "Polpaccio", icon: "🦿" },
+  ];
+
+  const currentCirc = settings.circonferenze || null;
+
+  const openCircModal = () => {
+    const c = currentCirc || {};
+    setCircForm({
+      data: c.data || fmtIso(),
+      testa: c.testa != null ? String(c.testa) : "",
+      torace: c.torace != null ? String(c.torace) : "",
+      braccio_rilassato: c.braccio_rilassato != null ? String(c.braccio_rilassato) : "",
+      braccio_flesso: c.braccio_flesso != null ? String(c.braccio_flesso) : "",
+      avambraccio: c.avambraccio != null ? String(c.avambraccio) : "",
+      polso: c.polso != null ? String(c.polso) : "",
+      vita: c.vita != null ? String(c.vita) : "",
+      addome: c.addome != null ? String(c.addome) : "",
+      fianchi: c.fianchi != null ? String(c.fianchi) : "",
+      coscia_max: c.coscia_max != null ? String(c.coscia_max) : "",
+      coscia_med: c.coscia_med != null ? String(c.coscia_med) : "",
+      polpaccio: c.polpaccio != null ? String(c.polpaccio) : "",
+    });
+    setShowCircModal(true);
+  };
+
+  const scanCirc = async (file) => {
+    const activeKey = GROQ_KEY || localStorage.getItem("groq_key") || "";
+    if (!activeKey) { alert("Configura prima la Groq API key"); return; }
+    setCircScanning(true);
+    try {
+      const b64 = await compressImg(file, 1200, 0.85);
+      const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${activeKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "meta-llama/llama-4-scout-17b-16e-instruct",
+          messages: [{ role: "user", content: [
+            { type: "image_url", image_url: { url: b64 } },
+            { type: "text", text: CIRC_PROMPT }
+          ]}],
+          temperature: 0, max_tokens: 512
+        })
+      });
+      const json = await resp.json();
+      const testo = json.choices?.[0]?.message?.content || "";
+      const match = testo.match(/\{[\s\S]*\}/);
+      if (match) {
+        const d = JSON.parse(match[0]);
+        const sv = (v) => v != null ? String(v) : "";
+        setCircForm(f => ({
+          ...f,
+          data: d.data || f.data,
+          testa: d.testa != null ? sv(d.testa) : f.testa,
+          torace: d.torace != null ? sv(d.torace) : f.torace,
+          braccio_rilassato: d.braccio_rilassato != null ? sv(d.braccio_rilassato) : f.braccio_rilassato,
+          braccio_flesso: d.braccio_flesso != null ? sv(d.braccio_flesso) : f.braccio_flesso,
+          avambraccio: d.avambraccio != null ? sv(d.avambraccio) : f.avambraccio,
+          polso: d.polso != null ? sv(d.polso) : f.polso,
+          vita: d.vita != null ? sv(d.vita) : f.vita,
+          addome: d.addome != null ? sv(d.addome) : f.addome,
+          fianchi: d.fianchi != null ? sv(d.fianchi) : f.fianchi,
+          coscia_max: d.coscia_max != null ? sv(d.coscia_max) : f.coscia_max,
+          coscia_med: d.coscia_med != null ? sv(d.coscia_med) : f.coscia_med,
+          polpaccio: d.polpaccio != null ? sv(d.polpaccio) : f.polpaccio,
+        }));
+      } else { alert("Nessuna misura trovata nell'immagine."); }
+    } catch (e) { alert("Errore scan: " + e.message); }
+    setCircScanning(false);
+  };
+
+  const saveCirc = async () => {
+    const nv = v => v !== "" && v != null ? +v : null;
+    const circ = {
+      data: circForm.data || fmtIso(),
+      testa: nv(circForm.testa), torace: nv(circForm.torace),
+      braccio_rilassato: nv(circForm.braccio_rilassato), braccio_flesso: nv(circForm.braccio_flesso),
+      avambraccio: nv(circForm.avambraccio), polso: nv(circForm.polso),
+      vita: nv(circForm.vita), addome: nv(circForm.addome), fianchi: nv(circForm.fianchi),
+      coscia_max: nv(circForm.coscia_max), coscia_med: nv(circForm.coscia_med),
+      polpaccio: nv(circForm.polpaccio),
+    };
+    await onSave({ ...settings, circonferenze: circ });
+    setShowCircModal(false);
+  };
+
   const openEdit = () => {
     setForm({
       nome: settings.nome || "",
@@ -1631,6 +1733,35 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog }) {
         );
       })()}
 
+      {/* MISURE CORPOREE */}
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: currentCirc ? 10 : 0 }}>
+          <div>
+            <div className="st">📐 MISURE CORPOREE</div>
+            {currentCirc?.data && <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>Rilevate il {fmtDate(currentCirc.data)}</div>}
+          </div>
+          <button className="btn btn-s" style={{ fontSize: 11, padding: "8px 12px" }} onClick={openCircModal}>
+            {currentCirc ? <><IcEdit /> MODIFICA</> : <><IcPlus /> AGGIUNGI</>}
+          </button>
+        </div>
+        {currentCirc ? (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
+            {CIRC_FIELDS.filter(f => currentCirc[f.key] != null && currentCirc[f.key] !== 0).map(f => (
+              <div key={f.key} style={{ background: "var(--sur)", borderRadius: 8, padding: "8px 10px", border: "1px solid var(--bdr)" }}>
+                <div style={{ fontSize: 9, color: "var(--mut)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 2 }}>{f.icon} {f.label}</div>
+                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 20, color: "var(--acc)", letterSpacing: ".04em", lineHeight: 1 }}>
+                  {currentCirc[f.key]} <span style={{ fontSize: 10, color: "var(--dim)", fontFamily: "'Barlow',sans-serif", fontWeight: 400 }}>cm</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ paddingTop: 10, fontSize: 12, color: "var(--mut)", fontStyle: "italic" }}>
+            Nessuna misura ancora. Carica una foto dal nutrizionista per importarle con l'AI.
+          </div>
+        )}
+      </div>
+
       {/* FOTO PROGRESSO */}
       {ultimeFoto && (
         <div className="card" style={{ marginBottom: 12 }}>
@@ -1657,6 +1788,49 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog }) {
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.96)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setLightbox(null)}>
           <img src={lightbox} alt="foto" style={{ maxWidth: "95%", maxHeight: "95vh", objectFit: "contain", borderRadius: 8 }} />
           <button style={{ position: "absolute", top: 16, right: 16, background: "rgba(255,255,255,.15)", border: "none", color: "#fff", borderRadius: "50%", width: 36, height: 36, cursor: "pointer", fontSize: 18 }} onClick={() => setLightbox(null)}>✕</button>
+        </div>
+      )}
+
+      {/* MISURE CORPOREE MODAL */}
+      {showCircModal && (
+        <div className="mov" onClick={e => { if (e.target === e.currentTarget) setShowCircModal(false); }}>
+          <div className="mod" style={{ maxHeight: "88vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div className="wt">📐 MISURE CORPOREE</div>
+              <button className="bico" onClick={() => setShowCircModal(false)}>✕</button>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label className="lbl" style={{ marginBottom: 6 }}>SCAN AI — CARICA FOTO DAL NUTRIZIONISTA</label>
+              <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", border: "1px dashed var(--bdr)", borderRadius: 10, cursor: "pointer", color: circScanning ? "var(--acc)" : "var(--dim)", fontSize: 13, transition: "all .15s", background: circScanning ? "var(--acc2)" : "transparent" }}>
+                <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => e.target.files[0] && scanCirc(e.target.files[0])} />
+                <span style={{ fontSize: 20 }}>{circScanning ? "⏳" : "📸"}</span>
+                <div>
+                  <div style={{ fontWeight: 700 }}>{circScanning ? "Analisi AI in corso…" : "Carica screenshot misure"}</div>
+                  <div style={{ fontSize: 11, color: "var(--mut)", marginTop: 1 }}>L'AI legge le circonferenze e le compila automaticamente</div>
+                </div>
+              </label>
+            </div>
+            <div className="st" style={{ marginBottom: 8 }}>DATA RILEVAZIONE</div>
+            <div style={{ marginBottom: 14 }}>
+              <input className="inp" type="date" value={circForm.data || ""} onChange={e => setCircForm(f => ({ ...f, data: e.target.value }))} />
+            </div>
+            <div className="st" style={{ marginBottom: 10 }}>INSERISCI MISURE (cm)</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+              {CIRC_FIELDS.map(f => (
+                <div key={f.key}>
+                  <label className="lbl" style={{ fontSize: 9 }}>{f.icon} {f.label}</label>
+                  <input className="inp" type="number" step="0.1" min="0" placeholder="—"
+                    value={circForm[f.key] || ""}
+                    onChange={e => setCircForm(cf => ({ ...cf, [f.key]: e.target.value }))}
+                    style={{ padding: "8px 10px", fontSize: 14 }}
+                  />
+                </div>
+              ))}
+            </div>
+            <button className="btn btn-p btn-full" onClick={saveCirc}>
+              <IcCheck /> SALVA MISURE
+            </button>
+          </div>
         </div>
       )}
 
