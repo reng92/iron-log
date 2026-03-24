@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Background -->
+  <rect width="64" height="64" rx="14" fill="#0A0A0A"/>
+
+  <!-- Barbell bar (center horizontal) -->
+  <rect x="10" y="30" width="44" height="4" rx="2" fill="#1E90FF"/>
+
+  <!-- Left outer weight -->
+  <rect x="6" y="22" width="8" height="20" rx="3" fill="#1E90FF"/>
+  <!-- Left inner collar -->
+  <rect x="14" y="25" width="5" height="14" rx="2" fill="#3AA0FF"/>
+
+  <!-- Right outer weight -->
+  <rect x="50" y="22" width="8" height="20" rx="3" fill="#1E90FF"/>
+  <!-- Right inner collar -->
+  <rect x="45" y="25" width="5" height="14" rx="2" fill="#3AA0FF"/>
+
+  <!-- Center glow dot -->
+  <circle cx="32" cy="32" r="3.5" fill="#0A0A0A" stroke="#1E90FF" stroke-width="1.5"/>
+
+  <!-- Subtle shine on bar -->
+  <rect x="10" y="30" width="44" height="1.5" rx="1" fill="rgba(255,255,255,0.12)"/>
+</svg>
