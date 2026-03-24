@@ -17,6 +17,86 @@ import PdfImportModal from "./components/modals/PdfImportModal";
 
 const GROQ_KEY = process.env.REACT_APP_GROQ_KEY || localStorage.getItem('groq_key') || '';
 
+// ─── NORME CIRCONFERENZE CORPOREE ────────────────────────
+const CIRC_NORMS = {
+  vita: {
+    M: { ottimo: [0, 80], buono: [80, 94], attenzione: [94, 102], rischio: [102, 999], target: "< 80 cm", desc: "Rischio cardiovascolare" },
+    F: { ottimo: [0, 68], buono: [68, 80], attenzione: [80, 88], rischio: [88, 999], target: "< 68 cm", desc: "Rischio cardiovascolare" },
+  },
+  addome: {
+    M: { ottimo: [0, 85], buono: [85, 98], attenzione: [98, 106], rischio: [106, 999], target: "< 85 cm", desc: "Grasso viscerale" },
+    F: { ottimo: [0, 75], buono: [75, 88], attenzione: [88, 96], rischio: [96, 999], target: "< 75 cm", desc: "Grasso viscerale" },
+  },
+  fianchi: {
+    M: { ottimo: [88, 100], buono: [100, 106], attenzione: [106, 112], rischio: [112, 999], target: "88–100 cm", desc: "Proporzione corporea" },
+    F: { ottimo: [90, 102], buono: [102, 110], attenzione: [110, 118], rischio: [118, 999], target: "90–102 cm", desc: "Proporzione corporea" },
+  },
+  braccio_rilassato: {
+    M: { rischio: [0, 28], attenzione: [28, 33], buono: [33, 38], ottimo: [38, 999], target: "> 38 cm", desc: "Massa muscolare" },
+    F: { rischio: [0, 24], attenzione: [24, 28], buono: [28, 33], ottimo: [33, 999], target: "> 33 cm", desc: "Massa muscolare" },
+  },
+  braccio_flesso: {
+    M: { rischio: [0, 30], attenzione: [30, 35], buono: [35, 40], ottimo: [40, 999], target: "> 40 cm", desc: "Forza e ipertrofia" },
+    F: { rischio: [0, 26], attenzione: [26, 30], buono: [30, 35], ottimo: [35, 999], target: "> 35 cm", desc: "Forza e ipertrofia" },
+  },
+  avambraccio: {
+    M: { rischio: [0, 24], attenzione: [24, 27], buono: [27, 30], ottimo: [30, 999], target: "> 30 cm", desc: "Forza funzionale" },
+    F: { rischio: [0, 20], attenzione: [20, 23], buono: [23, 26], ottimo: [26, 999], target: "> 26 cm", desc: "Forza funzionale" },
+  },
+  coscia_max: {
+    M: { rischio: [0, 46], attenzione: [46, 52], buono: [52, 58], ottimo: [58, 999], target: "> 58 cm", desc: "Massa muscolare gambe" },
+    F: { rischio: [0, 48], attenzione: [48, 54], buono: [54, 60], ottimo: [60, 999], target: "> 60 cm", desc: "Massa muscolare gambe" },
+  },
+  coscia_med: {
+    M: { rischio: [0, 42], attenzione: [42, 48], buono: [48, 55], ottimo: [55, 999], target: "> 55 cm", desc: "Massa muscolare gambe" },
+    F: { rischio: [0, 44], attenzione: [44, 50], buono: [50, 57], ottimo: [57, 999], target: "> 57 cm", desc: "Massa muscolare gambe" },
+  },
+  polpaccio: {
+    M: { rischio: [0, 30], attenzione: [30, 34], buono: [34, 38], ottimo: [38, 999], target: "> 38 cm", desc: "Massa muscolare" },
+    F: { rischio: [0, 28], attenzione: [28, 32], buono: [32, 36], ottimo: [36, 999], target: "> 36 cm", desc: "Massa muscolare" },
+  },
+  torace: {
+    M: { rischio: [0, 86], attenzione: [86, 92], buono: [92, 104], ottimo: [104, 999], target: "> 100 cm", desc: "Sviluppo toracico" },
+    F: { rischio: [0, 78], attenzione: [78, 84], buono: [84, 96], ottimo: [96, 999], target: "> 92 cm", desc: "Sviluppo toracico" },
+  },
+  polso: {
+    M: { piccolo: [0, 16.5], medio: [16.5, 17.5], grande: [17.5, 999], target: "16.5–17.5 cm", desc: "Struttura ossea (frame)" },
+    F: { piccolo: [0, 14.5], medio: [14.5, 15.5], grande: [15.5, 999], target: "14.5–15.5 cm", desc: "Struttura ossea (frame)" },
+  },
+};
+
+// Campi "più è alto meglio è" (muscoli) vs "più è basso meglio è" (grasso)
+const CIRC_LOWER_IS_BETTER = ["vita", "addome", "fianchi"];
+
+function getCircStatus(key, value, sesso = "M") {
+  const norm = CIRC_NORMS[key]?.[sesso];
+  if (!norm || value == null) return null;
+
+  // Caso speciale polso: restituisce tipo di frame
+  if (key === "polso") {
+    if (value < norm.piccolo[1]) return { label: "Frame piccolo", color: "var(--dim)", bg: "var(--bdr)", target: norm.target, desc: norm.desc };
+    if (value < norm.medio[1]) return { label: "Frame medio", color: "var(--ok)", bg: "rgba(48,209,88,.12)", target: norm.target, desc: norm.desc };
+    return { label: "Frame grande", color: "var(--acc)", bg: "var(--acc2)", target: norm.target, desc: norm.desc };
+  }
+
+  const lowerBetter = CIRC_LOWER_IS_BETTER.includes(key);
+
+  let label, color, bg;
+  if (norm.ottimo && value >= norm.ottimo[0] && value < norm.ottimo[1]) {
+    label = "Ottimo"; color = "var(--ok)"; bg = "rgba(48,209,88,.12)";
+  } else if (norm.buono && value >= norm.buono[0] && value < norm.buono[1]) {
+    label = "Buono"; color = "#30D158"; bg = "rgba(48,209,88,.08)";
+  } else if (norm.attenzione && value >= norm.attenzione[0] && value < norm.attenzione[1]) {
+    label = "Attenzione"; color = "#FF9500"; bg = "rgba(255,149,0,.12)";
+  } else if (norm.rischio) {
+    label = lowerBetter ? "Rischio" : "Da migliorare"; color = "var(--dan)"; bg = "rgba(255,59,48,.12)";
+  } else {
+    return null;
+  }
+
+  return { label, color, bg, target: norm.target, desc: norm.desc };
+}
+
 
 // ─── LINE CHART ───────────────────────────────────────────
 
@@ -1746,14 +1826,25 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog }) {
         </div>
         {currentCirc ? (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
-            {CIRC_FIELDS.filter(f => currentCirc[f.key] != null && currentCirc[f.key] !== 0).map(f => (
-              <div key={f.key} style={{ background: "var(--sur)", borderRadius: 8, padding: "8px 10px", border: "1px solid var(--bdr)" }}>
-                <div style={{ fontSize: 9, color: "var(--mut)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 2 }}>{f.icon} {f.label}</div>
-                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 20, color: "var(--acc)", letterSpacing: ".04em", lineHeight: 1 }}>
-                  {currentCirc[f.key]} <span style={{ fontSize: 10, color: "var(--dim)", fontFamily: "'Barlow',sans-serif", fontWeight: 400 }}>cm</span>
+            {CIRC_FIELDS.filter(f => currentCirc[f.key] != null && currentCirc[f.key] !== 0).map(f => {
+              const st = getCircStatus(f.key, currentCirc[f.key], settings.sesso || "M");
+              return (
+                <div key={f.key} style={{ background: st?.bg || "var(--sur)", borderRadius: 8, padding: "8px 10px", border: `1px solid ${st?.color || "var(--bdr)"}` }}>
+                  <div style={{ fontSize: 9, color: "var(--mut)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 2 }}>{f.icon} {f.label}</div>
+                  <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 20, color: st?.color || "var(--acc)", letterSpacing: ".04em", lineHeight: 1 }}>
+                    {currentCirc[f.key]} <span style={{ fontSize: 10, color: "var(--dim)", fontFamily: "'Barlow',sans-serif", fontWeight: 400 }}>cm</span>
+                  </div>
+                  {st && (
+                    <div style={{ marginTop: 4 }}>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: st.color, background: `${st.color}22`, borderRadius: 10, padding: "2px 7px", letterSpacing: ".06em", textTransform: "uppercase" }}>
+                        {st.label}
+                      </span>
+                      <div style={{ fontSize: 9, color: "var(--mut)", marginTop: 3 }}>🎯 {st.target}</div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div style={{ paddingTop: 10, fontSize: 12, color: "var(--mut)", fontStyle: "italic" }}>
