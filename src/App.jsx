@@ -2891,7 +2891,10 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
       setExtraKcal("");
       setShowAddExtra(false);
     } catch (e) {
-      console.error('addExtra error', e);
+      // AI non disponibile: aggiungi comunque con stima locale o fallback
+      const nomeVal = extraNome.trim();
+      const fallback = estimateKcalFromName(nomeVal) || 150;
+      setExtra(prev => [...prev, { id: genId(), nome: nomeVal, kcal: Math.round(fallback), mangiato: true }]);
       setExtraNome("");
       setExtraKcal("");
       setShowAddExtra(false);
@@ -2931,7 +2934,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
     : delta > 200 ? 'var(--dan)'
       : delta > 0 ? '#FF9500'
         : delta > -200 ? 'var(--ok)'
-          : 'var(--acc)';
+          : '#FF9500';
 
   const balanceLabel = totPreviste === 0
     ? `${totConsumate} kcal totali`
@@ -2939,18 +2942,18 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
       : delta > 0 ? `+${delta} kcal — leggermente sopra`
         : delta === 0 ? `In target perfetto ✓`
           : delta > -200 ? `${delta} kcal — leggermente sotto`
-            : `${delta} kcal sotto il target`;
+            : `${delta} kcal sotto il target ⚠️`;
 
   const handleSave = async () => {
     if (!piano) return;
     if (existingLog) await onDelete(existingLog.id);
 
-    // Calcola kcal consumate direttamente al momento del salvataggio
-    const kcalConsumate = pastiGiorno.reduce((tot, p, pi) => {
-      return tot + p.alimenti.reduce((s, al, ai) => {
-        const key = `${pi}_${ai}`;
-        return s + (mangiato[key] ? (al.kcal || 0) : 0);
-      }, 0);
+    // Calcola kcal consumate usando i gruppi (stesso metodo del display, alternativa-aware)
+    const kcalConsumate = pastiGroups.reduce((tot, group) => {
+      const sel = getSelItem(group);
+      return tot + sel.pasto.alimenti.reduce((s, al, ai) =>
+        s + (mangiato[`${sel.idx}_${ai}`] ? (al.kcal || 0) : 0), 0
+      );
     }, 0);
     const kcalExtra = extra.filter(e => e.mangiato).reduce((a, e) => a + (e.kcal || 0), 0);
     const totKcal = kcalConsumate + kcalExtra;
@@ -3264,26 +3267,29 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
             {extra.length > 0 && (
               <div style={{ background: 'var(--sur)', border: '1px solid var(--bdr)', borderRadius: 10, padding: 12, marginBottom: 12 }}>
                 {extra.map(e => (
-                  <div key={e.id} className="frow">
+                  <div key={e.id} className="frow" style={{ opacity: e.mangiato ? 1 : 0.45, transition: 'opacity .15s' }}>
                     <div style={{
                       width: 44, height: 44, borderRadius: 8,
-                      background: 'rgba(255,149,0,.12)', border: '1px solid rgba(255,149,0,.3)',
+                      background: e.mangiato ? 'rgba(255,149,0,.15)' : 'var(--bdr)',
+                      border: `1px solid ${e.mangiato ? 'rgba(255,149,0,.4)' : 'var(--bdr)'}`,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: 20, flexShrink: 0
                     }}>🍹</div>
-                    <div style={{ flex: 1, opacity: e.mangiato ? .45 : 1, transition: 'opacity .15s', minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13, textDecoration: e.mangiato ? 'line-through' : 'none' }}>{e.nome}</div>
-                      <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 1 }}>extra · fuori piano</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13, textDecoration: e.mangiato ? 'none' : 'line-through' }}>{e.nome}</div>
+                      <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 1 }}>
+                        {e.mangiato ? 'conteggiato' : 'escluso dal conteggio'}
+                      </div>
                     </div>
                     <div style={{
                       fontFamily: "'Bebas Neue',cursive", fontSize: 16,
-                      color: e.mangiato ? 'var(--dim)' : '#FF9500', flexShrink: 0,
-                      textDecoration: e.mangiato ? 'line-through' : 'none'
+                      color: e.mangiato ? '#FF9500' : 'var(--mut)', flexShrink: 0,
+                      textDecoration: e.mangiato ? 'none' : 'line-through'
                     }}>
                       {e.kcal} kcal
                     </div>
                     <button className={`fck${e.mangiato ? ' ok' : ''}`}
-                      style={{ borderColor: e.mangiato ? '#30D158' : 'rgba(255,149,0,.5)' }}
+                      style={{ borderColor: e.mangiato ? '#30D158' : 'var(--bdr)' }}
                       onClick={() => toggleExtra(e.id)}>
                       {e.mangiato && <Ico d="M20 6L9 17l-5-5" size={12} stroke="#fff" sw={2.5} />}
                     </button>
