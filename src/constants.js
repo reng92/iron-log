@@ -5,12 +5,14 @@ export const STATUS_OPTS = ["", "Molto alto", "Alto", "Normale", "Basso", "Molto
 export const ZEPP_PROMPT = `Analizza questo screenshot dell'app Zepp Life e restituisci SOLO JSON valido con TUTTI i valori numerici e le etichette di stato presenti. Usa null per i campi non trovati. Esempio formato:{"peso":86.8,"punteggio":46,"tipologia":"Robusto","imc":30.3,"imc_status":"Molto alto","massa_grassa":31.3,"massa_grassa_status":"Alto","acqua":49.1,"acqua_status":"Insufficiente","grasso_viscerale":13,"grasso_viscerale_status":"Alto","muscoli":56.62,"muscoli_status":"Buono","proteine":16.2,"proteine_status":"Normale","metabolismo":1753,"metabolismo_status":"Obiettivo raggiunto","massa_ossea":3.04,"massa_ossea_status":"Normale"}`;
 
 export const GROQ_SCHEDA_PROMPT = `Sei un assistente fitness. L'utente ti fornisce il testo estratto da un PDF di una scheda di allenamento in palestra.
-Estrai TUTTI gli elementi della scheda nell'ordine in cui appaiono, inclusi: riscaldamento (warm-up), cardio iniziale, esercizi con i pesi, cardio finale, defaticamento, stretching — qualunque attività presente nel PDF va inclusa.
-Per ogni elemento indica: nome, numero di serie (per cardio usa 1), ripetizioni o durata come stringa (es. "10 min", "8-12", "15"), pausa in secondi tra le serie, note opzionali.
-Se la pausa non è specificata usa 60 per cardio/riscaldamento e 90 per esercizi con i pesi. Se le serie non sono specificate usa 3 per esercizi e 1 per cardio.
-Non omettere nessuna voce presente nel PDF, anche se sembra generica (es. "Cardio Warm Up 10 min", "Defaticamento").
-Rispondi SOLO con JSON valido (nessun testo aggiuntivo, nessun markdown):
-{"nomeScheda":"nome della scheda","esercizi":[{"nome":"Cardio Warm Up","serie":1,"ripetizioni":"10 min","pausa":0,"note":""},{"nome":"Panca Piana","serie":4,"ripetizioni":"8-10","pausa":120,"note":""}]}`;
+
+REGOLA FONDAMENTALE: Se la scheda ha più giorni o split (es. "Giorno A", "Giorno B", "Day A", "Day B", "Upper", "Lower", "Push", "Pull", "Legs", "Sessione 1", "Allenamento A"), estrai OGNI giorno come elemento separato nell'array "giorni". Se invece è una singola sessione senza divisioni, mettila tutta in un unico elemento.
+
+Per ogni esercizio includi: riscaldamento, cardio, pesi, stretching — tutto ciò che è presente nel PDF nell'ordine in cui appare.
+Per ogni esercizio indica: nome, serie (intero, 1 per cardio), ripetizioni come stringa (es. "8-12", "10", "10 min"), pausa in secondi (default: 90 per pesi, 60 per cardio), note opzionali.
+
+Rispondi SOLO con JSON valido (nessun testo, nessun markdown):
+{"nomeScheda":"nome scheda","giorni":[{"nomeGiorno":"Giorno A - Push","esercizi":[{"nome":"Panca Piana","serie":4,"ripetizioni":"8-10","pausa":120,"note":""},{"nome":"Cardio Warm Up","serie":1,"ripetizioni":"10 min","pausa":0,"note":""}]},{"nomeGiorno":"Giorno B - Pull","esercizi":[{"nome":"Trazioni","serie":4,"ripetizioni":"6-8","pausa":120,"note":""}]}]}`;
 
 export const GROQ_PROMPT = `Sei un assistente nutrizionale esperto. Estrai il piano alimentare settimanale da una tabella PDF che ha colonne per i pasti e colonne per le ALTERNATIVE (es. "PRANZO" e "ALT. PRANZO").
 

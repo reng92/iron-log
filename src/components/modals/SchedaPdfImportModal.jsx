@@ -43,7 +43,9 @@ export default function SchedaPdfImportModal({ groqKey, onApply, onClose }) {
       const match = testo.match(/\{[\s\S]+\}/);
       if (!match) throw new Error("Il modello non ha restituito JSON valido. Riprova.");
       const obj = JSON.parse(match[0]);
-      if (!Array.isArray(obj.esercizi) || obj.esercizi.length === 0) throw new Error("Nessun esercizio trovato nel PDF.");
+      if (!Array.isArray(obj.giorni) || obj.giorni.length === 0) throw new Error("Nessun giorno/esercizio trovato nel PDF.");
+      const totEsercizi = obj.giorni.reduce((a, g) => a + (g.esercizi?.length || 0), 0);
+      if (totEsercizi === 0) throw new Error("Nessun esercizio trovato nel PDF.");
       localStorage.setItem("groq_key", apiKey.trim());
       setParsed(obj); setFase(3);
     } catch (e) { setErrore(e.message || "Errore sconosciuto"); setFase(1); }
@@ -51,17 +53,23 @@ export default function SchedaPdfImportModal({ groqKey, onApply, onClose }) {
 
   const applica = () => {
     if (!parsed) return;
-    const ex = parsed.esercizi.map(e => ({
-      id: genId(),
-      nome: String(e.nome || ""),
-      serie: +e.serie || 3,
-      ripetizioni: String(e.ripetizioni || "10"),
-      pausa: +e.pausa || 90,
-      note: String(e.note || "")
+    const giorni = parsed.giorni.map(g => ({
+      nomeGiorno: String(g.nomeGiorno || ""),
+      esercizi: (g.esercizi || []).map(e => ({
+        id: genId(),
+        nome: String(e.nome || ""),
+        serie: +e.serie || 3,
+        ripetizioni: String(e.ripetizioni || "10"),
+        pausa: +e.pausa || 90,
+        note: String(e.note || "")
+      }))
     }));
-    onApply({ nomeScheda: parsed.nomeScheda || "", esercizi: ex });
+    onApply({ nomeScheda: parsed.nomeScheda || "", giorni });
     onClose();
   };
+
+  const totEsercizi = parsed ? parsed.giorni.reduce((a, g) => a + (g.esercizi?.length || 0), 0) : 0;
+  const multiGiorno = parsed && parsed.giorni.length > 1;
 
   return (
     <div className="mov" onClick={onClose}>
@@ -74,8 +82,8 @@ export default function SchedaPdfImportModal({ groqKey, onApply, onClose }) {
           <>
             <div style={{ marginBottom: 16 }}>
               <div className="import-step"><span className="import-num">1</span><span style={{ fontSize: 13 }}>Key gratuita su <b>console.groq.com</b> → API Keys</span></div>
-              <div className="import-step"><span className="import-num">2</span><span style={{ fontSize: 13 }}>Carica il PDF della tua scheda di allenamento</span></div>
-              <div className="import-step"><span className="import-num">3</span><span style={{ fontSize: 13 }}>LLaMA 3.3 estrae automaticamente esercizi, serie e reps</span></div>
+              <div className="import-step"><span className="import-num">2</span><span style={{ fontSize: 13 }}>Carica il PDF — l'AI rileva automaticamente giorni A/B/C o split</span></div>
+              <div className="import-step"><span className="import-num">3</span><span style={{ fontSize: 13 }}>Ogni giorno viene creato come scheda separata</span></div>
             </div>
             {!groqKey && (
               <div className="ig">
@@ -112,21 +120,43 @@ export default function SchedaPdfImportModal({ groqKey, onApply, onClose }) {
         {fase === 3 && parsed && (
           <>
             <div style={{ background: "var(--acc2)", border: "1px solid var(--acc)", borderRadius: 10, padding: 12, marginBottom: 16 }}>
-              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 16, color: "var(--acc)", marginBottom: 4 }}>✓ {parsed.esercizi.length} ESERCIZI ESTRATTI</div>
+              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 16, color: "var(--acc)", marginBottom: 4 }}>
+                ✓ {parsed.giorni.length} {parsed.giorni.length === 1 ? "GIORNO ESTRATTO" : "GIORNI ESTRATTI"} · {totEsercizi} ESERCIZI
+              </div>
               {parsed.nomeScheda && <div style={{ fontSize: 13, fontWeight: 600 }}>{parsed.nomeScheda}</div>}
+              {multiGiorno && (
+                <div style={{ fontSize: 11, color: "var(--acc)", marginTop: 4 }}>
+                  Verrà creata una scheda separata per ogni giorno
+                </div>
+              )}
             </div>
-            <div className="st" style={{ marginBottom: 8 }}>ANTEPRIMA ESERCIZI</div>
+            <div className="st" style={{ marginBottom: 8 }}>ANTEPRIMA</div>
             <div style={{ maxHeight: 260, overflowY: "auto" }}>
-              {parsed.esercizi.map((e, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--bdr)" }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{e.nome}</div>
-                  <div style={{ fontSize: 11, color: "var(--dim)", flexShrink: 0, marginLeft: 8 }}>{e.serie}×{e.ripetizioni} · {e.pausa}s</div>
+              {parsed.giorni.map((g, i) => (
+                <div key={i} style={{ marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--bdr)" }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--acc)" }}>
+                      {g.nomeGiorno || (parsed.giorni.length === 1 ? parsed.nomeScheda : `Giorno ${i + 1}`)}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--dim)" }}>{g.esercizi?.length || 0} esercizi</div>
+                  </div>
+                  {g.esercizi?.slice(0, 3).map((e, j) => (
+                    <div key={j} style={{ display: "flex", justifyContent: "space-between", padding: "4px 8px", fontSize: 12, color: "var(--dim)" }}>
+                      <span>{e.nome}</span>
+                      <span style={{ flexShrink: 0, marginLeft: 8 }}>{e.serie}×{e.ripetizioni}</span>
+                    </div>
+                  ))}
+                  {g.esercizi?.length > 3 && (
+                    <div style={{ fontSize: 11, color: "var(--mut)", paddingLeft: 8 }}>+{g.esercizi.length - 3} altri...</div>
+                  )}
                 </div>
               ))}
             </div>
             <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
               <button className="btn btn-s" style={{ flex: 1 }} onClick={() => { setParsed(null); setFase(1); }}>RIPROVA</button>
-              <button className="btn btn-p" style={{ flex: 2 }} onClick={applica}><IcCheck /> APPLICA ALLA SCHEDA</button>
+              <button className="btn btn-p" style={{ flex: 2 }} onClick={applica}>
+                <IcCheck /> {multiGiorno ? `CREA ${parsed.giorni.length} SCHEDE` : "APPLICA ALLA SCHEDA"}
+              </button>
             </div>
           </>
         )}

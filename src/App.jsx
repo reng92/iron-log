@@ -284,7 +284,12 @@ export default function App() {
 
   if (subview?.type === "scheda-edit") return (
     <div className={cls}><style>{CSS}</style>
-      <SchedaEdit scheda={subview.data} onSave={sc => { const n = sc.id ? schede.map(s => s.id === sc.id ? sc : s) : [...schede, { ...sc, id: genId() }]; saveSchede(n); setSubview(null); }} onBack={() => setSubview(null)} />
+      <SchedaEdit
+          scheda={subview.data}
+          onSave={sc => { const n = sc.id ? schede.map(s => s.id === sc.id ? sc : s) : [...schede, { ...sc, id: genId() }]; saveSchede(n); setSubview(null); }}
+          onBack={() => setSubview(null)}
+          onSaveMultiple={nuove => { saveSchede([...schede, ...nuove.map(s => ({ ...s, id: genId() }))]); setSubview(null); }}
+        />
     </div>
   );
   if (subview?.type === "allenamento") return (
@@ -545,7 +550,7 @@ function Schede({ schede, onNew, onEdit, onDelete, onStart }) {
 
 
 // ─── SCHEDA EDIT ──────────────────────────────────────────
-function SchedaEdit({ scheda: init, onSave, onBack }) {
+function SchedaEdit({ scheda: init, onSave, onBack, onSaveMultiple }) {
   const [nome, setNome] = useState(init.nome || "");
   const [giorni, setGiorni] = useState(init.giorni || []);
   const [esercizi, setEsercizi] = useState(init.esercizi || []);
@@ -615,10 +620,18 @@ function SchedaEdit({ scheda: init, onSave, onBack }) {
       {modal && <EsercizioModal init={modal.data} mode={modal.mode} onSave={applyModal} onClose={() => setModal(null)} />}
       {pdfModal && <SchedaPdfImportModal
         groqKey={GROQ_KEY}
-        onApply={({ nomeScheda, esercizi: ex }) => {
-          if (nomeScheda && !nome.trim()) setNome(nomeScheda);
-          else if (nomeScheda) setNome(nomeScheda);
-          setEsercizi(ex);
+        onApply={({ nomeScheda, giorni: gd }) => {
+          if (!gd || gd.length === 0) return;
+          if (gd.length === 1) {
+            if (nomeScheda) setNome(gd[0].nomeGiorno || nomeScheda);
+            setEsercizi(gd[0].esercizi || []);
+          } else if (onSaveMultiple) {
+            onSaveMultiple(gd.map(g => ({
+              nome: [nomeScheda, g.nomeGiorno].filter(Boolean).join(" - "),
+              giorni: [],
+              esercizi: g.esercizi || []
+            })));
+          }
         }}
         onClose={() => setPdfModal(false)}
       />}
