@@ -127,22 +127,33 @@ export const estimateKcalFromName = (name) => {
 };
 
 export const estimateKcalFromAI = async (name, GROQ_KEY) => {
-  if (!GROQ_KEY) return 150;
+  if (!GROQ_KEY) return 0;
   try {
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
-        messages: [{ role: 'user', content: `Estimate only the number of calories for this food/drink item. Return ONLY the number, no text: "${name}"` }],
-        temperature: 0, max_tokens: 10
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          {
+            role: 'system',
+            content: 'Sei un esperto di nutrizione. Stima le calorie totali della porzione ESATTA descritta dall\'utente — non per 100g, non per una fetta, ma per l\'intera quantità indicata. Rispondi SOLO con un numero intero, senza testo aggiuntivo.'
+          },
+          {
+            role: 'user',
+            content: `Quante kcal ha questa porzione: "${name}"?`
+          }
+        ],
+        temperature: 0, max_tokens: 20
       })
     });
     const data = await res.json();
-    const kcal = parseInt(data?.choices?.[0]?.message?.content?.trim());
-    return isNaN(kcal) ? 150 : kcal;
+    const raw = data?.choices?.[0]?.message?.content?.trim() || '';
+    const match = raw.match(/\d+/);
+    const kcal = match ? parseInt(match[0]) : 0;
+    return kcal > 0 ? kcal : 0;
   } catch (e) {
     console.error("AI estimation error", e);
-    return 150;
+    return 0;
   }
 };
