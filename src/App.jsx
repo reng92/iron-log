@@ -4,7 +4,7 @@ import { genId, fmtDur, fmtDate, fmtShort, fmtIso, epley, GG, GIORNI_LABEL, GIOR
 import { IcHome, IcBook, IcHistory, IcChart, IcWeight, IcPlus, IcTrash, IcEdit, IcCheck, IcChevL, IcClose, IcPlay, IcTimer, IcCamera, IcImg, IcSun, IcMoon, IcDownload, IcCalc, IcArrowUp, IcArrowDown, IcApple, IcUser, IcFile, IcUpload, Ico } from "./components/Icons";
 import ChatAI from "./components/ChatAI";
 import CorsaTracker from "./components/CorsaTracker";
-import { db, auth } from "./db";
+import { db, auth, sb } from "./db";
 import { CSS, ZEPP_PROMPT, GROQ_SCHEDA_PROMPT, GROQ_PROMPT, STATUS_OPTS, CIRC_PROMPT } from "./constants";
 import LineChart from "./components/LineChart";
 import FoodThumb from "./components/FoodThumb";
@@ -128,9 +128,7 @@ export default function App() {
 
 
   useEffect(() => {
-    const unsub = auth.onAuthChange(async (u) => {
-      setUser(u);
-      setAuthReady(true);
+    const loadForUser = async (u) => {
       if (u) {
         const [sc, ss, ps, st, pa, ld, co] = await Promise.all([
           db.getSchede().catch(() => []),
@@ -152,8 +150,34 @@ export default function App() {
         setPiani([]); setLogDieta([]); setCorse([]);
         setLoaded(false);
       }
+    };
+
+    // Controllo sessione immediato al reload (legge da localStorage, non aspetta eventi)
+    sb.auth.getSession().then(({ data: { session } }) => {
+      const u = session?.user || null;
+      setUser(u);
+      setAuthReady(true);
+      loadForUser(u);
+    }).catch(() => {
+      setAuthReady(true);
     });
-    return unsub;
+
+    // Ascolta solo login e logout successivi al caricamento iniziale
+    const { data: { subscription } } = sb.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN') {
+        const u = session?.user || null;
+        setUser(u);
+        setAuthReady(true);
+        loadForUser(u);
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+        setAuthReady(true);
+        loadForUser(null);
+      }
+      // INITIAL_SESSION e TOKEN_REFRESHED ignorati: gestiti da getSession() sopra
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const saveSchede = async s => { setSchede(s); await db.setSchede(s); };
