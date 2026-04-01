@@ -13,14 +13,8 @@ export const db = {
   async delSessione(id) { await sb.from("sessioni").delete().eq("id", id); },
   async getPeso() { const { data } = await sb.from("peso").select("*").order("data", { ascending: true }); return data || []; },
   async addPeso(p) {
-    const res = await sb.from("peso").insert(p);
-    if (res.error && res.error.code === 'PGRST204') {
-      const { proteine, proteine_status, metabolismo, metabolismo_status, massa_ossea, massa_ossea_status, ...rest } = p;
-      const res2 = await sb.from("peso").insert(rest);
-      if (res2.error) throw new Error(res2.error.message);
-    } else if (res.error) {
-      throw new Error(res.error.message);
-    }
+    const { error } = await sb.from("peso").insert(p);
+    if (error) throw new Error(error.message);
   },
   async delPeso(id) { await sb.from("peso").delete().eq("id", id); },
   async getSettings() { try { const { data } = await sb.from("impostazioni").select("*").eq("id", "settings").single(); return data?.data || {}; } catch { return {}; } },

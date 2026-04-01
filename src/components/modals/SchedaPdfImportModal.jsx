@@ -77,11 +77,13 @@ export default function SchedaPdfImportModal({ groqKey, onApply, onClose }) {
               <div className="import-step"><span className="import-num">2</span><span style={{ fontSize: 13 }}>Carica il PDF della tua scheda di allenamento</span></div>
               <div className="import-step"><span className="import-num">3</span><span style={{ fontSize: 13 }}>LLaMA 3.3 estrae automaticamente esercizi, serie e reps</span></div>
             </div>
-            <div className="ig">
-              <label className="lbl">Groq API Key{apiKey && " ✓ salvata"}</label>
-              <input className="inp" type="password" placeholder="gsk_..." value={apiKey} onChange={e => setApiKey(e.target.value)} />
-              <div style={{ fontSize: 11, color: "var(--mut)", marginTop: 4 }}>Salvata solo nel tuo browser · Free tier: 14.400 req/giorno</div>
-            </div>
+            {!groqKey && (
+              <div className="ig">
+                <label className="lbl">Groq API Key{apiKey && " ✓ salvata"}</label>
+                <input className="inp" type="password" placeholder="gsk_..." value={apiKey} onChange={e => setApiKey(e.target.value)} />
+                <div style={{ fontSize: 11, color: "var(--mut)", marginTop: 4 }}>Salvata solo nel tuo browser · Free tier: 14.400 req/giorno</div>
+              </div>
+            )}
             <div className="ig">
               <label className="lbl">PDF scheda allenamento</label>
               <div
