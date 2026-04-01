@@ -137,14 +137,25 @@ export const estimateKcalFromAI = async (name, GROQ_KEY) => {
         messages: [
           {
             role: 'system',
-            content: 'Sei un esperto di nutrizione. Stima le calorie totali della porzione ESATTA descritta dall\'utente — non per 100g, non per una fetta, ma per l\'intera quantità indicata. Rispondi SOLO con un numero intero, senza testo aggiuntivo.'
+            content: `Sei un esperto nutrizionista. Calcola le kcal TOTALI per la quantità ESATTA descritta.
+REGOLA FONDAMENTALE: se c'è un numero nella descrizione, moltiplica le kcal per quel numero.
+Esempi:
+- "1 gin tonic" → 200
+- "3 gin tonic" → 600
+- "25 gin tonic" → 5000
+- "1 pizza margherita intera" → 900
+- "2 pizze intere" → 1800
+- "45 pizze intere" → 40500
+- "1 tiramisù" → 450
+- "tiramisù" → 450
+Rispondi SOLO con il numero intero finale, nessun altro testo.`
           },
           {
             role: 'user',
-            content: `Quante kcal ha questa porzione: "${name}"?`
+            content: `Kcal totali per: "${name}"`
           }
         ],
-        temperature: 0, max_tokens: 20
+        temperature: 0, max_tokens: 30
       })
     });
     const data = await res.json();
