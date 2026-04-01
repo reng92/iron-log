@@ -5,6 +5,16 @@ const SUPABASE_KEY = process.env.REACT_APP_SUPABASE_KEY;
 
 export const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
+export const auth = {
+  async signIn(email, password) { return sb.auth.signInWithPassword({ email, password }); },
+  async signUp(email, password) { return sb.auth.signUp({ email, password }); },
+  async signOut() { return sb.auth.signOut(); },
+  onAuthChange(cb) {
+    const { data: { subscription } } = sb.auth.onAuthStateChange((_event, session) => cb(session?.user || null));
+    return () => subscription.unsubscribe();
+  }
+};
+
 export const db = {
   async getSchede() { const { data } = await sb.from("schede").select("*"); return data ? data.map(r => r.data) : []; },
   async setSchede(a) { await sb.from("schede").delete().neq("id", "__x__"); if (a.length) await sb.from("schede").insert(a.map(s => ({ id: s.id, data: s }))); },
@@ -17,8 +27,21 @@ export const db = {
     if (error) throw new Error(error.message);
   },
   async delPeso(id) { await sb.from("peso").delete().eq("id", id); },
-  async getSettings() { try { const { data } = await sb.from("impostazioni").select("*").eq("id", "settings").single(); return data?.data || {}; } catch { return {}; } },
-  async saveSettings(s) { await sb.from("impostazioni").upsert({ id: "settings", data: s }); },
+  async getSettings() {
+    try {
+      const { data: { user } } = await sb.auth.getUser();
+      if (!user) return {};
+      const { data } = await sb.from("impostazioni").select("*").eq("id", user.id).single();
+      return data?.data || {};
+    } catch { return {}; }
+  },
+  async saveSettings(s) {
+    try {
+      const { data: { user } } = await sb.auth.getUser();
+      if (!user) return;
+      await sb.from("impostazioni").upsert({ id: user.id, data: s });
+    } catch {}
+  },
   async getPiani() { const { data } = await sb.from("piani_alimentari").select("*"); return data ? data.map(r => r.data) : []; },
   async setPiani(a) { await sb.from("piani_alimentari").delete().neq("id", "__x__"); if (a.length) await sb.from("piani_alimentari").insert(a.map(s => ({ id: s.id, data: s }))); },
   async getLogDieta() {

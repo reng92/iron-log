@@ -4,7 +4,7 @@ import { genId, fmtDur, fmtDate, fmtShort, fmtIso, epley, GG, GIORNI_LABEL, GIOR
 import { IcHome, IcBook, IcHistory, IcChart, IcWeight, IcPlus, IcTrash, IcEdit, IcCheck, IcChevL, IcClose, IcPlay, IcTimer, IcCamera, IcImg, IcSun, IcMoon, IcDownload, IcCalc, IcArrowUp, IcArrowDown, IcApple, IcUser, IcFile, IcUpload, Ico } from "./components/Icons";
 import ChatAI from "./components/ChatAI";
 import CorsaTracker from "./components/CorsaTracker";
-import { db } from "./db";
+import { db, auth } from "./db";
 import { CSS, ZEPP_PROMPT, GROQ_SCHEDA_PROMPT, GROQ_PROMPT, STATUS_OPTS, CIRC_PROMPT } from "./constants";
 import LineChart from "./components/LineChart";
 import FoodThumb from "./components/FoodThumb";
@@ -102,9 +102,14 @@ function getCircStatus(key, value, sesso = "M") {
 
 // ─── APP ──────────────────────────────────────────────────
 export default function App() {
-  // Stati per il PIN
-  const [isLogged, setIsLogged] = useState(localStorage.getItem("rw_logged") === "true");
-  const [pinInput, setPinInput] = useState("");
+  // Auth
+  const [user, setUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authMode, setAuthMode] = useState("login");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
 
   const [tab, setTab] = useState("profilo");
   const [schede, setSchede] = useState([]);
@@ -123,22 +128,32 @@ export default function App() {
 
 
   useEffect(() => {
-    (async () => {
-      const [sc, ss, ps, st, pa, ld, co] = await Promise.all([
-        db.getSchede().catch(() => []),
-        db.getSessioni().catch(() => []),
-        db.getPeso().catch(() => []),
-        db.getSettings().catch(() => ({})),
-        db.getPiani().catch(() => []),
-        db.getLogDieta().catch(() => []),
-        db.getCorse().catch(() => [])
-      ]);
-      setSchede(sc || []); setSessioni(ss || []); setPeso(ps || []);
-      setSettings({ darkMode: true, ...st });
-      setPiani(pa || []); setLogDieta(ld || []);
-      setCorse(co || []);
-      setLoaded(true);
-    })();
+    const unsub = auth.onAuthChange(async (u) => {
+      setUser(u);
+      setAuthReady(true);
+      if (u) {
+        const [sc, ss, ps, st, pa, ld, co] = await Promise.all([
+          db.getSchede().catch(() => []),
+          db.getSessioni().catch(() => []),
+          db.getPeso().catch(() => []),
+          db.getSettings().catch(() => ({})),
+          db.getPiani().catch(() => []),
+          db.getLogDieta().catch(() => []),
+          db.getCorse().catch(() => [])
+        ]);
+        setSchede(sc || []); setSessioni(ss || []); setPeso(ps || []);
+        setSettings({ darkMode: true, ...st });
+        setPiani(pa || []); setLogDieta(ld || []);
+        setCorse(co || []);
+        setLoaded(true);
+      } else {
+        setSchede([]); setSessioni([]); setPeso([]);
+        setSettings({ darkMode: true });
+        setPiani([]); setLogDieta([]); setCorse([]);
+        setLoaded(false);
+      }
+    });
+    return unsub;
   }, []);
 
   const saveSchede = async s => { setSchede(s); await db.setSchede(s); };
@@ -164,45 +179,93 @@ export default function App() {
   const dark = settings.darkMode !== false;
   const cls = `app${dark ? "" : " light"}`;
 
-  // SCHERMATA DI BLOCCO PIN
-  if (!isLogged) {
+  // SCHERMATA AUTH (login / registrazione)
+  if (!authReady) return (
+    <div className={cls}>
+      <style>{CSS}</style>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1 }}>
+        <div className="pls" style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 28, color: "#1E90FF", letterSpacing: ".1em" }}>CARICAMENTO...</div>
+      </div>
+    </div>
+  );
+
+  if (!user) {
+    const handleAuth = async () => {
+      setAuthError("");
+      setAuthBusy(true);
+      try {
+        if (authMode === "login") {
+          const { error } = await auth.signIn(authEmail.trim(), authPassword);
+          if (error) setAuthError(error.message);
+        } else {
+          const { error } = await auth.signUp(authEmail.trim(), authPassword);
+          if (error) setAuthError(error.message);
+          else setAuthError("__ok__");
+        }
+      } catch (e) {
+        setAuthError(e.message || "Errore sconosciuto");
+      }
+      setAuthBusy(false);
+    };
+
     return (
       <div className={cls}>
         <style>{CSS}</style>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, padding: 20 }}>
-          <div style={{ fontSize: 50, marginBottom: 10 }}>🔒</div>
-          <h1 className="pt" style={{ textAlign: "center", marginBottom: 8 }}>ACCESSO<br />RISERVATO</h1>
-          <p className="sub" style={{ marginBottom: 30 }}>Inserisci il PIN per entrare</p>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, padding: 24 }}>
+          <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 48, letterSpacing: ".1em", marginBottom: 4, color: "var(--acc)" }}>IRON LOG</div>
+          <p className="sub" style={{ marginBottom: 32, textAlign: "center" }}>
+            {authMode === "login" ? "Accedi al tuo account" : "Crea il tuo account"}
+          </p>
 
-          <input
-            type="password"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            placeholder="••••"
-            className="inp"
-            style={{ textAlign: "center", fontSize: 24, letterSpacing: "8px", width: "160px", marginBottom: 20 }}
-            value={pinInput}
-            onChange={(e) => setPinInput(e.target.value)}
-          />
+          {authError === "__ok__" ? (
+            <div style={{ background: "rgba(48,209,88,.12)", border: "1px solid #30D158", borderRadius: 10, padding: "16px 20px", marginBottom: 20, fontSize: 14, color: "#30D158", textAlign: "center", maxWidth: 300 }}>
+              Account creato! Controlla la tua email per confermare, poi accedi.
+            </div>
+          ) : (
+            <>
+              <div className="ig" style={{ width: "100%", maxWidth: 300 }}>
+                <label className="lbl">Email</label>
+                <input
+                  className="inp"
+                  type="email"
+                  placeholder="nome@email.com"
+                  value={authEmail}
+                  onChange={e => setAuthEmail(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && handleAuth()}
+                />
+              </div>
+              <div className="ig" style={{ width: "100%", maxWidth: 300 }}>
+                <label className="lbl">Password</label>
+                <input
+                  className="inp"
+                  type="password"
+                  placeholder="••••••••"
+                  value={authPassword}
+                  onChange={e => setAuthPassword(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && handleAuth()}
+                />
+              </div>
+              {authError && authError !== "__ok__" && (
+                <div style={{ color: "var(--dan)", fontSize: 13, marginBottom: 12, padding: "10px 14px", background: "var(--dan2)", borderRadius: 8, maxWidth: 300, width: "100%" }}>
+                  {authError}
+                </div>
+              )}
+              <button
+                className="btn btn-p"
+                style={{ width: "100%", maxWidth: 300, padding: 14 }}
+                disabled={authBusy || !authEmail || !authPassword}
+                onClick={handleAuth}
+              >
+                {authBusy ? "..." : authMode === "login" ? "ACCEDI" : "CREA ACCOUNT"}
+              </button>
+            </>
+          )}
+
           <button
-            className="btn btn-p"
-            style={{ width: "160px", padding: "14px" }}
-            onClick={async () => {
-              // Obfuscated PIN check using a simple SHA-256 hash instead of plaintext
-              const encoder = new TextEncoder();
-              const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(pinInput));
-              const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-
-              if (hashHex === "39d2ec020e98f79f40884d3b45caeebdc70792160912160359858bb6ff1f89af") {
-                localStorage.setItem("rw_logged", "true");
-                setIsLogged(true);
-              } else {
-                alert("PIN Errato! Riprova.");
-                setPinInput("");
-              }
-            }}
+            style={{ marginTop: 20, background: "none", border: "none", color: "var(--acc)", fontSize: 13, cursor: "pointer", fontFamily: "'Barlow',sans-serif" }}
+            onClick={() => { setAuthMode(m => m === "login" ? "register" : "login"); setAuthError(""); }}
           >
-            SBLOCCA
+            {authMode === "login" ? "Non hai un account? Registrati" : "Hai già un account? Accedi"}
           </button>
         </div>
       </div>
@@ -294,7 +357,7 @@ export default function App() {
         {tab === "storico" && <Storico sessioni={sessioni} corse={corse} onDetail={s => setSubview({ type: "sessione", data: s })} onDelete={delSessione} onDeleteCorsa={handleDelCorsa} />}
         {tab === "stats" && <Stats sessioni={sessioni} />}
         {tab === "peso" && <Peso peso={peso} onAdd={addPeso} onDelete={delPeso} />}
-        {tab === "profilo" && <Profilo settings={settings} peso={peso} piani={piani} logDieta={logDieta} onSave={saveSettings} onOpenDietaLog={onOpenDietaLog} />}
+        {tab === "profilo" && <Profilo settings={settings} peso={peso} piani={piani} logDieta={logDieta} onSave={saveSettings} onOpenDietaLog={onOpenDietaLog} onLogout={() => auth.signOut()} />}
       </div>
       <nav className="nav">
         {[["home", "HOME", <IcHome />], ["schede", "SCHEDE", <IcBook />], ["dieta", "DIETA", <IcApple />], ["storico", "LOG", <IcHistory />], ["stats", "STATS", <IcChart />], ["peso", "PESO", <IcWeight />], ["profilo", "IO", <IcUser />]].map(([t, l, ic]) => (
@@ -1455,7 +1518,7 @@ function Peso({ peso, onAdd, onDelete }) {
 }
 
 // ─── PROFILO PERSONALE ────────────────────────────────────
-function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog }) {
+function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLogout }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(fmtIso(new Date()));
@@ -1655,7 +1718,12 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog }) {
           <h1 className="pt">PROFILO<br />PERSONALE</h1>
           <p className="sub">Il tuo stato di forma attuale</p>
         </div>
-        <button className="bico" onClick={openEdit}><IcEdit /></button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="bico" title="Esci" onClick={onLogout}>
+            <Ico d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" size={18} />
+          </button>
+          <button className="bico" onClick={openEdit}><IcEdit /></button>
+        </div>
       </div>
 
       {/* CARD PROFILO */}
