@@ -52,5 +52,8 @@ export const db = {
   async delLogDieta(id) { await sb.from("log_dieta").delete().eq("id", id); },
   async getCorse() { const { data } = await sb.from("sessioni_corsa").select("*").order("created_at", { ascending: false }); return data ? data.map(r => r.data) : []; },
   async addCorsa(c) { await sb.from("sessioni_corsa").insert({ id: c.id, data: c }); },
-  async delCorsa(id) { await sb.from("sessioni_corsa").delete().eq("id", id); }
+  async delCorsa(id) { await sb.from("sessioni_corsa").delete().eq("id", id); },
+  async getMisure() { const { data } = await sb.from("misure_corporee").select("*").order("created_at", { ascending: true }); return data ? data.map(r => r.data) : []; },
+  async addMisura(m) { const { error } = await sb.from("misure_corporee").insert({ id: m.id, data: m }); if (error) throw new Error(error.message); },
+  async delMisura(id) { await sb.from("misure_corporee").delete().eq("id", id); },
 };

@@ -5,7 +5,7 @@ import { IcHome, IcBook, IcHistory, IcChart, IcWeight, IcPlus, IcTrash, IcEdit, 
 import ChatAI from "./components/ChatAI";
 import CorsaTracker from "./components/CorsaTracker";
 import { db, auth, sb } from "./db";
-import { CSS, ZEPP_PROMPT, GROQ_SCHEDA_PROMPT, GROQ_PROMPT, STATUS_OPTS, CIRC_PROMPT } from "./constants";
+import { CSS, ZEPP_PROMPT, GROQ_SCHEDA_PROMPT, GROQ_PROMPT, STATUS_OPTS, CIRC_PROMPT, BCS_PROMPT, BCS_SINGLE_PROMPT } from "./constants";
 import LineChart from "./components/LineChart";
 import FoodThumb from "./components/FoodThumb";
 import StatusBadge from "./components/StatusBadge";
@@ -14,6 +14,7 @@ import EsercizioModal from "./components/modals/EsercizioModal";
 import AlimentoModal from "./components/modals/AlimentoModal";
 import SchedaPdfImportModal from "./components/modals/SchedaPdfImportModal";
 import PdfImportModal from "./components/modals/PdfImportModal";
+import { requestNotifPermission, scheduleDaily, cancelDaily, testNotifica } from "./notifications";
 
 const GROQ_KEY = process.env.REACT_APP_GROQ_KEY || localStorage.getItem('groq_key') || '';
 
@@ -121,6 +122,7 @@ export default function App() {
   const [piani, setPiani] = useState([]);
   const [logDieta, setLogDieta] = useState([]);
   const [corse, setCorse] = useState([]);
+  const [misure, setMisure] = useState([]);
 
   const [subview, setSubview] = useState(null);
   const [loaded, setLoaded] = useState(false);
@@ -130,24 +132,25 @@ export default function App() {
   useEffect(() => {
     const loadForUser = async (u) => {
       if (u) {
-        const [sc, ss, ps, st, pa, ld, co] = await Promise.all([
+        const [sc, ss, ps, st, pa, ld, co, mi] = await Promise.all([
           db.getSchede().catch(() => []),
           db.getSessioni().catch(() => []),
           db.getPeso().catch(() => []),
           db.getSettings().catch(() => ({})),
           db.getPiani().catch(() => []),
           db.getLogDieta().catch(() => []),
-          db.getCorse().catch(() => [])
+          db.getCorse().catch(() => []),
+          db.getMisure().catch(() => []),
         ]);
         setSchede(sc || []); setSessioni(ss || []); setPeso(ps || []);
         setSettings({ darkMode: true, ...st });
         setPiani(pa || []); setLogDieta(ld || []);
-        setCorse(co || []);
+        setCorse(co || []); setMisure(mi || []);
         setLoaded(true);
       } else {
         setSchede([]); setSessioni([]); setPeso([]);
         setSettings({ darkMode: true });
-        setPiani([]); setLogDieta([]); setCorse([]);
+        setPiani([]); setLogDieta([]); setCorse([]); setMisure([]);
         setLoaded(false);
       }
     };
@@ -180,6 +183,14 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Schedula/cancella notifica giornaliera quando cambiano le impostazioni
+  useEffect(() => {
+    if (!settings.notifiche_attive) { cancelDaily(); return; }
+    requestNotifPermission().then(granted => {
+      if (granted) scheduleDaily(settings.notifiche_orario || '08:00');
+    });
+  }, [settings.notifiche_attive, settings.notifiche_orario]);
+
   const saveSchede = async s => { setSchede(s); await db.setSchede(s); };
   const addSessione = async s => { setSessioni(p => [s, ...p]); await db.addSessione(s); };
   const delSessione = async id => { setSessioni(p => p.filter(s => s.id !== id)); await db.delSessione(id); };
@@ -199,6 +210,11 @@ export default function App() {
 
   const handleAddCorsa = async c => { setCorse(p => [c, ...p]); await db.addCorsa(c); };
   const handleDelCorsa = async id => { setCorse(p => p.filter(x => x.id !== id)); await db.delCorsa(id); };
+  const addMisura = async m => {
+    setMisure(prev => [...prev, m].sort((a, b) => a.data.localeCompare(b.data)));
+    try { await db.addMisura(m); } catch (e) { alert("Errore salvataggio: " + e.message); setMisure(prev => prev.filter(x => x.id !== m.id)); }
+  };
+  const delMisura = async id => { setMisure(p => p.filter(x => x.id !== id)); await db.delMisura(id); };
 
   const dark = settings.darkMode !== false;
   const cls = `app${dark ? "" : " light"}`;
@@ -386,7 +402,7 @@ export default function App() {
         {tab === "storico" && <Storico sessioni={sessioni} corse={corse} onDetail={s => setSubview({ type: "sessione", data: s })} onDelete={delSessione} onDeleteCorsa={handleDelCorsa} />}
         {tab === "stats" && <Stats sessioni={sessioni} />}
         {tab === "peso" && <Peso peso={peso} onAdd={addPeso} onDelete={delPeso} />}
-        {tab === "profilo" && <Profilo settings={settings} peso={peso} piani={piani} logDieta={logDieta} onSave={saveSettings} onOpenDietaLog={onOpenDietaLog} onLogout={() => auth.signOut()} />}
+        {tab === "profilo" && <Profilo settings={settings} peso={peso} piani={piani} logDieta={logDieta} misure={misure} onSave={saveSettings} onOpenDietaLog={onOpenDietaLog} onLogout={() => auth.signOut()} onAddMisura={addMisura} onDelMisura={delMisura} />}
       </div>
       <nav className="nav">
         {[["home", "HOME", <IcHome />], ["schede", "SCHEDE", <IcBook />], ["dieta", "DIETA", <IcApple />], ["storico", "LOG", <IcHistory />], ["stats", "STATS", <IcChart />], ["peso", "PESO", <IcWeight />], ["profilo", "IO", <IcUser />]].map(([t, l, ic]) => (
@@ -1555,7 +1571,7 @@ function Peso({ peso, onAdd, onDelete }) {
 }
 
 // ─── PROFILO PERSONALE ────────────────────────────────────
-function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLogout }) {
+function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLogout, misure = [], onAddMisura, onDelMisura }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(fmtIso(new Date()));
@@ -1576,6 +1592,7 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLo
   const [showCircModal, setShowCircModal] = useState(false);
   const [circForm, setCircForm] = useState({});
   const [circScanning, setCircScanning] = useState(false);
+  const [testingNotif, setTestingNotif] = useState(false);
 
   const CIRC_FIELDS = [
     { key: "testa", label: "Testa", icon: "🧠" },
@@ -1958,6 +1975,9 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLo
         )}
       </div>
 
+      {/* STORICO CORPOREO */}
+      <StoricoCorporeo misure={misure} onAdd={onAddMisura} onDel={onDelMisura} sesso={settings.sesso || "M"} />
+
       {/* FOTO PROGRESSO */}
       {ultimeFoto && (
         <div className="card" style={{ marginBottom: 12 }}>
@@ -2030,6 +2050,52 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLo
         </div>
       )}
 
+      {/* NOTIFICHE */}
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div className="st" style={{ marginBottom: 10 }}>🔔 NOTIFICHE GIORNALIERE</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: settings.notifiche_attive ? 12 : 0 }}>
+          <div style={{ fontSize: 13, color: "var(--dim)" }}>Promemoria quotidiano</div>
+          <button
+            className="btn btn-s"
+            style={{ padding: "6px 14px", fontSize: 12, background: settings.notifiche_attive ? "var(--acc2)" : undefined, color: settings.notifiche_attive ? "var(--acc)" : undefined, borderColor: settings.notifiche_attive ? "var(--acc)" : undefined }}
+            onClick={() => onSave({ ...settings, notifiche_attive: !settings.notifiche_attive })}
+          >
+            {settings.notifiche_attive ? "ATTIVE" : "DISATTIVE"}
+          </button>
+        </div>
+        {settings.notifiche_attive && (
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <div style={{ flex: 1 }}>
+              <label className="lbl">Orario</label>
+              <input
+                className="inp"
+                type="time"
+                value={settings.notifiche_orario || '08:00'}
+                onChange={e => onSave({ ...settings, notifiche_orario: e.target.value })}
+              />
+            </div>
+            <div style={{ paddingTop: 18 }}>
+              <button
+                className="btn btn-s"
+                style={{ fontSize: 12 }}
+                disabled={testingNotif}
+                onClick={async () => {
+                  setTestingNotif(true);
+                  const granted = await requestNotifPermission();
+                  if (!granted) { alert("Permesso notifiche negato"); setTestingNotif(false); return; }
+                  const ok = await testNotifica();
+                  if (ok) alert("Notifica in arrivo tra 20 secondi. Chiudi l'app!");
+                  else alert("Errore: controlla i permessi dell'app");
+                  setTestingNotif(false);
+                }}
+              >
+                {testingNotif ? "..." : "TEST"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* EDIT MODAL */}
       {editing && (
         <div className="mov" onClick={e => { if (e.target === e.currentTarget) setEditing(false); }}>
@@ -2074,6 +2140,426 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLo
 
       {confirmState && <ConfirmModal message={confirmState.msg} onConfirm={() => { confirmState.onConfirm(); setConfirmState(null); }} onCancel={() => setConfirmState(null)} />}
     </>
+  );
+}
+
+// ─── BODY COMP MULTI-LINE CHART ──────────────────────────
+function BodyCompChart({ data }) {
+  const W = 340, H = 200, PL = 40, PR = 12, PT = 36, PB = 52;
+  const iW = W - PL - PR, iH = H - PT - PB;
+  const n = data.length;
+  if (n < 2) return <div style={{ textAlign: "center", padding: 16, color: "var(--mut)", fontSize: 12 }}>Almeno 2 rilevazioni per il grafico</div>;
+  const allVals = data.flatMap(d => [d.peso, d.ffm, d.fm].filter(v => v != null));
+  if (!allVals.length) return null;
+  const mn = Math.floor(Math.min(...allVals) / 10) * 10;
+  const mx = Math.ceil(Math.max(...allVals) / 10) * 10;
+  const rng = mx - mn || 10;
+  const xS = i => PL + (i / (n - 1)) * iW;
+  const yS = v => PT + (1 - (v - mn) / rng) * iH;
+  const SERIES = [{ key: "peso", color: "#9E9E9E" }, { key: "ffm", color: "#30D158" }, { key: "fm", color: "#FF9500" }];
+  const yTicks = [mn, mn + rng * 0.5, mx];
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", display: "block" }}>
+      {yTicks.map((v, i) => <line key={i} x1={PL} x2={W - PR} y1={yS(v)} y2={yS(v)} stroke="var(--bdr)" strokeWidth=".8" />)}
+      {yTicks.map((v, i) => <text key={i} x={PL - 4} y={yS(v) + 3} textAnchor="end" fill="var(--mut)" fontSize="7" fontFamily="Barlow,sans-serif">{v}</text>)}
+      {SERIES.map(({ key, color }) => {
+        const pts = data.map((d, i) => d[key] != null ? `${xS(i).toFixed(1)},${yS(d[key]).toFixed(1)}` : null).filter(Boolean);
+        if (pts.length < 2) return null;
+        return <polyline key={key} points={pts.join(" ")} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />;
+      })}
+      {SERIES.map(({ key, color }) =>
+        data.map((d, i) => d[key] == null ? null : (
+          <g key={`${key}-${i}`}>
+            <circle cx={xS(i)} cy={yS(d[key])} r="4.5" fill={color} stroke="var(--bg)" strokeWidth="1.5" />
+            <text x={xS(i)} y={yS(d[key]) - 9} textAnchor="middle" fill={color} fontSize="8.5" fontFamily="Barlow,sans-serif" fontWeight="700">{d[key]}</text>
+          </g>
+        ))
+      )}
+      {data.map((d, i) => (
+        <g key={`x-${i}`}>
+          <line x1={xS(i)} y1={PT + iH + 3} x2={xS(i)} y2={PT + iH + 8} stroke="var(--bdr)" strokeWidth=".8" />
+          <text x={xS(i)} y={H - PB + 14} textAnchor="middle" fill="var(--dim)" fontSize="7.5" fontFamily="Barlow,sans-serif" fontWeight="700">{d.visita_label || `V${i + 1}`}</text>
+          <text x={xS(i)} y={H - PB + 25} textAnchor="middle" fill="var(--mut)" fontSize="7" fontFamily="Barlow,sans-serif">{fmtShort(d.data)}</text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+// ─── STORICO CORPOREO ─────────────────────────────────────
+const CIRC_FIELDS_MAP = [
+  { key: "braccio_rilassato", label: "Braccio Ril.", icon: "💪" },
+  { key: "braccio_flesso", label: "Braccio Fless.", icon: "💪" },
+  { key: "vita", label: "Vita", icon: "📏" },
+  { key: "addome", label: "Addome", icon: "🔶" },
+  { key: "fianchi", label: "Fianchi", icon: "🔸" },
+  { key: "coscia_med", label: "Coscia Med.", icon: "🦵" },
+  { key: "coscia_max", label: "Coscia Max", icon: "🦵" },
+  { key: "polpaccio", label: "Polpaccio", icon: "🦿" },
+  { key: "testa", label: "Testa", icon: "🧠" },
+  { key: "torace", label: "Torace", icon: "🫁" },
+  { key: "avambraccio", label: "Avambraccio", icon: "🦾" },
+  { key: "polso", label: "Polso", icon: "⌚" },
+];
+
+function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [expandedId, setExpandedId] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [importPreview, setImportPreview] = useState(null);
+  const [confirmDel, setConfirmDel] = useState(null);
+  const bcsFileRef = useRef(null);
+
+  const sorted = [...misure].sort((a, b) => a.data.localeCompare(b.data));
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+
+  const delta = (curr, prev, lowerBetter = false) => {
+    if (curr == null || prev == null) return null;
+    const d = +(curr - prev).toFixed(1);
+    const good = lowerBetter ? d <= 0 : d >= 0;
+    return { d: d > 0 ? `+${d}` : String(d), color: good ? "var(--ok)" : "var(--dan)" };
+  };
+
+  const importBCS = async (file) => {
+    const activeKey = GROQ_KEY || localStorage.getItem("groq_key") || "";
+    if (!activeKey) { alert("Configura prima la Groq API key nelle impostazioni"); return; }
+    setImporting(true);
+    try {
+      const b64 = await compressImg(file, 1400, 0.88);
+      const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${activeKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "meta-llama/llama-4-scout-17b-16e-instruct",
+          messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: b64 } }, { type: "text", text: BCS_PROMPT }] }],
+          temperature: 0, max_tokens: 1024
+        })
+      });
+      const json = await resp.json();
+      const testo = json.choices?.[0]?.message?.content || "";
+      const match = testo.match(/\{[\s\S]*\}/);
+      if (match) {
+        const parsed = JSON.parse(match[0]);
+        if (parsed.visite?.length) setImportPreview(parsed.visite);
+        else alert("Nessuna visita trovata nell'immagine.");
+      } else { alert("Formato non riconosciuto. Riprova con un'immagine più nitida."); }
+    } catch (e) { alert("Errore scan: " + e.message); }
+    setImporting(false);
+  };
+
+  const confirmImport = async () => {
+    if (!importPreview) return;
+    const existingDates = new Set(misure.map(m => m.data));
+    for (const v of importPreview) {
+      if (!existingDates.has(v.data)) {
+        await onAdd({ id: genId(), ...v });
+      }
+    }
+    setImportPreview(null);
+  };
+
+  return (
+    <>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, marginTop: 4 }}>
+        <div>
+          <div className="st">📊 STORICO CORPOREO</div>
+          <div style={{ fontSize: 11, color: "var(--dim)" }}>{misure.length} rilevazioni · nutrizionista</div>
+        </div>
+        <div style={{ display: "flex", gap: 7 }}>
+          <input type="file" accept="image/*" style={{ display: "none" }} ref={bcsFileRef} onChange={e => e.target.files[0] && importBCS(e.target.files[0])} />
+          <button className="btn btn-s" style={{ fontSize: 10, padding: "7px 10px" }} onClick={() => bcsFileRef.current?.click()} disabled={importing}>
+            {importing ? <span className="spin">⏳</span> : "📈"} {importing ? "SCAN…" : "IMPORTA BCS"}
+          </button>
+          <button className="btn btn-p" style={{ fontSize: 10, padding: "7px 10px" }} onClick={() => setShowAdd(true)}>
+            <IcPlus /> AGGIUNGI
+          </button>
+        </div>
+      </div>
+
+      {/* CHART */}
+      {sorted.length >= 2 && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="st" style={{ marginBottom: 6 }}>STORICO TOTALBODY</div>
+          <BodyCompChart data={sorted} />
+          <div style={{ display: "flex", gap: 14, marginTop: 6, justifyContent: "center" }}>
+            {[["PESO", "#9E9E9E"], ["FFM", "#30D158"], ["FM", "#FF9500"]].map(([l, c]) => (
+              <div key={l} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <div style={{ width: 16, height: 3, background: c, borderRadius: 2 }} />
+                <span style={{ fontSize: 10, color: "var(--dim)", fontWeight: 700, letterSpacing: ".06em" }}>{l}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* PROGRESSO CHIAVE: prima vs ultima visita */}
+      {sorted.length >= 2 && first && last && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="st" style={{ marginBottom: 10 }}>PROGRESSO TOTALE · {fmtShort(first.data)} → {fmtShort(last.data)}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginBottom: 10 }}>
+            {[
+              { label: "PESO", first: first.peso, last: last.peso, unit: "kg", lower: true, color: "#9E9E9E" },
+              { label: "FFM", first: first.ffm, last: last.ffm, unit: "kg", lower: false, color: "#30D158" },
+              { label: "FM", first: first.fm, last: last.fm, unit: "kg", lower: true, color: "#FF9500" },
+            ].map(m => {
+              const d = delta(m.last, m.first, m.lower);
+              return (
+                <div key={m.label} style={{ background: "var(--sur)", borderRadius: 10, padding: "10px 8px", border: "1px solid var(--bdr)", textAlign: "center" }}>
+                  <div style={{ fontSize: 9, color: "var(--mut)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 }}>{m.label}</div>
+                  <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, color: m.color, lineHeight: 1 }}>
+                    {m.last ?? "—"}<span style={{ fontSize: 9, color: "var(--dim)", fontFamily: "Barlow,sans-serif", fontWeight: 400, marginLeft: 2 }}>{m.unit}</span>
+                  </div>
+                  {d && <div style={{ fontSize: 11, fontWeight: 700, color: d.color, marginTop: 3 }}>{d.d} {m.unit}</div>}
+                </div>
+              );
+            })}
+          </div>
+          {/* Circonferenze chiave prima vs ultima */}
+          {["vita", "addome", "fianchi", "braccio_rilassato"].map(key => {
+            const f = first[key], l = last[key];
+            if (f == null && l == null) return null;
+            const d = delta(l, f, CIRC_LOWER_IS_BETTER.includes(key));
+            const field = CIRC_FIELDS_MAP.find(x => x.key === key);
+            const pct = f && l ? Math.abs((l - f) / f) * 100 : 0;
+            return (
+              <div key={key} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}>
+                <div style={{ width: 80, fontSize: 10, color: "var(--dim)", fontWeight: 700, flexShrink: 0 }}>{field?.icon} {field?.label}</div>
+                <div style={{ flex: 1, height: 6, background: "var(--bdr)", borderRadius: 3, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${Math.min(100, (l ?? f ?? 0) / Math.max(f ?? 0, l ?? 0) * 100)}%`, background: d?.color || "var(--acc)", borderRadius: 3, transition: "width .4s" }} />
+                </div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--txt)", width: 36, textAlign: "right" }}>{l ?? f ?? "—"}</div>
+                {d && <div style={{ fontSize: 10, fontWeight: 700, color: d.color, width: 38 }}>{d.d}</div>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* LISTA VISITE */}
+      {sorted.length === 0 ? (
+        <div className="emp" style={{ marginBottom: 12 }}>
+          <div className="emp-ic">📋</div>
+          <div className="emp-t">Nessuna rilevazione</div>
+          <p style={{ fontSize: 13 }}>Importa lo storico BCS o aggiungi la prima visita</p>
+        </div>
+      ) : [...sorted].reverse().map((m, idx) => {
+        const prevIdx = sorted.length - 2 - idx;
+        const prev = prevIdx >= 0 ? sorted[prevIdx] : null;
+        const isExpanded = expandedId === m.id;
+        return (
+          <div key={m.id} className="card" style={{ marginBottom: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+              <div>
+                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 21, letterSpacing: ".05em", lineHeight: 1 }}>
+                  {m.visita_label || `Visita ${sorted.length - idx}`}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{fmtDate(m.data)}</div>
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button className="bico" style={{ fontSize: 12 }} onClick={() => setExpandedId(isExpanded ? null : m.id)}>{isExpanded ? "▲" : "▼"}</button>
+                <button className="bico d" onClick={() => setConfirmDel(m.id)}><IcTrash /></button>
+              </div>
+            </div>
+
+            {/* Body composition pills */}
+            <div style={{ display: "flex", gap: 7 }}>
+              {[
+                { label: "PESO", v: m.peso, unit: "kg", color: "#9E9E9E", delta: delta(m.peso, prev?.peso, true) },
+                { label: "FFM", v: m.ffm, unit: "kg", color: "#30D158", delta: delta(m.ffm, prev?.ffm, false) },
+                { label: "FM", v: m.fm, unit: "kg", color: "#FF9500", delta: delta(m.fm, prev?.fm, true) },
+                m.bcm != null ? { label: "BCM", v: m.bcm, unit: "kg", color: "#1E90FF", delta: delta(m.bcm, prev?.bcm, false) } : null,
+              ].filter(Boolean).filter(x => x.v != null).map(({ label, v, unit, color, delta: d }) => (
+                <div key={label} style={{ flex: 1, background: "var(--sur)", borderRadius: 8, padding: "8px 6px", border: "1px solid var(--bdr)", textAlign: "center" }}>
+                  <div style={{ fontSize: 9, color: "var(--mut)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em" }}>{label}</div>
+                  <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 20, color, lineHeight: 1.1 }}>{v}</div>
+                  <div style={{ fontSize: 8, color: "var(--mut)" }}>{unit}</div>
+                  {d && <div style={{ fontSize: 9, fontWeight: 700, color: d.color }}>{d.d}</div>}
+                </div>
+              ))}
+            </div>
+
+            {/* Circonferenze espanse */}
+            {isExpanded && (
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--bdr)" }}>
+                <div style={{ fontSize: 10, color: "var(--dim)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 8 }}>📐 Circonferenze</div>
+                {CIRC_FIELDS_MAP.filter(f => m[f.key] != null).length === 0 ? (
+                  <div style={{ fontSize: 12, color: "var(--mut)", fontStyle: "italic" }}>Nessuna misura registrata</div>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                    {CIRC_FIELDS_MAP.filter(f => m[f.key] != null).map(f => {
+                      const st = getCircStatus(f.key, m[f.key], sesso);
+                      const d = delta(m[f.key], prev?.[f.key], CIRC_LOWER_IS_BETTER.includes(f.key));
+                      return (
+                        <div key={f.key} style={{ background: st?.bg || "var(--sur)", borderRadius: 8, padding: "7px 9px", border: `1px solid ${st?.color || "var(--bdr)"}` }}>
+                          <div style={{ fontSize: 9, color: "var(--mut)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em" }}>{f.icon} {f.label}</div>
+                          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 2 }}>
+                            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 18, color: st?.color || "var(--acc)", letterSpacing: ".04em" }}>
+                              {m[f.key]}<span style={{ fontSize: 9, color: "var(--dim)", fontFamily: "Barlow,sans-serif", fontWeight: 400, marginLeft: 2 }}>cm</span>
+                            </div>
+                            {d && <div style={{ fontSize: 9, fontWeight: 700, color: d.color }}>{d.d}</div>}
+                          </div>
+                          {st && <div style={{ fontSize: 8, fontWeight: 700, color: st.color, marginTop: 1, textTransform: "uppercase", letterSpacing: ".05em" }}>{st.label}</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {m.note && <div style={{ marginTop: 8, fontSize: 12, color: "var(--dim)", fontStyle: "italic" }}>💬 {m.note}</div>}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* CONFIRM DELETE */}
+      {confirmDel && <ConfirmModal message="Eliminare questa rilevazione?" onConfirm={() => { onDel(confirmDel); setConfirmDel(null); }} onCancel={() => setConfirmDel(null)} />}
+
+      {/* IMPORT PREVIEW MODAL */}
+      {importPreview && (
+        <div className="mov" onClick={e => { if (e.target === e.currentTarget) setImportPreview(null); }}>
+          <div className="mod">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <div className="wt">📈 IMPORTA STORICO BCS</div>
+              <button className="bico" onClick={() => setImportPreview(null)}>✕</button>
+            </div>
+            <p style={{ fontSize: 13, color: "var(--dim)", marginBottom: 14 }}>Trovate <b style={{ color: "var(--txt)" }}>{importPreview.length}</b> visite. Verranno importate quelle non già presenti.</p>
+            {importPreview.map((v, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", background: "var(--sur)", borderRadius: 8, marginBottom: 6, border: "1px solid var(--bdr)" }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>{v.visita_label || `Visita ${i + 1}`}</div>
+                  <div style={{ fontSize: 11, color: "var(--dim)" }}>{v.data}</div>
+                </div>
+                <div style={{ fontSize: 12, color: "var(--dim)" }}>
+                  {[v.peso && `${v.peso}kg`, v.ffm && `FFM ${v.ffm}`, v.fm && `FM ${v.fm}`].filter(Boolean).join(" · ")}
+                </div>
+              </div>
+            ))}
+            <button className="btn btn-p btn-full" style={{ marginTop: 10 }} onClick={confirmImport}>
+              <IcCheck /> IMPORTA TUTTE
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ADD MODAL */}
+      {showAdd && <MisuraModal onSave={m => { onAdd(m); setShowAdd(false); }} onClose={() => setShowAdd(false)} />}
+    </>
+  );
+}
+
+// ─── MISURA MODAL ─────────────────────────────────────────
+function MisuraModal({ onSave, onClose }) {
+  const emptyForm = { data: fmtIso(), visita_label: "", peso: "", ffm: "", fm: "", bcm: "", braccio_rilassato: "", braccio_flesso: "", vita: "", addome: "", fianchi: "", coscia_med: "", coscia_max: "", polpaccio: "", testa: "", torace: "", avambraccio: "", polso: "", note: "" };
+  const [form, setForm] = useState(emptyForm);
+  const [scanningBCS, setScanningBCS] = useState(false);
+  const [scanningCirc, setScanningCirc] = useState(false);
+  const [tab, setTab] = useState("corpo");
+  const bcsRef = useRef(null);
+  const circRef = useRef(null);
+  const sv = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const nv = v => v !== "" && v != null ? +v : null;
+
+  const scanBCS = async (file) => {
+    const key = GROQ_KEY || localStorage.getItem("groq_key") || "";
+    if (!key) { alert("Configura la Groq API key"); return; }
+    setScanningBCS(true);
+    try {
+      const b64 = await compressImg(file, 1400, 0.88);
+      const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST", headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "meta-llama/llama-4-scout-17b-16e-instruct", messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: b64 } }, { type: "text", text: BCS_SINGLE_PROMPT }] }], temperature: 0, max_tokens: 512 })
+      });
+      const json = await resp.json();
+      const m = (json.choices?.[0]?.message?.content || "").match(/\{[\s\S]*\}/);
+      if (m) {
+        const d = JSON.parse(m[0]);
+        setForm(f => ({ ...f, data: d.data || f.data, visita_label: d.visita_label || f.visita_label, peso: d.peso != null ? String(d.peso) : f.peso, ffm: d.ffm != null ? String(d.ffm) : f.ffm, fm: d.fm != null ? String(d.fm) : f.fm, bcm: d.bcm != null ? String(d.bcm) : f.bcm }));
+      } else alert("Nessun dato trovato.");
+    } catch (e) { alert("Errore: " + e.message); }
+    setScanningBCS(false);
+  };
+
+  const scanCirc = async (file) => {
+    const key = GROQ_KEY || localStorage.getItem("groq_key") || "";
+    if (!key) { alert("Configura la Groq API key"); return; }
+    setScanningCirc(true);
+    try {
+      const b64 = await compressImg(file, 1200, 0.85);
+      const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST", headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "meta-llama/llama-4-scout-17b-16e-instruct", messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: b64 } }, { type: "text", text: CIRC_PROMPT }] }], temperature: 0, max_tokens: 512 })
+      });
+      const json = await resp.json();
+      const m = (json.choices?.[0]?.message?.content || "").match(/\{[\s\S]*\}/);
+      if (m) {
+        const d = JSON.parse(m[0]);
+        const sv2 = v => v != null ? String(v) : "";
+        setForm(f => ({ ...f, data: d.data || f.data, braccio_rilassato: d.braccio_rilassato != null ? sv2(d.braccio_rilassato) : f.braccio_rilassato, braccio_flesso: d.braccio_flesso != null ? sv2(d.braccio_flesso) : f.braccio_flesso, vita: d.vita != null ? sv2(d.vita) : f.vita, addome: d.addome != null ? sv2(d.addome) : f.addome, fianchi: d.fianchi != null ? sv2(d.fianchi) : f.fianchi, coscia_med: d.coscia_med != null ? sv2(d.coscia_med) : f.coscia_med, coscia_max: d.coscia_max != null ? sv2(d.coscia_max) : f.coscia_max, polpaccio: d.polpaccio != null ? sv2(d.polpaccio) : f.polpaccio, testa: d.testa != null ? sv2(d.testa) : f.testa, torace: d.torace != null ? sv2(d.torace) : f.torace, avambraccio: d.avambraccio != null ? sv2(d.avambraccio) : f.avambraccio, polso: d.polso != null ? sv2(d.polso) : f.polso }));
+      } else alert("Nessuna misura trovata.");
+    } catch (e) { alert("Errore: " + e.message); }
+    setScanningCirc(false);
+  };
+
+  const save = () => {
+    if (!form.data) { alert("Inserisci la data"); return; }
+    onSave({ id: genId(), data: form.data, visita_label: form.visita_label, peso: nv(form.peso), ffm: nv(form.ffm), fm: nv(form.fm), bcm: nv(form.bcm), braccio_rilassato: nv(form.braccio_rilassato), braccio_flesso: nv(form.braccio_flesso), vita: nv(form.vita), addome: nv(form.addome), fianchi: nv(form.fianchi), coscia_med: nv(form.coscia_med), coscia_max: nv(form.coscia_max), polpaccio: nv(form.polpaccio), testa: nv(form.testa), torace: nv(form.torace), avambraccio: nv(form.avambraccio), polso: nv(form.polso), note: form.note });
+  };
+
+  return (
+    <div className="mov" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="mod" style={{ maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div className="wt">➕ NUOVA VISITA</div>
+          <button className="bico" onClick={onClose}>✕</button>
+        </div>
+
+        {/* Data + label */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+          <div><label className="lbl">Data</label><input className="inp" type="date" value={form.data} onChange={e => sv("data", e.target.value)} /></div>
+          <div><label className="lbl">Etichetta</label><input className="inp" type="text" placeholder="es. Visita 4" value={form.visita_label} onChange={e => sv("visita_label", e.target.value)} /></div>
+        </div>
+
+        {/* Tabs */}
+        <div className="stab-row" style={{ marginBottom: 14 }}>
+          <button className={`stab${tab === "corpo" ? " on" : ""}`} onClick={() => setTab("corpo")}>⚖️ COMPOSIZIONE</button>
+          <button className={`stab${tab === "circ" ? " on" : ""}`} onClick={() => setTab("circ")}>📐 MISURE</button>
+        </div>
+
+        {tab === "corpo" && (
+          <>
+            <input type="file" accept="image/*" style={{ display: "none" }} ref={bcsRef} onChange={e => e.target.files[0] && scanBCS(e.target.files[0])} />
+            <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", border: "1px dashed var(--bdr)", borderRadius: 10, cursor: "pointer", color: scanningBCS ? "var(--acc)" : "var(--dim)", background: scanningBCS ? "var(--acc2)" : "transparent", marginBottom: 14 }} onClick={() => bcsRef.current?.click()}>
+              <span style={{ fontSize: 18 }}>{scanningBCS ? "⏳" : "📸"}</span>
+              <div><div style={{ fontWeight: 700, fontSize: 13 }}>{scanningBCS ? "Analisi AI in corso…" : "Scan BCS (foto singola visita)"}</div><div style={{ fontSize: 11, color: "var(--mut)" }}>L'AI legge peso, FFM, FM dalla foto del report</div></div>
+            </label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              {[{ k: "peso", l: "Peso (kg)", ph: "87.0" }, { k: "ffm", l: "FFM kg", ph: "59.4" }, { k: "fm", l: "FM kg", ph: "27.6" }, { k: "bcm", l: "BCM kg", ph: "—" }].map(({ k, l, ph }) => (
+                <div key={k}><label className="lbl" style={{ fontSize: 9 }}>{l}</label><input className="inp" type="number" step="0.1" placeholder={ph} value={form[k]} onChange={e => sv(k, e.target.value)} style={{ padding: "8px 10px" }} /></div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {tab === "circ" && (
+          <>
+            <input type="file" accept="image/*" style={{ display: "none" }} ref={circRef} onChange={e => e.target.files[0] && scanCirc(e.target.files[0])} />
+            <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", border: "1px dashed var(--bdr)", borderRadius: 10, cursor: "pointer", color: scanningCirc ? "var(--acc)" : "var(--dim)", background: scanningCirc ? "var(--acc2)" : "transparent", marginBottom: 14 }} onClick={() => circRef.current?.click()}>
+              <span style={{ fontSize: 18 }}>{scanningCirc ? "⏳" : "📏"}</span>
+              <div><div style={{ fontWeight: 700, fontSize: 13 }}>{scanningCirc ? "Analisi AI in corso…" : "Scan misure antropometriche"}</div><div style={{ fontSize: 11, color: "var(--mut)" }}>Carica foto del referto del nutrizionista</div></div>
+            </label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              {CIRC_FIELDS_MAP.map(({ key, label, icon }) => (
+                <div key={key}><label className="lbl" style={{ fontSize: 9 }}>{icon} {label}</label><input className="inp" type="number" step="0.1" min="0" placeholder="—" value={form[key]} onChange={e => sv(key, e.target.value)} style={{ padding: "8px 10px" }} /></div>
+              ))}
+            </div>
+          </>
+        )}
+
+        <div style={{ marginTop: 14 }}><label className="lbl">Note</label><textarea className="inp" placeholder="Osservazioni…" value={form.note} onChange={e => sv("note", e.target.value)} style={{ minHeight: 52 }} /></div>
+        <button className="btn btn-p btn-full" style={{ marginTop: 14 }} onClick={save}><IcCheck /> SALVA VISITA</button>
+      </div>
+    </div>
   );
 }
 
