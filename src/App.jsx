@@ -234,7 +234,11 @@ export default function App() {
       setAuthError("");
       setAuthBusy(true);
       try {
-        if (authMode === "login") {
+        if (authMode === "reset") {
+          const { error } = await sb.auth.resetPasswordForEmail(authEmail.trim(), { redirectTo: window.location.origin });
+          if (error) setAuthError(error.message);
+          else setAuthError("__reset__");
+        } else if (authMode === "login") {
           const { error } = await auth.signIn(authEmail.trim(), authPassword);
           if (error) setAuthError(error.message);
         } else {
@@ -248,18 +252,22 @@ export default function App() {
       setAuthBusy(false);
     };
 
+    const subtitles = { login: "Accedi al tuo account", register: "Crea il tuo account", reset: "Recupera la tua password" };
+
     return (
       <div className={cls}>
         <style>{CSS}</style>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, padding: 24 }}>
           <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 48, letterSpacing: ".1em", marginBottom: 4, color: "var(--acc)" }}>IRON LOG</div>
-          <p className="sub" style={{ marginBottom: 32, textAlign: "center" }}>
-            {authMode === "login" ? "Accedi al tuo account" : "Crea il tuo account"}
-          </p>
+          <p className="sub" style={{ marginBottom: 32, textAlign: "center" }}>{subtitles[authMode]}</p>
 
           {authError === "__ok__" ? (
             <div style={{ background: "rgba(48,209,88,.12)", border: "1px solid #30D158", borderRadius: 10, padding: "16px 20px", marginBottom: 20, fontSize: 14, color: "#30D158", textAlign: "center", maxWidth: 300 }}>
               Account creato! Controlla la tua email per confermare, poi accedi.
+            </div>
+          ) : authError === "__reset__" ? (
+            <div style={{ background: "rgba(48,209,88,.12)", border: "1px solid #30D158", borderRadius: 10, padding: "16px 20px", marginBottom: 20, fontSize: 14, color: "#30D158", textAlign: "center", maxWidth: 300 }}>
+              Email inviata! Controlla la tua casella e clicca il link per reimpostare la password.
             </div>
           ) : (
             <>
@@ -274,18 +282,20 @@ export default function App() {
                   onKeyDown={e => e.key === "Enter" && handleAuth()}
                 />
               </div>
-              <div className="ig" style={{ width: "100%", maxWidth: 300 }}>
-                <label className="lbl">Password</label>
-                <input
-                  className="inp"
-                  type="password"
-                  placeholder="••••••••"
-                  value={authPassword}
-                  onChange={e => setAuthPassword(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && handleAuth()}
-                />
-              </div>
-              {authError && authError !== "__ok__" && (
+              {authMode !== "reset" && (
+                <div className="ig" style={{ width: "100%", maxWidth: 300 }}>
+                  <label className="lbl">Password</label>
+                  <input
+                    className="inp"
+                    type="password"
+                    placeholder="••••••••"
+                    value={authPassword}
+                    onChange={e => setAuthPassword(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && handleAuth()}
+                  />
+                </div>
+              )}
+              {authError && !["__ok__", "__reset__"].includes(authError) && (
                 <div style={{ color: "var(--dan)", fontSize: 13, marginBottom: 12, padding: "10px 14px", background: "var(--dan2)", borderRadius: 8, maxWidth: 300, width: "100%" }}>
                   {authError}
                 </div>
@@ -293,20 +303,40 @@ export default function App() {
               <button
                 className="btn btn-p"
                 style={{ width: "100%", maxWidth: 300, padding: 14 }}
-                disabled={authBusy || !authEmail || !authPassword}
+                disabled={authBusy || !authEmail || (authMode !== "reset" && !authPassword)}
                 onClick={handleAuth}
               >
-                {authBusy ? "..." : authMode === "login" ? "ACCEDI" : "CREA ACCOUNT"}
+                {authBusy ? "..." : authMode === "login" ? "ACCEDI" : authMode === "register" ? "CREA ACCOUNT" : "INVIA EMAIL RESET"}
               </button>
             </>
           )}
 
-          <button
-            style={{ marginTop: 20, background: "none", border: "none", color: "var(--acc)", fontSize: 13, cursor: "pointer", fontFamily: "'Barlow',sans-serif" }}
-            onClick={() => { setAuthMode(m => m === "login" ? "register" : "login"); setAuthError(""); }}
-          >
-            {authMode === "login" ? "Non hai un account? Registrati" : "Hai già un account? Accedi"}
-          </button>
+          <div style={{ marginTop: 20, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+            {authMode === "login" && (
+              <>
+                <button style={{ background: "none", border: "none", color: "var(--acc)", fontSize: 13, cursor: "pointer", fontFamily: "'Barlow',sans-serif" }}
+                  onClick={() => { setAuthMode("register"); setAuthError(""); }}>
+                  Non hai un account? Registrati
+                </button>
+                <button style={{ background: "none", border: "none", color: "var(--mut)", fontSize: 12, cursor: "pointer", fontFamily: "'Barlow',sans-serif" }}
+                  onClick={() => { setAuthMode("reset"); setAuthError(""); }}>
+                  Password dimenticata?
+                </button>
+              </>
+            )}
+            {authMode === "register" && (
+              <button style={{ background: "none", border: "none", color: "var(--acc)", fontSize: 13, cursor: "pointer", fontFamily: "'Barlow',sans-serif" }}
+                onClick={() => { setAuthMode("login"); setAuthError(""); }}>
+                Hai già un account? Accedi
+              </button>
+            )}
+            {authMode === "reset" && (
+              <button style={{ background: "none", border: "none", color: "var(--acc)", fontSize: 13, cursor: "pointer", fontFamily: "'Barlow',sans-serif" }}
+                onClick={() => { setAuthMode("login"); setAuthError(""); }}>
+                Torna al login
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
