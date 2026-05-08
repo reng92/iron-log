@@ -2568,54 +2568,9 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
 function MisuraModal({ onSave, onClose }) {
   const emptyForm = { data: fmtIso(), visita_label: "", peso: "", ffm: "", fm: "", bcm: "", braccio_rilassato: "", braccio_flesso: "", vita: "", addome: "", fianchi: "", coscia_med: "", coscia_max: "", polpaccio: "", testa: "", torace: "", avambraccio: "", polso: "", note: "" };
   const [form, setForm] = useState(emptyForm);
-  const [scanningBCS, setScanningBCS] = useState(false);
-  const [scanningCirc, setScanningCirc] = useState(false);
   const [tab, setTab] = useState("corpo");
-  const bcsRef = useRef(null);
-  const circRef = useRef(null);
   const sv = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const nv = v => v !== "" && v != null ? +v : null;
-
-  const scanBCS = async (file) => {
-    const key = GROQ_KEY || localStorage.getItem("groq_key") || "";
-    if (!key) { alert("Configura la Groq API key"); return; }
-    setScanningBCS(true);
-    try {
-      const b64 = await compressImg(file, 1400, 0.88);
-      const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST", headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "meta-llama/llama-4-scout-17b-16e-instruct", messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: b64 } }, { type: "text", text: BCS_SINGLE_PROMPT }] }], temperature: 0, max_tokens: 512 })
-      });
-      const json = await resp.json();
-      const m = (json.choices?.[0]?.message?.content || "").match(/\{[\s\S]*\}/);
-      if (m) {
-        const d = JSON.parse(m[0]);
-        setForm(f => ({ ...f, data: d.data || f.data, visita_label: d.visita_label || f.visita_label, peso: d.peso != null ? String(d.peso) : f.peso, ffm: d.ffm != null ? String(d.ffm) : f.ffm, fm: d.fm != null ? String(d.fm) : f.fm, bcm: d.bcm != null ? String(d.bcm) : f.bcm }));
-      } else alert("Nessun dato trovato.");
-    } catch (e) { alert("Errore: " + e.message); }
-    setScanningBCS(false);
-  };
-
-  const scanCirc = async (file) => {
-    const key = GROQ_KEY || localStorage.getItem("groq_key") || "";
-    if (!key) { alert("Configura la Groq API key"); return; }
-    setScanningCirc(true);
-    try {
-      const b64 = await compressImg(file, 1200, 0.85);
-      const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST", headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "meta-llama/llama-4-scout-17b-16e-instruct", messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: b64 } }, { type: "text", text: CIRC_PROMPT }] }], temperature: 0, max_tokens: 512 })
-      });
-      const json = await resp.json();
-      const m = (json.choices?.[0]?.message?.content || "").match(/\{[\s\S]*\}/);
-      if (m) {
-        const d = JSON.parse(m[0]);
-        const sv2 = v => v != null ? String(v) : "";
-        setForm(f => ({ ...f, data: d.data || f.data, braccio_rilassato: d.braccio_rilassato != null ? sv2(d.braccio_rilassato) : f.braccio_rilassato, braccio_flesso: d.braccio_flesso != null ? sv2(d.braccio_flesso) : f.braccio_flesso, vita: d.vita != null ? sv2(d.vita) : f.vita, addome: d.addome != null ? sv2(d.addome) : f.addome, fianchi: d.fianchi != null ? sv2(d.fianchi) : f.fianchi, coscia_med: d.coscia_med != null ? sv2(d.coscia_med) : f.coscia_med, coscia_max: d.coscia_max != null ? sv2(d.coscia_max) : f.coscia_max, polpaccio: d.polpaccio != null ? sv2(d.polpaccio) : f.polpaccio, testa: d.testa != null ? sv2(d.testa) : f.testa, torace: d.torace != null ? sv2(d.torace) : f.torace, avambraccio: d.avambraccio != null ? sv2(d.avambraccio) : f.avambraccio, polso: d.polso != null ? sv2(d.polso) : f.polso }));
-      } else alert("Nessuna misura trovata.");
-    } catch (e) { alert("Errore: " + e.message); }
-    setScanningCirc(false);
-  };
 
   const save = () => {
     if (!form.data) { alert("Inserisci la data"); return; }
@@ -2630,46 +2585,30 @@ function MisuraModal({ onSave, onClose }) {
           <button className="bico" onClick={onClose}>✕</button>
         </div>
 
-        {/* Data + label */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
           <div><label className="lbl">Data</label><input className="inp" type="date" value={form.data} onChange={e => sv("data", e.target.value)} /></div>
           <div><label className="lbl">Etichetta</label><input className="inp" type="text" placeholder="es. Visita 4" value={form.visita_label} onChange={e => sv("visita_label", e.target.value)} /></div>
         </div>
 
-        {/* Tabs */}
         <div className="stab-row" style={{ marginBottom: 14 }}>
           <button className={`stab${tab === "corpo" ? " on" : ""}`} onClick={() => setTab("corpo")}>⚖️ COMPOSIZIONE</button>
           <button className={`stab${tab === "circ" ? " on" : ""}`} onClick={() => setTab("circ")}>📐 MISURE</button>
         </div>
 
         {tab === "corpo" && (
-          <>
-            <input type="file" accept="image/*" style={{ display: "none" }} ref={bcsRef} onChange={e => e.target.files[0] && scanBCS(e.target.files[0])} />
-            <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", border: "1px dashed var(--bdr)", borderRadius: 10, cursor: "pointer", color: scanningBCS ? "var(--acc)" : "var(--dim)", background: scanningBCS ? "var(--acc2)" : "transparent", marginBottom: 14 }} onClick={() => bcsRef.current?.click()}>
-              <span style={{ fontSize: 18 }}>{scanningBCS ? "⏳" : "📸"}</span>
-              <div><div style={{ fontWeight: 700, fontSize: 13 }}>{scanningBCS ? "Analisi AI in corso…" : "Scan BCS (foto singola visita)"}</div><div style={{ fontSize: 11, color: "var(--mut)" }}>L'AI legge peso, FFM, FM dalla foto del report</div></div>
-            </label>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              {[{ k: "peso", l: "Peso (kg)", ph: "87.0" }, { k: "ffm", l: "FFM kg", ph: "59.4" }, { k: "fm", l: "FM kg", ph: "27.6" }, { k: "bcm", l: "BCM kg", ph: "—" }].map(({ k, l, ph }) => (
-                <div key={k}><label className="lbl" style={{ fontSize: 9 }}>{l}</label><input className="inp" type="number" step="0.1" placeholder={ph} value={form[k]} onChange={e => sv(k, e.target.value)} style={{ padding: "8px 10px" }} /></div>
-              ))}
-            </div>
-          </>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {[{ k: "peso", l: "Peso (kg)", ph: "87.0" }, { k: "ffm", l: "FFM kg", ph: "59.4" }, { k: "fm", l: "FM kg", ph: "27.6" }, { k: "bcm", l: "BCM kg", ph: "—" }].map(({ k, l, ph }) => (
+              <div key={k}><label className="lbl" style={{ fontSize: 9 }}>{l}</label><input className="inp" type="number" step="0.1" placeholder={ph} value={form[k]} onChange={e => sv(k, e.target.value)} style={{ padding: "8px 10px" }} /></div>
+            ))}
+          </div>
         )}
 
         {tab === "circ" && (
-          <>
-            <input type="file" accept="image/*" style={{ display: "none" }} ref={circRef} onChange={e => e.target.files[0] && scanCirc(e.target.files[0])} />
-            <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", border: "1px dashed var(--bdr)", borderRadius: 10, cursor: "pointer", color: scanningCirc ? "var(--acc)" : "var(--dim)", background: scanningCirc ? "var(--acc2)" : "transparent", marginBottom: 14 }} onClick={() => circRef.current?.click()}>
-              <span style={{ fontSize: 18 }}>{scanningCirc ? "⏳" : "📏"}</span>
-              <div><div style={{ fontWeight: 700, fontSize: 13 }}>{scanningCirc ? "Analisi AI in corso…" : "Scan misure antropometriche"}</div><div style={{ fontSize: 11, color: "var(--mut)" }}>Carica foto del referto del nutrizionista</div></div>
-            </label>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              {CIRC_FIELDS_MAP.map(({ key, label, icon }) => (
-                <div key={key}><label className="lbl" style={{ fontSize: 9 }}>{icon} {label}</label><input className="inp" type="number" step="0.1" min="0" placeholder="—" value={form[key]} onChange={e => sv(key, e.target.value)} style={{ padding: "8px 10px" }} /></div>
-              ))}
-            </div>
-          </>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {CIRC_FIELDS_MAP.map(({ key, label, icon }) => (
+              <div key={key}><label className="lbl" style={{ fontSize: 9 }}>{icon} {label}</label><input className="inp" type="number" step="0.1" min="0" placeholder="—" value={form[key]} onChange={e => sv(key, e.target.value)} style={{ padding: "8px 10px" }} /></div>
+            ))}
+          </div>
         )}
 
         <div style={{ marginTop: 14 }}><label className="lbl">Note</label><textarea className="inp" placeholder="Osservazioni…" value={form.note} onChange={e => sv("note", e.target.value)} style={{ minHeight: 52 }} /></div>
