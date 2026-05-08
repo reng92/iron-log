@@ -2370,6 +2370,72 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
         </div>
       )}
 
+      {/* VALUTAZIONE */}
+      {sorted.length >= 2 && last?.peso && last?.fm && (() => {
+        const bfPct = +(last.fm / last.peso * 100).toFixed(1);
+        const deltaPeso = first?.peso != null && last.peso != null ? +(last.peso - first.peso).toFixed(1) : null;
+        const deltaFm = first?.fm != null && last.fm != null ? +(last.fm - first.fm).toFixed(1) : null;
+        const deltaFfm = first?.ffm != null && last.ffm != null ? +(last.ffm - first.ffm).toFixed(1) : null;
+
+        const bfThresh = sesso === "M"
+          ? [[15, "OTTIMO", "#30D158"], [20, "BUONO", "#30D158"], [25, "ATTENZIONE", "#FF9500"], [30, "ELEVATO", "#FF3B30"]]
+          : [[22, "OTTIMO", "#30D158"], [28, "BUONO", "#30D158"], [33, "ATTENZIONE", "#FF9500"], [38, "ELEVATO", "#FF3B30"]];
+        const bfEntry = bfThresh.find(([t]) => bfPct < t) || [null, "CRITICO", "#FF3B30"];
+        const bfRating = { label: bfEntry[1], color: bfEntry[2], bg: bfEntry[2] + "22" };
+
+        const qualita = (() => {
+          if (deltaPeso == null || deltaFm == null || deltaPeso >= 0) return null;
+          const pct = Math.round(deltaFm / deltaPeso * 100);
+          return pct >= 80
+            ? { label: "QUALITATIVO", color: "#30D158", bg: "#30D15822", desc: `${pct}% del calo è grasso` }
+            : pct >= 60
+            ? { label: "ACCETTABILE", color: "#FF9500", bg: "#FF950022", desc: `${pct}% del calo è grasso` }
+            : { label: "MASSA A RISCHIO", color: "#FF3B30", bg: "#FF3B3022", desc: `Solo ${pct}% del calo è grasso` };
+        })();
+
+        const ffmRating = deltaFfm == null ? null
+          : deltaFfm >= 0 ? { label: "STABILE / ↑", color: "#30D158", bg: "#30D15822" }
+          : Math.abs(deltaFfm / (first?.ffm || 1)) < 0.03 ? { label: "CALO LIEVE", color: "#FF9500", bg: "#FF950022" }
+          : { label: "IN CALO", color: "#FF3B30", bg: "#FF3B3022" };
+
+        const vitaSt = last.vita ? getCircStatus("vita", last.vita, sesso) : null;
+        const addSt = last.addome ? getCircStatus("addome", last.addome, sesso) : null;
+
+        const tips = [];
+        if (bfPct >= (sesso === "M" ? 25 : 33)) tips.push({ c: "#FF3B30", t: `% grasso al ${bfPct}% — obiettivo scendere sotto ${sesso === "M" ? "20" : "28"}%` });
+        if (last.vita && last.vita >= (sesso === "M" ? 94 : 80)) tips.push({ c: "#FF9500", t: `Vita a ${last.vita} cm — sopra soglia rischio CV. Target: <${sesso === "M" ? "90" : "75"} cm` });
+        if (last.addome && last.addome >= 100) tips.push({ c: "#FF9500", t: `Addome a ${last.addome} cm — grasso viscerale ancora elevato` });
+        if (deltaFfm != null && deltaFfm < -1.5) tips.push({ c: "#FF3B30", t: "FFM calata — aumenta l'apporto proteico nelle fasi di deficit" });
+        if (tips.length === 0) tips.push({ c: "#30D158", t: "Composizione corporea in miglioramento — mantieni la rotta" });
+
+        return (
+          <div className="card" style={{ marginBottom: 12 }}>
+            <div className="st" style={{ marginBottom: 10 }}>VALUTAZIONE</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+              {[
+                { label: "% Grasso corporeo", right: <><span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 18, color: bfRating.color, marginRight: 7 }}>{bfPct}%</span><span style={{ fontSize: 9, fontWeight: 700, background: bfRating.bg, color: bfRating.color, padding: "2px 8px", borderRadius: 20 }}>{bfRating.label}</span></> },
+                qualita ? { label: "Qualità del calo", right: <><span style={{ fontSize: 11, color: "var(--dim)", marginRight: 7 }}>{qualita.desc}</span><span style={{ fontSize: 9, fontWeight: 700, background: qualita.bg, color: qualita.color, padding: "2px 8px", borderRadius: 20 }}>{qualita.label}</span></> } : null,
+                ffmRating ? { label: "Massa magra (FFM)", right: <span style={{ fontSize: 9, fontWeight: 700, background: ffmRating.bg, color: ffmRating.color, padding: "2px 8px", borderRadius: 20 }}>{ffmRating.label}</span> } : null,
+                vitaSt && last.vita ? { label: `📏 Vita — ${last.vita} cm`, right: <span style={{ fontSize: 9, fontWeight: 700, background: vitaSt.bg, color: vitaSt.color, padding: "2px 8px", borderRadius: 20 }}>{vitaSt.label}</span> } : null,
+                addSt && last.addome ? { label: `📏 Addome — ${last.addome} cm`, right: <span style={{ fontSize: 9, fontWeight: 700, background: addSt.bg, color: addSt.color, padding: "2px 8px", borderRadius: 20 }}>{addSt.label}</span> } : null,
+              ].filter(Boolean).map((row, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 12, color: "var(--dim)", fontWeight: 600 }}>{row.label}</span>
+                  <div style={{ display: "flex", alignItems: "center" }}>{row.right}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 10, color: "var(--mut)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 7 }}>COSA MIGLIORARE</div>
+            {tips.map((s, i) => (
+              <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 6 }}>
+                <div style={{ width: 6, height: 6, borderRadius: 3, background: s.c, marginTop: 5, flexShrink: 0 }} />
+                <span style={{ fontSize: 12, color: "var(--txt)", lineHeight: 1.4 }}>{s.t}</span>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
       {/* LISTA VISITE */}
       {sorted.length === 0 ? (
         <div className="emp" style={{ marginBottom: 12 }}>
