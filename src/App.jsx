@@ -5,7 +5,7 @@ import { IcHome, IcBook, IcHistory, IcChart, IcWeight, IcPlus, IcTrash, IcEdit, 
 import ChatAI from "./components/ChatAI";
 import CorsaTracker from "./components/CorsaTracker";
 import { db, auth, sb } from "./db";
-import { CSS, ZEPP_PROMPT, GROQ_SCHEDA_PROMPT, GROQ_PROMPT, STATUS_OPTS, CIRC_PROMPT, BCS_PROMPT, BCS_SINGLE_PROMPT } from "./constants";
+import { CSS, ZEPP_PROMPT, GROQ_SCHEDA_PROMPT, GROQ_PROMPT, STATUS_OPTS, CIRC_PROMPT, BCS_PROMPT, BCS_SINGLE_PROMPT, BCS_MULTI_PROMPT } from "./constants";
 import LineChart from "./components/LineChart";
 import FoodThumb from "./components/FoodThumb";
 import StatusBadge from "./components/StatusBadge";
@@ -2251,19 +2251,23 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
     return { d: d > 0 ? `+${d}` : String(d), color: good ? "var(--ok)" : "var(--dan)" };
   };
 
-  const importBCS = async (file) => {
+  const importBCS = async (files) => {
+    const fileArr = Array.isArray(files) ? files : [files];
     const activeKey = GROQ_KEY || localStorage.getItem("groq_key") || "";
     if (!activeKey) { alert("Configura prima la Groq API key nelle impostazioni"); return; }
     setImporting(true);
     try {
-      const b64 = await compressImg(file, 1400, 0.88);
+      const images = await Promise.all(fileArr.map(f => compressImg(f, 1400, 0.88)));
+      const isMulti = images.length >= 2;
+      const prompt = isMulti ? BCS_MULTI_PROMPT : BCS_PROMPT;
+      const content = [...images.map(url => ({ type: "image_url", image_url: { url } })), { type: "text", text: prompt }];
       const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: { "Authorization": `Bearer ${activeKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "meta-llama/llama-4-scout-17b-16e-instruct",
-          messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: b64 } }, { type: "text", text: BCS_PROMPT }] }],
-          temperature: 0, max_tokens: 1024
+          messages: [{ role: "user", content }],
+          temperature: 0, max_tokens: 2048
         })
       });
       const json = await resp.json();
@@ -2297,7 +2301,7 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
           <div style={{ fontSize: 11, color: "var(--dim)" }}>{misure.length} rilevazioni · nutrizionista</div>
         </div>
         <div style={{ display: "flex", gap: 7 }}>
-          <input type="file" accept="image/*" style={{ display: "none" }} ref={bcsFileRef} onChange={e => e.target.files[0] && importBCS(e.target.files[0])} />
+          <input type="file" accept="image/*" multiple style={{ display: "none" }} ref={bcsFileRef} onChange={e => { const f = Array.from(e.target.files); if (f.length) importBCS(f); e.target.value = ""; }} />
           <button className="btn btn-s" style={{ fontSize: 10, padding: "7px 10px" }} onClick={() => bcsFileRef.current?.click()} disabled={importing}>
             {importing ? <span className="spin">⏳</span> : "📈"} {importing ? "SCAN…" : "IMPORTA BCS"}
           </button>
@@ -2446,31 +2450,47 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
       {confirmDel && <ConfirmModal message="Eliminare questa rilevazione?" onConfirm={() => { onDel(confirmDel); setConfirmDel(null); }} onCancel={() => setConfirmDel(null)} />}
 
       {/* IMPORT PREVIEW MODAL */}
-      {importPreview && (
-        <div className="mov" onClick={e => { if (e.target === e.currentTarget) setImportPreview(null); }}>
-          <div className="mod">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-              <div className="wt">📈 IMPORTA STORICO BCS</div>
-              <button className="bico" onClick={() => setImportPreview(null)}>✕</button>
-            </div>
-            <p style={{ fontSize: 13, color: "var(--dim)", marginBottom: 14 }}>Trovate <b style={{ color: "var(--txt)" }}>{importPreview.length}</b> visite. Verranno importate quelle non già presenti.</p>
-            {importPreview.map((v, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", background: "var(--sur)", borderRadius: 8, marginBottom: 6, border: "1px solid var(--bdr)" }}>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 13 }}>{v.visita_label || `Visita ${i + 1}`}</div>
-                  <div style={{ fontSize: 11, color: "var(--dim)" }}>{v.data}</div>
-                </div>
-                <div style={{ fontSize: 12, color: "var(--dim)" }}>
-                  {[v.peso && `${v.peso}kg`, v.ffm && `FFM ${v.ffm}`, v.fm && `FM ${v.fm}`].filter(Boolean).join(" · ")}
-                </div>
+      {importPreview && (() => {
+        const existingDates = new Set(misure.map(m => m.data));
+        const nuove = importPreview.filter(v => !existingDates.has(v.data));
+        return (
+          <div className="mov" onClick={e => { if (e.target === e.currentTarget) setImportPreview(null); }}>
+            <div className="mod">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                <div className="wt">📈 IMPORTA STORICO BCS</div>
+                <button className="bico" onClick={() => setImportPreview(null)}>✕</button>
               </div>
-            ))}
-            <button className="btn btn-p btn-full" style={{ marginTop: 10 }} onClick={confirmImport}>
-              <IcCheck /> IMPORTA TUTTE
-            </button>
+              <p style={{ fontSize: 13, color: "var(--dim)", marginBottom: 14 }}>
+                Trovate <b style={{ color: "var(--txt)" }}>{importPreview.length}</b> visite · <b style={{ color: "var(--ok)" }}>{nuove.length} nuove</b>{nuove.length < importPreview.length ? ` · ${importPreview.length - nuove.length} già presenti` : ""}
+              </p>
+              {importPreview.map((v, i) => {
+                const exists = existingDates.has(v.data);
+                const hasCirc = [v.braccio_rilassato, v.vita, v.addome, v.fianchi].some(x => x != null);
+                return (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", background: exists ? "var(--bg)" : "var(--sur)", borderRadius: 8, marginBottom: 6, border: `1px solid ${exists ? "var(--bdr)" : "var(--ok)"}`, opacity: exists ? 0.5 : 1 }}>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13 }}>{v.visita_label || `Visita ${i + 1}`}</div>
+                        {exists
+                          ? <span style={{ fontSize: 9, fontWeight: 700, background: "var(--bdr)", color: "var(--dim)", padding: "1px 6px", borderRadius: 20 }}>GIÀ PRESENTE</span>
+                          : <span style={{ fontSize: 9, fontWeight: 700, background: "rgba(48,209,88,.15)", color: "var(--ok)", padding: "1px 6px", borderRadius: 20 }}>NUOVA</span>}
+                        {hasCirc && !exists && <span style={{ fontSize: 9, fontWeight: 700, background: "rgba(30,144,255,.12)", color: "var(--acc)", padding: "1px 6px", borderRadius: 20 }}>+ CIRC</span>}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--dim)" }}>{v.data}</div>
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--dim)", textAlign: "right" }}>
+                      {[v.peso && `${v.peso}kg`, v.ffm && `FFM ${v.ffm}`, v.fm && `FM ${v.fm}`].filter(Boolean).join(" · ")}
+                    </div>
+                  </div>
+                );
+              })}
+              <button className="btn btn-p btn-full" style={{ marginTop: 10 }} onClick={confirmImport} disabled={nuove.length === 0}>
+                <IcCheck /> {nuove.length > 0 ? `IMPORTA ${nuove.length} NUOVE` : "NESSUNA NUOVA DA IMPORTARE"}
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ADD MODAL */}
       {showAdd && <MisuraModal onSave={m => { onAdd(m); setShowAdd(false); }} onClose={() => setShowAdd(false)} />}
