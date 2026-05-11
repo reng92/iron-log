@@ -4,15 +4,38 @@ import { GROQ_PROMPT, GROQ_DAY_PROMPT } from "../../constants";
 import { estraiTestoPdf, genId } from "../../utils";
 import { GIORNI_LABEL } from "../../utils";
 
-// Split del testo del PDF per giorno. Cerca marker "GIORNO N" (1-7) e ritorna mappa {1: testo, 2: testo, ...} per i giorni trovati.
-function splitTestoPerGiorno(testo) {
-  const giorni = {};
-  const re = /GIORNO\s*([1-7])\b[\s\S]*?(?=GIORNO\s*[1-7]\b|ELENCO FONTI|COTTURE\b|SALSE AMMESSE|$)/gi;
+// Split del testo del PDF per giorno. Strategia: trova tutte le posizioni dei marker "GIORNO N",
+// poi per ogni giorno prende il testo da quella posizione fino al prossimo marker (o fine sezione).
+function splitTestoPerGiorno(testoRaw) {
+  // Normalizza spazi unicode e collassa whitespace per rendere robusto il match
+  const testo = testoRaw.replace(/[    ]/g, " ");
+
+  // Trova tutte le occorrenze di "GIORNO N" (N 1-7), case-insensitive
+  const markerRe = /GIORNO\s+([1-7])(?!\d)/gi;
+  const markers = [];
   let m;
-  while ((m = re.exec(testo)) !== null) {
-    const n = parseInt(m[1], 10);
-    if (n >= 1 && n <= 7 && !giorni[n]) giorni[n] = m[0].trim();
+  while ((m = markerRe.exec(testo)) !== null) {
+    markers.push({ n: parseInt(m[1], 10), start: m.index });
   }
+
+  // Trova fine sezione giorni (sezioni informative dopo i 7 giorni)
+  const endRe = /(ELENCO\s+FONT|COTTURE\b|SALSE\s+AMMESSE)/i;
+  const endMatch = testo.match(endRe);
+  const endPos = endMatch ? endMatch.index : testo.length;
+
+  const giorni = {};
+  for (let i = 0; i < markers.length; i++) {
+    const { n, start } = markers[i];
+    if (n < 1 || n > 7 || giorni[n]) continue;
+    const nextStart = (markers[i + 1] && markers[i + 1].start > start)
+      ? markers[i + 1].start
+      : endPos;
+    giorni[n] = testo.substring(start, nextStart).trim();
+  }
+
+  console.log(`[PDF Import] Markers trovati: ${markers.length}, giorni unici: ${Object.keys(giorni).length}`);
+  Object.entries(giorni).forEach(([n, t]) => console.log(`[PDF Import] G${n}: ${t.length} caratteri`));
+
   return giorni;
 }
 
@@ -24,22 +47,32 @@ function estraiNomePiano(testo) {
   return "";
 }
 
-// Chiama Groq per UN solo giorno e ritorna l'array pasti
-async function estraiPastiGiorno(testoGiorno, giornoNum, apiKey) {
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Chiama Groq per UN solo giorno e ritorna l'array pasti.
+// Modello "llama-3.1-8b-instant": rate limit più alti del 70b, sufficiente per task strutturato con response_format json.
+async function estraiPastiGiorno(testoGiorno, giornoNum, apiKey, tentativo = 1) {
   const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
     body: JSON.stringify({
-      model: "llama-3.3-70b-versatile",
+      model: "llama-3.1-8b-instant",
       messages: [
         { role: "system", content: GROQ_DAY_PROMPT },
         { role: "user", content: `Testo del Giorno ${giornoNum}:\n\n${testoGiorno}` }
       ],
-      temperature: 0.05, max_tokens: 6000,
+      temperature: 0.05, max_tokens: 4000,
       response_format: { type: "json_object" }
     })
   });
   if (!resp.ok) {
+    // Backoff su 429 (rate limit) e 503 (sovraccarico)
+    if ((resp.status === 429 || resp.status === 503) && tentativo < 4) {
+      const wait = 2000 * tentativo;
+      console.warn(`[PDF Import] G${giornoNum}: ${resp.status}, retry in ${wait}ms (tentativo ${tentativo})`);
+      await sleep(wait);
+      return estraiPastiGiorno(testoGiorno, giornoNum, apiKey, tentativo + 1);
+    }
     const err = await resp.json().catch(() => ({}));
     throw new Error(err?.error?.message || `Errore Groq G${giornoNum}: ${resp.status}`);
   }
@@ -81,34 +114,22 @@ export default function PdfImportModal({ groqKey, onApply, onClose }) {
 
       let giorniPasti = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: [] };
 
-      if (giorniTrovati.length >= 2) {
-        // ── Modalità multi-giorno: 1 chiamata per giorno in parallelo ──
-        setLoadingMsg(`Analisi di ${giorniTrovati.length} giorni in parallelo...`);
-        const tasks = giorniTrovati.map(async n => {
-          const pasti = await estraiPastiGiorno(blocchiPerGiorno[n], n, activeKey);
-          return [n, pasti];
-        });
-        const settled = await Promise.allSettled(tasks);
-        const falliti = [];
-        settled.forEach((s, i) => {
-          const n = giorniTrovati[i];
-          if (s.status === "fulfilled") {
-            giorniPasti[s.value[0]] = s.value[1];
-          } else {
-            falliti.push(n);
-          }
-        });
-        // Retry sequenziale per i giorni falliti (rate limit / errori transient)
+      if (giorniTrovati.length >= 1) {
+        // ── Modalità multi-giorno: chiamate SEQUENZIALI (evita rate limit Groq free tier) ──
         const erroriFinali = [];
-        for (const n of falliti) {
-          setLoadingMsg(`Riprovo giorno ${n} (${GIORNI_LABEL[n]})...`);
-          await new Promise(r => setTimeout(r, 1500));
+        let idx = 0;
+        for (const n of giorniTrovati) {
+          idx++;
+          setLoadingMsg(`Analisi giorno ${idx}/${giorniTrovati.length}: ${GIORNI_LABEL[n]}...`);
           try {
             const pasti = await estraiPastiGiorno(blocchiPerGiorno[n], n, activeKey);
             giorniPasti[n] = pasti;
           } catch (e) {
+            console.warn(`[PDF Import] G${n} fallito:`, e.message);
             erroriFinali.push(`G${n}: ${e.message || "errore"}`);
           }
+          // piccolo delay tra chiamate per stare comodi sotto il rate limit
+          if (idx < giorniTrovati.length) await sleep(400);
         }
         if (erroriFinali.length === giorniTrovati.length) throw new Error(erroriFinali.join(" | "));
         if (erroriFinali.length > 0) {
