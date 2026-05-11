@@ -3,7 +3,6 @@ import ConfirmModal from "./components/modals/ConfirmModal";
 import { genId, fmtDur, fmtDate, fmtShort, fmtIso, epley, GG, GIORNI_LABEL, GIORNI_SHORT, fetchMealImg, estraiTestoPdf, compressImg, estimateKcalFromName, estimateKcalFromAI } from "./utils";
 import { IcHome, IcBook, IcHistory, IcChart, IcWeight, IcPlus, IcTrash, IcEdit, IcCheck, IcChevL, IcClose, IcPlay, IcTimer, IcCamera, IcImg, IcSun, IcMoon, IcDownload, IcCalc, IcArrowUp, IcArrowDown, IcApple, IcUser, IcFile, IcUpload, Ico } from "./components/Icons";
 import ChatAI from "./components/ChatAI";
-import CorsaTracker from "./components/CorsaTracker";
 import { db, auth, sb } from "./db";
 import { CSS, ZEPP_PROMPT, GROQ_SCHEDA_PROMPT, GROQ_PROMPT, STATUS_OPTS, CIRC_PROMPT, BCS_PROMPT, BCS_SINGLE_PROMPT, BCS_MULTI_PROMPT } from "./constants";
 import LineChart from "./components/LineChart";
@@ -121,7 +120,6 @@ export default function App() {
   // -- Nuovi stati per la dieta --
   const [piani, setPiani] = useState([]);
   const [logDieta, setLogDieta] = useState([]);
-  const [corse, setCorse] = useState([]);
   const [misure, setMisure] = useState([]);
 
   const [subview, setSubview] = useState(null);
@@ -132,25 +130,24 @@ export default function App() {
   useEffect(() => {
     const loadForUser = async (u) => {
       if (u) {
-        const [sc, ss, ps, st, pa, ld, co, mi] = await Promise.all([
+        const [sc, ss, ps, st, pa, ld, mi] = await Promise.all([
           db.getSchede().catch(() => []),
           db.getSessioni().catch(() => []),
           db.getPeso().catch(() => []),
           db.getSettings().catch(() => ({})),
           db.getPiani().catch(() => []),
           db.getLogDieta().catch(() => []),
-          db.getCorse().catch(() => []),
           db.getMisure().catch(() => []),
         ]);
         setSchede(sc || []); setSessioni(ss || []); setPeso(ps || []);
         setSettings({ darkMode: true, ...st });
         setPiani(pa || []); setLogDieta(ld || []);
-        setCorse(co || []); setMisure(mi || []);
+        setMisure(mi || []);
         setLoaded(true);
       } else {
         setSchede([]); setSessioni([]); setPeso([]);
         setSettings({ darkMode: true });
-        setPiani([]); setLogDieta([]); setCorse([]); setMisure([]);
+        setPiani([]); setLogDieta([]); setMisure([]);
         setLoaded(false);
       }
     };
@@ -208,8 +205,6 @@ export default function App() {
   const handleDelLogDieta = async id => { setLogDieta(p => p.filter(x => x.id !== id)); await db.delLogDieta(id); };
   const onOpenDietaLog = () => setSubview({ type: "dieta-log", data: null });
 
-  const handleAddCorsa = async c => { setCorse(p => [c, ...p]); await db.addCorsa(c); };
-  const handleDelCorsa = async id => { setCorse(p => p.filter(x => x.id !== id)); await db.delCorsa(id); };
   const addMisura = async m => {
     setMisure(prev => [...prev, m].sort((a, b) => a.data.localeCompare(b.data)));
     try { await db.addMisura(m); } catch (e) { alert("Errore salvataggio: " + e.message); setMisure(prev => prev.filter(x => x.id !== m.id)); }
@@ -386,15 +381,6 @@ export default function App() {
       />
     </div>
   );
-  if (subview?.type === "corsa") return (
-    <div className={cls}><style>{CSS}</style>
-      <CorsaTracker
-        dark={dark}
-        onBack={() => setSubview(null)}
-        onSave={handleAddCorsa}
-      />
-    </div>
-  );
   if (subview?.type === "dieta-log") return (
     <div className={cls}><style>{CSS}</style>
       <DietaLog
@@ -413,7 +399,7 @@ export default function App() {
     <div className={cls}>
       <style>{CSS}</style>
       <div className="content fi">
-        {tab === "home" && <Home schede={schede} sessioni={sessioni} peso={peso} piani={piani} corse={corse} dark={dark} onToggleDark={toggleDark} onStart={sc => setSubview({ type: "allenamento", data: sc })} onGoSchede={() => setTab("schede")} onCorsa={() => setSubview({ type: "corsa" })} logDieta={logDieta} settings={settings} />}
+        {tab === "home" && <Home schede={schede} sessioni={sessioni} peso={peso} piani={piani} dark={dark} onToggleDark={toggleDark} onStart={sc => setSubview({ type: "allenamento", data: sc })} onGoSchede={() => setTab("schede")} logDieta={logDieta} settings={settings} />}
         {tab === "schede" && <Schede schede={schede} onNew={() => setSubview({ type: "scheda-edit", data: { nome: "", giorni: [], esercizi: [] } })} onEdit={sc => setSubview({ type: "scheda-edit", data: sc })} onDelete={id => saveSchede(schede.filter(s => s.id !== id))} onStart={sc => setSubview({ type: "allenamento", data: sc })} />}
 
         {/* -- Nuova Tab Dieta -- */}
@@ -429,7 +415,7 @@ export default function App() {
           />
         )}
 
-        {tab === "storico" && <Storico sessioni={sessioni} corse={corse} onDetail={s => setSubview({ type: "sessione", data: s })} onDelete={delSessione} onDeleteCorsa={handleDelCorsa} />}
+        {tab === "storico" && <Storico sessioni={sessioni} onDetail={s => setSubview({ type: "sessione", data: s })} onDelete={delSessione} />}
         {tab === "stats" && <Stats sessioni={sessioni} />}
         {tab === "peso" && <Peso peso={peso} onAdd={addPeso} onDelete={delPeso} />}
         {tab === "profilo" && <Profilo settings={settings} peso={peso} piani={piani} logDieta={logDieta} misure={misure} onSave={saveSettings} onOpenDietaLog={onOpenDietaLog} onLogout={() => auth.signOut()} onAddMisura={addMisura} onDelMisura={delMisura} />}
@@ -447,7 +433,7 @@ export default function App() {
 }
 
 // ─── HOME ─────────────────────────────────────────────────
-function Home({ schede, sessioni, peso, piani, corse, dark, onToggleDark, onStart, onGoSchede, onCorsa, logDieta, settings }) {
+function Home({ schede, sessioni, peso, piani, dark, onToggleDark, onStart, onGoSchede, logDieta, settings }) {
   const [pick, setPick] = useState(false);
   const totKg = sessioni.reduce((a, s) => a + s.esercizi.reduce((b, e) => b + e.serie.reduce((c, sr) => c + (sr.completata ? (+sr.kg || 0) * (+sr.reps || 0) : 0), 0), 0), 0);
   const avgMin = sessioni.length ? Math.round(sessioni.reduce((a, s) => a + (s.durata || 0), 0) / sessioni.length) : 0;
@@ -523,10 +509,6 @@ function Home({ schede, sessioni, peso, piani, corse, dark, onToggleDark, onStar
         ? <button className="btn btn-p btn-full" style={{ fontSize: 15, padding: "14px", marginBottom: 10 }} onClick={() => setPick(true)}><IcPlay /> INIZIA ALLENAMENTO</button>
         : <button className="btn btn-s btn-full" style={{ marginBottom: 10 }} onClick={onGoSchede}><IcPlus /> CREA LA TUA PRIMA SCHEDA</button>
       }
-      <button className="btn btn-s btn-full" style={{ marginBottom: 14, borderColor: "var(--ok)", color: "var(--ok)" }} onClick={onCorsa}>
-        🏃 AVVIA CORSA / CAMMINATA GPS
-      </button>
-
       {records.length > 0 && (
         <>
           <div className="st">🏆 RECORD PERSONALI</div>
@@ -849,8 +831,7 @@ function Allenamento({ scheda, sessioni, onComplete, onBack }) {
 }
 
 // ─── STORICO ──────────────────────────────────────────────
-function Storico({ sessioni, corse, onDetail, onDelete, onDeleteCorsa }) {
-  const [stab, setStab] = useState("palestra");
+function Storico({ sessioni, onDetail, onDelete }) {
   const [confirmState, setConfirmState] = useState(null);
 
   return (
@@ -859,11 +840,9 @@ function Storico({ sessioni, corse, onDetail, onDelete, onDeleteCorsa }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
           <div>
             <h1 className="pt">STORICO<br />LOG</h1>
-            <p className="sub">
-              {stab === "palestra" ? `${sessioni.length} sessioni palestra` : `${(corse || []).length} uscite`}
-            </p>
+            <p className="sub">{sessioni.length} sessioni palestra</p>
           </div>
-          {stab === "palestra" && sessioni.length > 0 && (
+          {sessioni.length > 0 && (
             <button className="bico" onClick={() => exportCSV(sessioni)} title="Esporta CSV">
               <IcDownload />
             </button>
@@ -871,12 +850,7 @@ function Storico({ sessioni, corse, onDetail, onDelete, onDeleteCorsa }) {
         </div>
       </div>
 
-      <div className="stab-row">
-        <button className={`stab${stab === "palestra" ? " on" : ""}`} onClick={() => setStab("palestra")}>🏋️ PALESTRA</button>
-        <button className={`stab${stab === "corsa" ? " on" : ""}`} onClick={() => setStab("corsa")}>🏃 CORSA / CAMMINATA</button>
-      </div>
-
-      {stab === "palestra" && (
+      {(
         sessioni.length === 0 ? (
           <div className="emp">
             <div className="emp-ic">📊</div>
@@ -911,159 +885,6 @@ function Storico({ sessioni, corse, onDetail, onDelete, onDeleteCorsa }) {
           );
         })
       )}
-
-      {stab === "corsa" && (
-        <StoricoCorsa corse={corse || []} onDelete={onDeleteCorsa} />
-      )}
-
-      {confirmState && <ConfirmModal message={confirmState.msg} onConfirm={() => { confirmState.onConfirm(); setConfirmState(null); }} onCancel={() => setConfirmState(null)} />}
-    </>
-  );
-}
-
-function StoricoCorsa({ corse, onDelete }) {
-  const [sel, setSel] = useState(null);
-  const [confirmState, setConfirmState] = useState(null);
-
-  function fmtPaceDisplay(distKm, durSec) {
-    if (!distKm || distKm < 0.01 || !durSec) return "--:--";
-    const secPerKm = durSec / distKm;
-    const m = Math.floor(secPerKm / 60);
-    const s = Math.floor(secPerKm % 60);
-    return `${m}:${String(s).padStart(2, "0")}`;
-  }
-
-  function fmtDurSec(sec) {
-    const h = Math.floor(sec / 3600);
-    const m = Math.floor((sec % 3600) / 60);
-    const s = sec % 60;
-    if (h > 0) return `${h}h ${m}′`;
-    return `${m}′ ${String(s).padStart(2, "0")}″`;
-  }
-
-  const totDist = corse.reduce((a, c) => a + (c.distanza || 0), 0);
-  const totKcal = corse.reduce((a, c) => a + (c.calorie || 0), 0);
-  const bestDist = corse.length ? Math.max(...corse.map(c => c.distanza || 0)) : 0;
-
-  const chartData = useMemo(() => {
-    const days = {};
-    corse.forEach(c => {
-      const d = c.data ? c.data.slice(0, 10) : "";
-      if (d) days[d] = (days[d] || 0) + (c.distanza || 0);
-    });
-    return Array.from({ length: 10 }, (_, i) => {
-      const dt = new Date();
-      dt.setDate(dt.getDate() - (9 - i));
-      const key = dt.toISOString().slice(0, 10);
-      return { y: Math.round((days[key] || 0) * 100) / 100, label: dt.toLocaleDateString("it-IT", { day: "numeric", month: "numeric" }) };
-    });
-  }, [corse]);
-
-  if (corse.length === 0) {
-    return (
-      <div className="emp">
-        <div className="emp-ic">🏃</div>
-        <div className="emp-t">Nessuna uscita</div>
-        <p style={{ fontSize: 13 }}>Avvia una corsa o camminata dalla Home</p>
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <div className="hg" style={{ marginBottom: 14 }}>
-        {[
-          [`${totDist.toFixed(1)}km`, "Distanza tot."],
-          [corse.length, "Uscite"],
-          [`${bestDist.toFixed(2)}km`, "Miglior uscita"],
-          [`${totKcal}kcal`, "Calorie tot."],
-        ].map(([v, l]) => (
-          <div key={l} className="hsc">
-            <div className="hsv" style={{ fontSize: 24 }}>{v}</div>
-            <div className="hsl">{l}</div>
-          </div>
-        ))}
-      </div>
-
-      {corse.length >= 2 && (
-        <>
-          <div className="st">DISTANZA ULTIME 10 SESSIONI (km)</div>
-          <div className="chart-wrap" style={{ marginBottom: 16 }}>
-            <LineChart data={chartData} color="var(--ok)" height={100} />
-          </div>
-        </>
-      )}
-
-      <div className="st">USCITE</div>
-      {[...corse].sort((a, b) => (b.data || "").localeCompare(a.data || "")).map(c => {
-        const isOpen = sel === c.id;
-        const distKm = c.distanza || 0;
-        const tipoIcon = c.tipo === "corsa" ? "🏃" : "🚶";
-        return (
-          <div key={c.id} className="card" style={{ marginBottom: 10, padding: 0, overflow: "hidden" }}>
-            <div
-              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", cursor: "pointer" }}
-              onClick={() => setSel(isOpen ? null : c.id)}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{
-                  width: 42, height: 42, borderRadius: 10,
-                  background: c.tipo === "corsa" ? "var(--acc2)" : "rgba(48,209,88,0.12)",
-                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0
-                }}>
-                  {tipoIcon}
-                </div>
-                <div>
-                  <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 18, letterSpacing: ".05em" }}>
-                    {c.tipo === "corsa" ? "CORSA" : "CAMMINATA"} — {distKm >= 1 ? `${distKm.toFixed(2)}km` : `${Math.round(distKm * 1000)}m`}
-                  </div>
-                  <div style={{ fontSize: 12, color: "var(--dim)" }}>{c.data ? fmtDate(c.data) : ""}</div>
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <div className="tag tag-a">{fmtDurSec(c.durata || 0)}</div>
-                <span style={{ color: "var(--mut)", fontSize: 16 }}>{isOpen ? "▲" : "▼"}</span>
-              </div>
-            </div>
-
-            {isOpen && (
-              <div style={{ borderTop: "1px solid var(--bdr)", padding: "14px 16px", background: "var(--sur)" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
-                  {[
-                    ["DISTANZA", distKm >= 1 ? `${distKm.toFixed(2)}km` : `${Math.round(distKm * 1000)}m`],
-                    ["DURATA", fmtDurSec(c.durata || 0)],
-                    ["PASSO MEDIO", fmtPaceDisplay(distKm, c.durata)],
-                    ["VELOCITÀ", distKm && c.durata ? `${(distKm / (c.durata / 3600)).toFixed(1)}km/h` : "—"],
-                    ["CALORIE", `${c.calorie || 0}kcal`],
-                    ["DISLIVELLO", `${c.dislivello || 0}m`],
-                  ].map(([label, val]) => (
-                    <div key={label} style={{ textAlign: "center", background: "var(--card)", borderRadius: 8, padding: "8px 4px", border: "1px solid var(--bdr)" }}>
-                      <div style={{ fontSize: 8, color: "var(--mut)", fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", marginBottom: 3 }}>{label}</div>
-                      <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 17, color: "var(--acc)", letterSpacing: ".04em", lineHeight: 1 }}>{val}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {c.nota && (
-                  <div style={{ fontSize: 12, color: "var(--dim)", fontStyle: "italic", marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid var(--bdr)" }}>
-                    {c.nota}
-                  </div>
-                )}
-
-                <button
-                  className="btn btn-full"
-                  style={{ background: "var(--dan2)", color: "var(--dan)", border: "1px solid var(--dan)", fontSize: 12 }}
-                  onClick={() => {
-                    setConfirmState({ msg: "Eliminare questa uscita?", onConfirm: () => { onDelete(c.id); setSel(null); } });
-                  }}
-                >
-                  <IcTrash /> ELIMINA USCITA
-                </button>
-              </div>
-            )}
-          </div>
-        );
-      })}
 
       {confirmState && <ConfirmModal message={confirmState.msg} onConfirm={() => { confirmState.onConfirm(); setConfirmState(null); }} onCancel={() => setConfirmState(null)} />}
     </>
@@ -3265,7 +3086,7 @@ function PastoEditCard({ pasto: p, pi, isAlt, altIndex, canMoveUp, canMoveDown, 
               borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center",
               flexShrink: 0
             }}>
-              {altIndex === 0 ? "A" : "B"}
+              {String.fromCharCode(65 + altIndex)}
             </span>
           )}
           <div style={{
@@ -3735,7 +3556,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                                     color: isSelected ? '#fff' : 'var(--dim)',
                                     transition: 'all .15s'
                                   }}>
-                                  {altI === 0 ? 'A' : 'B'} · {p.nome}
+                                  {String.fromCharCode(65 + altI)} · {p.nome}
                                   <span style={{ fontSize: 10, opacity: .8, marginLeft: 5 }}>{kc} kcal</span>
                                 </button>
                               );

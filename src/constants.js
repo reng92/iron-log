@@ -24,16 +24,66 @@ Per ogni esercizio indica: nome, serie (intero, 1 per cardio), ripetizioni come 
 Rispondi SOLO con JSON valido (nessun testo, nessun markdown):
 {"nomeScheda":"nome scheda","giorni":[{"nomeGiorno":"Giorno A - Push","esercizi":[{"nome":"Panca Piana","serie":4,"ripetizioni":"8-10","pausa":120,"note":""},{"nome":"Cardio Warm Up","serie":1,"ripetizioni":"10 min","pausa":0,"note":""}]},{"nomeGiorno":"Giorno B - Pull","esercizi":[{"nome":"Trazioni","serie":4,"ripetizioni":"6-8","pausa":120,"note":""}]}]}`;
 
-export const GROQ_PROMPT = `Sei un assistente nutrizionale esperto. Estrai il piano alimentare settimanale da una tabella PDF che ha colonne per i pasti e colonne per le ALTERNATIVE (es. "PRANZO" e "ALT. PRANZO").
+export const GROQ_PROMPT = `Sei un assistente nutrizionale esperto. Estrai un piano alimentare settimanale dal testo di un PDF. Il PDF può usare uno di questi DUE formati:
+
+FORMATO A — Tabella a colonne: colonne giorni × righe pasti, con eventuali colonne "ALT. PRANZO", "ALT. CENA", "ALT. SPUNTINO" come alternative.
+
+FORMATO B — Schede giornaliere con opzioni: blocchi "GIORNO 1 - LUNEDI", "GIORNO 2 - MARTEDI", ecc. Ogni giorno contiene sezioni di pasto ("COLAZIONE", "PRANZO", "SPUNTINO", "MERENDA", "CENA") e ogni pasto ha più opzioni numerate "OPZIONE A", "OPZIONE B", "OPZIONE C", ... — TUTTE le opzioni di uno stesso pasto sono ALTERNATIVE EQUIVALENTI tra loro.
 
 REGOLE DI ESTRAZIONE:
-1. MAPPING: 1=Lun, 2=Mar, 3=Mer, 4=Gio, 5=Ven, 6=Sab, 7=Dom.
-2. ALTERNATIVE: Se vedi colonne come "ALT. PRANZO", "ALT. CENA" o "ALT. SPUNTINO", estraili come pasti separati ma assegna loro lo STESSO 'altGroupId' del pasto principale corrispondente.
-3. ESTIMAZIONE KCAL (FONDAMENTALE): Se nel testo i valori kcal mancano, DEVI STIMARLI tu basandoti sui grammi e l'alimento (es: 100g riso = 350 kcal, 10g olio = 90 kcal, 200g pollo = 220 kcal). Non lasciare mai kcal a 0.
-4. DETTAGLI: Includi sempre grammi e kcal per ogni singolo alimento.
+1. MAPPING GIORNI: 1=Lun, 2=Mar, 3=Mer, 4=Gio, 5=Ven, 6=Sab, 7=Dom. Includi sempre tutte e 7 le chiavi (anche se vuote).
+2. ALTERNATIVE — REGOLA CRITICA: per OGNI opzione di un pasto crea un pasto separato e dai a TUTTE le opzioni dello stesso pasto lo STESSO 'altGroupId' (stringa univoca, es. "g1-colazione", "g3-cena"). NON saltare nessuna opzione: se vedi A, B, C, D, E devi creare 5 pasti con lo stesso altGroupId.
+3. NOMI DEI PASTI: se l'opzione ha un titolo descrittivo (es. "OPZIONE A - Riso con tonno e pomodorini") usa nome = "Pranzo — Riso con tonno e pomodorini". Se non c'è titolo, usa la lettera: "Colazione A", "Colazione B", ecc. Mantieni la lingua del PDF.
+4. ESTIMAZIONE KCAL (FONDAMENTALE — non lasciare MAI 0): se il PDF non riporta i kcal, STIMALI in base a grammi e alimento. Riferimenti utili:
+   - Carboidrati crudi: 100g pasta/riso/avena = 350 kcal
+   - Pane: 100g = 270 kcal | fette biscottate: 8g (1 fetta) = 32 kcal | biscotti secchi: ~40 kcal/biscotto
+   - Olio EVO: 10g = 90 kcal | miele/marmellata: 20g = 60 kcal
+   - Carne magra cruda: 100g pollo/tacchino/manzo magro = 110 kcal | 100g coniglio = 115 kcal
+   - Carne grassa: 100g hamburger pollo = 165 kcal | 100g maiale arista = 160 kcal
+   - Pesce magro: 100g orata/branzino/merluzzo/sogliola = 100 kcal | tonno naturale sgocciolato 100g = 110 kcal
+   - Pesce grasso: 100g salmone = 180 kcal | pesce spada = 130 kcal | tonno fresco = 145 kcal
+   - Affettati: 100g bresaola/crudo sgrassato = 150 kcal
+   - Uova: 1 uovo (~60g) = 80 kcal | albume: 50g = 25 kcal
+   - Formaggi: 100g grana = 390 kcal | mozzarella/fiordilatte = 250 kcal | ricotta = 150 kcal | fiocchi di latte = 100 kcal
+   - Yogurt greco bianco: 150g = 90 kcal
+   - Frutta secca (mandorle/noci/nocciole/anacardi): 20g = 120 kcal | cioccolato fondente: 20g = 110 kcal
+   - Patate cotte: 100g = 85 kcal | legumi cotti: 100g = 110 kcal | piselli: 100g = 80 kcal | mais: 30g = 25 kcal
+   - Verdure (grigliate/foglia verde/pomodori/carote/insalata): 100g = 25 kcal | salsa pomodoro/ragù: 1 mestolo (~60g) = 35 kcal
+   - Vongole 100g (con guscio): 30 kcal
+   Se l'opzione è "PASTO LIBERO" o "OPZIONE LIBERA", crea un pasto unico chiamato "Pasto libero" con un singolo alimento {nome:"Pasto libero", grammi:"", kcal:"800"}. Se l'opzione è "Colazione libera o saltata", crea comunque il pasto vuoto con un alimento {nome:"Colazione libera/saltata", grammi:"", kcal:"0"}.
+5. ALIMENTI: per ogni alimento estrai nome, grammi (solo numero come stringa; se il PDF dice "150-200 g" usa la media "175"; se è "1 cucchiaio" mantieni il numero indicato in grammi tra parentesi), e kcal stimati. Includi TUTTI gli alimenti dell'opzione (proteina, carbo, condimento, verdure, frutta, ecc.).
+6. ORDINE: i pasti del giorno devono seguire l'ordine naturale Colazione → Pranzo → Spuntino → (Merenda) → Cena.
 
-Rispondi SOLO con JSON valido:
-{"nomePiano":"Nome","giorniPasti":{"1":[{"nome":"Pranzo","altGroupId":"p1","alimenti":[{"nome":"Riso","grammi":"80","kcal":"280"}]},{"nome":"Alternativa Pranzo","altGroupId":"p1","alimenti":[{"nome":"Pasta","grammi":"70","kcal":"250"}]}],"2":[]}}`;
+Rispondi SOLO con JSON valido (NIENTE markdown, NIENTE testo prima o dopo):
+{"nomePiano":"Nome del piano","giorniPasti":{"1":[{"nome":"Colazione A","altGroupId":"g1-cola","alimenti":[{"nome":"Fette biscottate","grammi":"32","kcal":"125"},{"nome":"Miele","grammi":"20","kcal":"60"}]},{"nome":"Colazione B","altGroupId":"g1-cola","alimenti":[{"nome":"Biscotti Oro Saiwa","grammi":"","kcal":"320"}]},{"nome":"Pranzo — Riso con tonno e pomodorini","altGroupId":"g1-pranzo","alimenti":[{"nome":"Riso","grammi":"70","kcal":"245"},{"nome":"Tonno al naturale","grammi":"120","kcal":"130"},{"nome":"Pomodorini","grammi":"175","kcal":"35"},{"nome":"Olio EVO","grammi":"10","kcal":"90"}]}],"2":[],"3":[],"4":[],"5":[],"6":[],"7":[]}}`;
+
+export const GROQ_DAY_PROMPT = `Sei un assistente nutrizionale. Ricevi il testo di UN SOLO giorno di un piano alimentare. Il giorno contiene sezioni di pasto ("COLAZIONE", "PRANZO", "SPUNTINO", "MERENDA", "CENA") e ciascun pasto può avere più opzioni alternative "OPZIONE A", "OPZIONE B", "OPZIONE C", ... fino a "OPZIONE I".
+
+REGOLE CRITICHE:
+1. ESTRAI OGNI SINGOLA OPZIONE come pasto separato. Se vedi A, B, C, D, E devi creare 5 pasti. Se vedi A-I devi crearne 9. NON saltare nessuna opzione, NON unirle.
+2. TUTTE le opzioni dello STESSO pasto devono avere lo STESSO 'altGroupId' (una stringa univoca per pasto, es. "cola", "pranzo", "spunt", "cena").
+3. NOME PASTO:
+   - Se l'opzione ha un titolo descrittivo (es. "OPZIONE A - Riso con tonno e pomodorini") → nome = "Pranzo — Riso con tonno e pomodorini"
+   - Se NON ha titolo (solo "OPZIONE A" e lista alimenti) → nome = "Colazione A", "Colazione B", "Spuntino A", "Spuntino B", ecc.
+4. KCAL OBBLIGATORI — STIMALI sempre, MAI 0. Tabella di riferimento:
+   - 100g pasta/riso/avena crudi = 350 kcal | 100g pane = 270 kcal | 1 fetta biscottata (~8g) = 32 kcal | 1 biscotto secco = ~40 kcal
+   - 10g olio EVO = 90 kcal | 20g miele/marmellata = 60 kcal
+   - 100g pollo/tacchino/manzo magro/coniglio crudi = 110 kcal | 100g hamburger pollo = 165 kcal | 100g maiale arista/lonza = 160 kcal
+   - 100g pesce magro (orata/branzino/merluzzo/sogliola) = 100 kcal | 100g tonno naturale sgocciolato = 110 kcal
+   - 100g salmone = 180 kcal | 100g pesce spada = 130 kcal | 100g tonno fresco = 145 kcal | 100g vongole con guscio = 30 kcal
+   - 100g bresaola/crudo sgrassato = 150 kcal | 1 uovo (~60g) = 80 kcal
+   - 100g grana = 390 kcal | 100g mozzarella/fiordilatte = 250 kcal | 100g ricotta = 150 kcal
+   - 150g yogurt greco bianco = 90 kcal | 20g cioccolato fondente = 110 kcal | 20g frutta secca (mandorle/noci/nocciole/anacardi) = 120 kcal
+   - 100g patate cotte = 85 kcal | 100g legumi cotti = 110 kcal | 100g piselli = 80 kcal | 30g mais = 25 kcal
+   - 100g verdure (grigliate/foglia verde/pomodori/carote/insalata/melanzane/broccoli/spinaci) = 25 kcal | 1 mestolo salsa pomodoro/ragù (~60g) = 35 kcal | 1 pugno rucola (~15g) = 5 kcal
+   - 180g frutta di stagione = 90 kcal | 200-250g macedonia = 110 kcal
+5. ALIMENTI: per ogni opzione estrai TUTTI gli alimenti elencati (proteina, carbo, condimento, verdure, frutta, ecc.). Grammi come stringa numerica: se "150-200 g" usa la media "175"; se "1 cucchiaio (10 g)" usa "10"; se "2 cucchiai (30 g)" usa "30"; se "1 ciotola/pugno" senza grammi usa stima ragionevole (insalata 50g, rucola 15g).
+6. PASTO LIBERO: se l'opzione è "OPZIONE LIBERA" o "Pasto libero" → crea UN solo pasto {nome:"Pasto libero", altGroupId:"libero", alimenti:[{nome:"Pasto libero",grammi:"",kcal:"800"}]}.
+7. COLAZIONE LIBERA/SALTATA: se "Colazione libera o saltata" → crea {nome:"Colazione libera/saltata", altGroupId:"cola", alimenti:[{nome:"Saltata",grammi:"",kcal:"0"}]}.
+8. ORDINE: rispetta l'ordine Colazione → Pranzo → Spuntino → (Merenda) → Cena.
+
+Rispondi SOLO con JSON valido, NIENTE markdown, NIENTE testo prima o dopo. Formato:
+{"pasti":[{"nome":"Colazione A","altGroupId":"cola","alimenti":[{"nome":"Fette biscottate","grammi":"32","kcal":"128"},{"nome":"Miele","grammi":"20","kcal":"60"}]},{"nome":"Colazione B","altGroupId":"cola","alimenti":[{"nome":"Biscotti Oro Saiwa","grammi":"","kcal":"320"}]},{"nome":"Colazione C","altGroupId":"cola","alimenti":[{"nome":"Biscotti Magretti","grammi":"","kcal":"240"}]},{"nome":"Pranzo — Riso con tonno e pomodorini","altGroupId":"pranzo","alimenti":[{"nome":"Riso","grammi":"70","kcal":"245"},{"nome":"Tonno al naturale","grammi":"120","kcal":"130"},{"nome":"Pomodorini","grammi":"175","kcal":"35"},{"nome":"Olio EVO","grammi":"10","kcal":"90"}]}]}`;
 
 export const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@300;400;500;600;700&display=swap');

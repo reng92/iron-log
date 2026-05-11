@@ -1,8 +1,60 @@
 import { useState } from "react";
 import { IcClose, IcCheck, IcFile, IcUpload } from "../Icons";
-import { GROQ_PROMPT } from "../../constants";
+import { GROQ_PROMPT, GROQ_DAY_PROMPT } from "../../constants";
 import { estraiTestoPdf, genId } from "../../utils";
 import { GIORNI_LABEL } from "../../utils";
+
+// Split del testo del PDF per giorno. Cerca marker "GIORNO N" (1-7) e ritorna mappa {1: testo, 2: testo, ...} per i giorni trovati.
+function splitTestoPerGiorno(testo) {
+  const giorni = {};
+  const re = /GIORNO\s*([1-7])\b[\s\S]*?(?=GIORNO\s*[1-7]\b|ELENCO FONTI|COTTURE\b|SALSE AMMESSE|$)/gi;
+  let m;
+  while ((m = re.exec(testo)) !== null) {
+    const n = parseInt(m[1], 10);
+    if (n >= 1 && n <= 7 && !giorni[n]) giorni[n] = m[0].trim();
+  }
+  return giorni;
+}
+
+// Estrae il nome del piano dalla testata del PDF
+function estraiNomePiano(testo) {
+  const head = testo.slice(0, 400);
+  const lineMatch = head.match(/PIANO\s+ALIMENTARE[^\n]{0,80}/i);
+  if (lineMatch) return lineMatch[0].trim().replace(/\s+/g, " ");
+  return "";
+}
+
+// Chiama Groq per UN solo giorno e ritorna l'array pasti
+async function estraiPastiGiorno(testoGiorno, giornoNum, apiKey) {
+  const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        { role: "system", content: GROQ_DAY_PROMPT },
+        { role: "user", content: `Testo del Giorno ${giornoNum}:\n\n${testoGiorno}` }
+      ],
+      temperature: 0.05, max_tokens: 6000,
+      response_format: { type: "json_object" }
+    })
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `Errore Groq G${giornoNum}: ${resp.status}`);
+  }
+  const data = await resp.json();
+  const testo = data?.choices?.[0]?.message?.content || "";
+  const match = testo.match(/\{[\s\S]+\}/);
+  if (!match) throw new Error(`G${giornoNum}: il modello non ha restituito JSON valido`);
+  const obj = JSON.parse(match[0]);
+  const pasti = obj.pasti || obj.meals || [];
+  // namespace altGroupId per evitare collisioni fra giorni
+  return pasti.map(p => ({
+    ...p,
+    altGroupId: p.altGroupId ? `g${giornoNum}-${p.altGroupId}` : null
+  }));
+}
 
 export default function PdfImportModal({ groqKey, onApply, onClose }) {
   const [fase, setFase] = useState(1);
@@ -22,31 +74,80 @@ export default function PdfImportModal({ groqKey, onApply, onClose }) {
       setLoadingMsg("Lettura del PDF in corso...");
       const testoPdf = await estraiTestoPdf(file);
       if (!testoPdf || testoPdf.length < 50) throw new Error("Testo non estraibile — verifica che il PDF non sia solo-immagine.");
-      setLoadingMsg("Analisi con Groq AI (LLaMA 3)...");
-      const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${activeKey}` },
-        body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages: [
-            { role: "system", content: GROQ_PROMPT },
-            { role: "user", content: `Testo del piano alimentare:\n\n${testoPdf.slice(0, 6500)}` }
-          ],
-          temperature: 0.1, max_tokens: 4096
-        })
-      });
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        throw new Error(err?.error?.message || `Errore Groq: ${resp.status}`);
+
+      const blocchiPerGiorno = splitTestoPerGiorno(testoPdf);
+      const giorniTrovati = Object.keys(blocchiPerGiorno).map(Number).sort();
+      const nomePiano = estraiNomePiano(testoPdf);
+
+      let giorniPasti = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: [] };
+
+      if (giorniTrovati.length >= 2) {
+        // ── Modalità multi-giorno: 1 chiamata per giorno in parallelo ──
+        setLoadingMsg(`Analisi di ${giorniTrovati.length} giorni in parallelo...`);
+        const tasks = giorniTrovati.map(async n => {
+          const pasti = await estraiPastiGiorno(blocchiPerGiorno[n], n, activeKey);
+          return [n, pasti];
+        });
+        const settled = await Promise.allSettled(tasks);
+        const falliti = [];
+        settled.forEach((s, i) => {
+          const n = giorniTrovati[i];
+          if (s.status === "fulfilled") {
+            giorniPasti[s.value[0]] = s.value[1];
+          } else {
+            falliti.push(n);
+          }
+        });
+        // Retry sequenziale per i giorni falliti (rate limit / errori transient)
+        const erroriFinali = [];
+        for (const n of falliti) {
+          setLoadingMsg(`Riprovo giorno ${n} (${GIORNI_LABEL[n]})...`);
+          await new Promise(r => setTimeout(r, 1500));
+          try {
+            const pasti = await estraiPastiGiorno(blocchiPerGiorno[n], n, activeKey);
+            giorniPasti[n] = pasti;
+          } catch (e) {
+            erroriFinali.push(`G${n}: ${e.message || "errore"}`);
+          }
+        }
+        if (erroriFinali.length === giorniTrovati.length) throw new Error(erroriFinali.join(" | "));
+        if (erroriFinali.length > 0) {
+          console.warn("Alcuni giorni non estratti:", erroriFinali);
+        }
+      } else {
+        // ── Fallback: PDF tabellare classico, 1 sola chiamata col vecchio prompt ──
+        setLoadingMsg("Analisi con Groq AI (formato tabella)...");
+        const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${activeKey}` },
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            messages: [
+              { role: "system", content: GROQ_PROMPT },
+              { role: "user", content: `Testo del piano alimentare:\n\n${testoPdf.slice(0, 24000)}` }
+            ],
+            temperature: 0.1, max_tokens: 16000,
+            response_format: { type: "json_object" }
+          })
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err?.error?.message || `Errore Groq: ${resp.status}`);
+        }
+        const data = await resp.json();
+        const testo = data?.choices?.[0]?.message?.content || "";
+        const match = testo.match(/\{[\s\S]+\}/);
+        if (!match) throw new Error("Il modello non ha restituito JSON valido. Riprova.");
+        const obj = JSON.parse(match[0]);
+        if (!obj.giorniPasti) throw new Error("Struttura JSON non riconosciuta.");
+        for (let d = 1; d <= 7; d++) {
+          giorniPasti[d] = obj.giorniPasti[d] || obj.giorniPasti[String(d)] || [];
+        }
       }
-      const data = await resp.json();
-      const testo = data?.choices?.[0]?.message?.content || "";
-      const match = testo.match(/\{[\s\S]+\}/);
-      if (!match) throw new Error("Il modello non ha restituito JSON valido. Riprova.");
-      const obj = JSON.parse(match[0]);
-      if (!obj.giorniPasti) throw new Error("Struttura JSON non riconosciuta.");
+
       localStorage.setItem("groq_key", apiKey.trim());
-      setParsed(obj); setFase(3);
+      setParsed({ nomePiano, giorniPasti });
+      setFase(3);
     } catch (e) { setErrore(e.message || "Errore sconosciuto"); setFase(1); }
   };
 
