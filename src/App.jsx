@@ -1363,6 +1363,7 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLo
   // Circonferenze corporee
   const [showCircModal, setShowCircModal] = useState(false);
   const [circForm, setCircForm] = useState({});
+  const [testingNotif, setTestingNotif] = useState(false);
 
 
   const CIRC_FIELDS = [
