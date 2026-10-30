@@ -3,7 +3,7 @@ import { fetchMealImg } from "../utils";
 
 const imgCache = new Map();
 
-export default function FoodThumb({ nome, groqKey }) {
+export default function FoodThumb({ nome }) {
   const [src, setSrc] = useState(null);
   const [err, setErr] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -16,7 +16,7 @@ export default function FoodThumb({ nome, groqKey }) {
       setLoading(false);
       return;
     }
-    fetchMealImg(nome, groqKey).then(u => {
+    fetchMealImg(nome).then(u => {
       if (active) {
         imgCache.set(nome, u);
         setSrc(u);

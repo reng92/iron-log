@@ -25,7 +25,7 @@ export const GIORNI_SHORT = ["", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"
 const foodCache = {};
 const pendingFoodRequests = {};
 
-export async function fetchMealImg(rawName, GROQ_KEY) {
+export async function fetchMealImg(rawName) {
   if (!rawName || typeof rawName !== 'string') return null;
   const nomePulito = rawName.replace(/\d+\s*g|\d+g|\d+\s*ml|\d+ml|[\d.,]+/gi, '').replace(/\s+/g, ' ').trim();
   if (!nomePulito) return null;
@@ -34,24 +34,7 @@ export async function fetchMealImg(rawName, GROQ_KEY) {
 
   const request = (async () => {
     try {
-      let searchName = nomePulito;
-      if (GROQ_KEY) {
-        try {
-          const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: 'llama-3.1-8b-instant',
-              messages: [{ role: 'user', content: `Translate this food item to English. Return ONLY the single English ingredient name, no quantity, no punctuation: "${nomePulito}"` }],
-              temperature: 0, max_tokens: 10
-            })
-          });
-          const data = await res.json();
-          const translated = data?.choices?.[0]?.message?.content?.trim();
-          if (translated) searchName = translated;
-        } catch (e) { console.error("Translation error", e); }
-      }
-
+      const searchName = nomePulito;
       let finalUrl = null;
       try {
         const ingUrl = `https://www.themealdb.com/images/ingredients/${encodeURIComponent(searchName)}-Small.png`;
@@ -124,47 +107,4 @@ export const estimateKcalFromName = (name) => {
   if (n.includes("mela") || n.includes("frutta")) return 80;
   if (n.includes("caffè")) return 0;
   return 0;
-};
-
-export const estimateKcalFromAI = async (name, GROQ_KEY) => {
-  if (!GROQ_KEY) return 0;
-  try {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          {
-            role: 'system',
-            content: `Sei un esperto nutrizionista. Calcola le kcal TOTALI per la quantità ESATTA descritta.
-REGOLA FONDAMENTALE: se c'è un numero nella descrizione, moltiplica le kcal per quel numero.
-Esempi:
-- "1 gin tonic" → 200
-- "3 gin tonic" → 600
-- "25 gin tonic" → 5000
-- "1 pizza margherita intera" → 900
-- "2 pizze intere" → 1800
-- "45 pizze intere" → 40500
-- "1 tiramisù" → 450
-- "tiramisù" → 450
-Rispondi SOLO con il numero intero finale, nessun altro testo.`
-          },
-          {
-            role: 'user',
-            content: `Kcal totali per: "${name}"`
-          }
-        ],
-        temperature: 0, max_tokens: 30
-      })
-    });
-    const data = await res.json();
-    const raw = data?.choices?.[0]?.message?.content?.trim() || '';
-    const match = raw.match(/\d+/);
-    const kcal = match ? parseInt(match[0]) : 0;
-    return kcal > 0 ? kcal : 0;
-  } catch (e) {
-    console.error("AI estimation error", e);
-    return 0;
-  }
 };

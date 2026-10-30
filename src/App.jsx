@@ -1,21 +1,18 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import ConfirmModal from "./components/modals/ConfirmModal";
-import { genId, fmtDur, fmtDate, fmtShort, fmtIso, epley, GG, GIORNI_LABEL, GIORNI_SHORT, fetchMealImg, estraiTestoPdf, compressImg, estimateKcalFromName, estimateKcalFromAI } from "./utils";
+import { genId, fmtDur, fmtDate, fmtShort, fmtIso, epley, GG, GIORNI_LABEL, GIORNI_SHORT, fetchMealImg, estraiTestoPdf, compressImg, estimateKcalFromName } from "./utils";
 import { IcHome, IcBook, IcHistory, IcChart, IcWeight, IcPlus, IcTrash, IcEdit, IcCheck, IcChevL, IcClose, IcPlay, IcTimer, IcCamera, IcImg, IcSun, IcMoon, IcDownload, IcCalc, IcArrowUp, IcArrowDown, IcApple, IcUser, IcFile, IcUpload, Ico } from "./components/Icons";
-import ChatAI from "./components/ChatAI";
 import { db, auth, sb } from "./db";
-import { CSS, ZEPP_PROMPT, GROQ_SCHEDA_PROMPT, GROQ_PROMPT, STATUS_OPTS, CIRC_PROMPT, BCS_PROMPT, BCS_SINGLE_PROMPT, BCS_MULTI_PROMPT } from "./constants";
+import { CSS, STATUS_OPTS } from "./constants";
+import { esportaStoricoPdf } from "./exportPdf";
 import LineChart from "./components/LineChart";
 import FoodThumb from "./components/FoodThumb";
 import StatusBadge from "./components/StatusBadge";
 import CalcRM from "./components/CalcRM";
 import EsercizioModal from "./components/modals/EsercizioModal";
 import AlimentoModal from "./components/modals/AlimentoModal";
-import SchedaPdfImportModal from "./components/modals/SchedaPdfImportModal";
 import PdfImportModal from "./components/modals/PdfImportModal";
 import { requestNotifPermission, scheduleDaily, cancelDaily, testNotifica } from "./notifications";
-
-const GROQ_KEY = process.env.REACT_APP_GROQ_KEY || localStorage.getItem('groq_key') || '';
 
 // ─── NORME CIRCONFERENZE CORPOREE ────────────────────────
 const CIRC_NORMS = {
@@ -124,7 +121,6 @@ export default function App() {
 
   const [subview, setSubview] = useState(null);
   const [loaded, setLoaded] = useState(false);
-  const [showChat, setShowChat] = useState(false);
 
 
   useEffect(() => {
@@ -353,7 +349,6 @@ export default function App() {
           scheda={subview.data}
           onSave={sc => { const n = sc.id ? schede.map(s => s.id === sc.id ? sc : s) : [...schede, { ...sc, id: genId() }]; saveSchede(n); setSubview(null); }}
           onBack={() => setSubview(null)}
-          onSaveMultiple={nuove => { saveSchede([...schede, ...nuove.map(s => ({ ...s, id: genId() }))]); setSubview(null); }}
         />
     </div>
   );
@@ -425,9 +420,6 @@ export default function App() {
           <button key={t} className={`nb${tab === t ? " on" : ""}`} onClick={() => setTab(t)}>{ic}<span>{l}</span></button>
         ))}
       </nav>
-      {!subview && <button className="chat-fab" onClick={() => setShowChat(true)}><Ico d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" fill="currentColor" sw={0} /></button>}
-      {showChat && <ChatAI settings={settings} peso={peso} logDieta={logDieta} piani={piani} sessioni={sessioni} onClose={() => setShowChat(false)} />}
-
     </div>
   );
 }
@@ -602,12 +594,11 @@ function Schede({ schede, onNew, onEdit, onDelete, onStart }) {
 
 
 // ─── SCHEDA EDIT ──────────────────────────────────────────
-function SchedaEdit({ scheda: init, onSave, onBack, onSaveMultiple }) {
+function SchedaEdit({ scheda: init, onSave, onBack }) {
   const [nome, setNome] = useState(init.nome || "");
   const [giorni, setGiorni] = useState(init.giorni || []);
   const [esercizi, setEsercizi] = useState(init.esercizi || []);
   const [modal, setModal] = useState(null);
-  const [pdfModal, setPdfModal] = useState(false);
 
   const toggleG = g => setGiorni(p => p.includes(g) ? p.filter(x => x !== g) : [...p, g]);
   const applyModal = e => {
@@ -624,7 +615,6 @@ function SchedaEdit({ scheda: init, onSave, onBack, onSaveMultiple }) {
         <button className="bb" onClick={onBack}><IcChevL /> Schede</button>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
           <h1 className="pt">{init.id ? "MODIFICA" : "NUOVA"}<br />SCHEDA</h1>
-          <button className="btn btn-s" style={{ marginTop: 6, fontSize: 11, gap: 5 }} onClick={() => setPdfModal(true)}><IcFile size={14} /> PDF</button>
         </div>
         <div className="ig">
           <label className="lbl">Nome scheda</label>
@@ -670,23 +660,6 @@ function SchedaEdit({ scheda: init, onSave, onBack, onSaveMultiple }) {
         <button className="btn btn-p btn-full" onClick={() => { if (!nome.trim()) return alert("Inserisci un nome"); onSave({ ...init, nome: nome.trim(), giorni, esercizi }); }}><IcCheck /> SALVA SCHEDA</button>
       </div>
       {modal && <EsercizioModal init={modal.data} mode={modal.mode} onSave={applyModal} onClose={() => setModal(null)} />}
-      {pdfModal && <SchedaPdfImportModal
-        groqKey={GROQ_KEY}
-        onApply={({ nomeScheda, giorni: gd }) => {
-          if (!gd || gd.length === 0) return;
-          if (gd.length === 1) {
-            if (nomeScheda) setNome(gd[0].nomeGiorno || nomeScheda);
-            setEsercizi(gd[0].esercizi || []);
-          } else if (onSaveMultiple) {
-            onSaveMultiple(gd.map(g => ({
-              nome: [nomeScheda, g.nomeGiorno].filter(Boolean).join(" - "),
-              giorni: [],
-              esercizi: g.esercizi || []
-            })));
-          }
-        }}
-        onClose={() => setPdfModal(false)}
-      />}
     </>
   );
 }
@@ -1136,55 +1109,8 @@ function Peso({ peso, onAdd, onDelete }) {
   const [expanded, setExpanded] = useState(null);
   const [lightbox, setLightbox] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
-  const [scanning, setScanning] = useState(false);
-  const apiKey = localStorage.getItem("groq_key") || "";
-
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const handlePhoto = async (key, file) => { if (!file) return; set(key, await compressImg(file)); };
-
-  const scanZepp = async (file) => {
-    const activeKey = GROQ_KEY || apiKey;
-    if (!activeKey) { alert("Configura prima la Groq API key (sezione Import Scheda PDF)"); return; }
-    setScanning(true);
-    try {
-      const b64 = await compressImg(file, 1200, 0.85);
-      const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${activeKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "meta-llama/llama-4-scout-17b-16e-instruct",
-          messages: [{
-            role: "user", content: [
-              { type: "image_url", image_url: { url: b64 } },
-              { type: "text", text: ZEPP_PROMPT }
-            ]
-          }],
-          temperature: 0, max_tokens: 512
-        })
-      });
-      const json = await resp.json();
-      const testo = json.choices?.[0]?.message?.content || "";
-      const match = testo.match(/\{[\s\S]*\}/);
-      if (match) {
-        const d = JSON.parse(match[0]);
-        setForm(f => ({
-          ...f,
-          valore: d.peso != null ? String(d.peso) : f.valore,
-          punteggio: d.punteggio != null ? String(d.punteggio) : f.punteggio,
-          tipologia: d.tipologia || f.tipologia,
-          imc: d.imc != null ? String(d.imc) : f.imc, imc_status: d.imc_status || f.imc_status,
-          massa_grassa: d.massa_grassa != null ? String(d.massa_grassa) : f.massa_grassa, massa_grassa_status: d.massa_grassa_status || f.massa_grassa_status,
-          acqua: d.acqua != null ? String(d.acqua) : f.acqua, acqua_status: d.acqua_status || f.acqua_status,
-          grasso_viscerale: d.grasso_viscerale != null ? String(d.grasso_viscerale) : f.grasso_viscerale, grasso_viscerale_status: d.grasso_viscerale_status || f.grasso_viscerale_status,
-          muscoli: d.muscoli != null ? String(d.muscoli) : f.muscoli, muscoli_status: d.muscoli_status || f.muscoli_status,
-          proteine: d.proteine != null ? String(d.proteine) : f.proteine, proteine_status: d.proteine_status || f.proteine_status,
-          metabolismo: d.metabolismo != null ? String(d.metabolismo) : f.metabolismo, metabolismo_status: d.metabolismo_status || f.metabolismo_status,
-          massa_ossea: d.massa_ossea != null ? String(d.massa_ossea) : f.massa_ossea, massa_ossea_status: d.massa_ossea_status || f.massa_ossea_status,
-        }));
-      } else { alert("Nessun dato trovato nello screenshot."); }
-    } catch (e) { alert("Errore scan: " + e.message); }
-    setScanning(false);
-  };
 
   const handleAdd = async () => {
     if (!form.valore) return;
@@ -1355,19 +1281,6 @@ function Peso({ peso, onAdd, onDelete }) {
               <button className="bico" onClick={() => setShowModal(false)}>✕</button>
             </div>
 
-            {/* Zepp Life scan */}
-            <div style={{ marginBottom: 16 }}>
-              <label className="lbl" style={{ marginBottom: 6 }}>SCAN ZEPP LIFE — AI COMPILA TUTTO AUTOMATICAMENTE</label>
-              <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", border: "1px dashed var(--bdr)", borderRadius: 10, cursor: "pointer", color: scanning ? "var(--acc)" : "var(--dim)", fontSize: 13, transition: "all .15s", background: scanning ? "var(--acc2)" : "transparent" }}>
-                <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => e.target.files[0] && scanZepp(e.target.files[0])} />
-                <span style={{ fontSize: 20 }}>{scanning ? "⏳" : "📊"}</span>
-                <div>
-                  <div style={{ fontWeight: 700 }}>{scanning ? "Analisi in corso…" : "Carica screenshot Zepp Life"}</div>
-                  <div style={{ fontSize: 11, color: "var(--mut)", marginTop: 1 }}>Il modello AI legge tutti i valori e li compila</div>
-                </div>
-              </label>
-            </div>
-
             <div className="st" style={{ marginBottom: 8 }}>PESO E DATA</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
               <div><label className="lbl">Peso (kg)</label><input className="inp" type="number" step="0.1" min="30" placeholder="86.5" value={form.valore} onChange={e => set("valore", e.target.value)} /></div>
@@ -1430,8 +1343,16 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLo
   const [saving, setSaving] = useState(false);
   const [lightbox, setLightbox] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
+  const [exporting, setExporting] = useState(false);
   const fileInputRef = useRef(null);
   const [currentPhoto, setCurrentPhoto] = useState(settings.foto_profilo || null);
+
+  const esporta = async () => {
+    setExporting(true);
+    try { await esportaStoricoPdf({ settings, peso, misure }); }
+    catch (e) { alert("Errore export PDF: " + e.message); }
+    setExporting(false);
+  };
 
   useEffect(() => {
     setCurrentPhoto(settings.foto_profilo || null);
@@ -1442,8 +1363,7 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLo
   // Circonferenze corporee
   const [showCircModal, setShowCircModal] = useState(false);
   const [circForm, setCircForm] = useState({});
-  const [circScanning, setCircScanning] = useState(false);
-  const [testingNotif, setTestingNotif] = useState(false);
+
 
   const CIRC_FIELDS = [
     { key: "testa", label: "Testa", icon: "🧠" },
@@ -1480,51 +1400,6 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLo
       polpaccio: c.polpaccio != null ? String(c.polpaccio) : "",
     });
     setShowCircModal(true);
-  };
-
-  const scanCirc = async (file) => {
-    const activeKey = GROQ_KEY || localStorage.getItem("groq_key") || "";
-    if (!activeKey) { alert("Configura prima la Groq API key"); return; }
-    setCircScanning(true);
-    try {
-      const b64 = await compressImg(file, 1200, 0.85);
-      const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${activeKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "meta-llama/llama-4-scout-17b-16e-instruct",
-          messages: [{ role: "user", content: [
-            { type: "image_url", image_url: { url: b64 } },
-            { type: "text", text: CIRC_PROMPT }
-          ]}],
-          temperature: 0, max_tokens: 512
-        })
-      });
-      const json = await resp.json();
-      const testo = json.choices?.[0]?.message?.content || "";
-      const match = testo.match(/\{[\s\S]*\}/);
-      if (match) {
-        const d = JSON.parse(match[0]);
-        const sv = (v) => v != null ? String(v) : "";
-        setCircForm(f => ({
-          ...f,
-          data: d.data || f.data,
-          testa: d.testa != null ? sv(d.testa) : f.testa,
-          torace: d.torace != null ? sv(d.torace) : f.torace,
-          braccio_rilassato: d.braccio_rilassato != null ? sv(d.braccio_rilassato) : f.braccio_rilassato,
-          braccio_flesso: d.braccio_flesso != null ? sv(d.braccio_flesso) : f.braccio_flesso,
-          avambraccio: d.avambraccio != null ? sv(d.avambraccio) : f.avambraccio,
-          polso: d.polso != null ? sv(d.polso) : f.polso,
-          vita: d.vita != null ? sv(d.vita) : f.vita,
-          addome: d.addome != null ? sv(d.addome) : f.addome,
-          fianchi: d.fianchi != null ? sv(d.fianchi) : f.fianchi,
-          coscia_max: d.coscia_max != null ? sv(d.coscia_max) : f.coscia_max,
-          coscia_med: d.coscia_med != null ? sv(d.coscia_med) : f.coscia_med,
-          polpaccio: d.polpaccio != null ? sv(d.polpaccio) : f.polpaccio,
-        }));
-      } else { alert("Nessuna misura trovata nell'immagine."); }
-    } catch (e) { alert("Errore scan: " + e.message); }
-    setCircScanning(false);
   };
 
   const saveCirc = async () => {
@@ -1624,6 +1499,9 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLo
           <p className="sub">Il tuo stato di forma attuale</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn btn-s" style={{ fontSize: 11, gap: 5, padding: "7px 10px" }} title="Esporta storico in PDF" onClick={esporta} disabled={exporting}>
+            <IcDownload /> {exporting ? "…" : "ESPORTA"}
+          </button>
           <button className="bico" title="Esci" onClick={onLogout}>
             <Ico d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" size={18} />
           </button>
@@ -1821,7 +1699,7 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLo
           </div>
         ) : (
           <div style={{ paddingTop: 10, fontSize: 12, color: "var(--mut)", fontStyle: "italic" }}>
-            Nessuna misura ancora. Carica una foto dal nutrizionista per importarle con l'AI.
+            Nessuna misura ancora. Aggiungile manualmente.
           </div>
         )}
       </div>
@@ -1865,17 +1743,6 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLo
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <div className="wt">📐 MISURE CORPOREE</div>
               <button className="bico" onClick={() => setShowCircModal(false)}>✕</button>
-            </div>
-            <div style={{ marginBottom: 16 }}>
-              <label className="lbl" style={{ marginBottom: 6 }}>SCAN AI — CARICA FOTO DAL NUTRIZIONISTA</label>
-              <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", border: "1px dashed var(--bdr)", borderRadius: 10, cursor: "pointer", color: circScanning ? "var(--acc)" : "var(--dim)", fontSize: 13, transition: "all .15s", background: circScanning ? "var(--acc2)" : "transparent" }}>
-                <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => e.target.files[0] && scanCirc(e.target.files[0])} />
-                <span style={{ fontSize: 20 }}>{circScanning ? "⏳" : "📸"}</span>
-                <div>
-                  <div style={{ fontWeight: 700 }}>{circScanning ? "Analisi AI in corso…" : "Carica screenshot misure"}</div>
-                  <div style={{ fontSize: 11, color: "var(--mut)", marginTop: 1 }}>L'AI legge le circonferenze e le compila automaticamente</div>
-                </div>
-              </label>
             </div>
             <div className="st" style={{ marginBottom: 8 }}>DATA RILEVAZIONE</div>
             <div style={{ marginBottom: 14 }}>
@@ -2056,10 +1923,7 @@ const CIRC_FIELDS_MAP = [
 function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
   const [showAdd, setShowAdd] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
-  const [importing, setImporting] = useState(false);
-  const [importPreview, setImportPreview] = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
-  const bcsFileRef = useRef(null);
 
   const sorted = [...misure].sort((a, b) => a.data.localeCompare(b.data));
   const first = sorted[0];
@@ -2072,48 +1936,6 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
     return { d: d > 0 ? `+${d}` : String(d), color: good ? "var(--ok)" : "var(--dan)" };
   };
 
-  const importBCS = async (files) => {
-    const fileArr = Array.isArray(files) ? files : [files];
-    const activeKey = GROQ_KEY || localStorage.getItem("groq_key") || "";
-    if (!activeKey) { alert("Configura prima la Groq API key nelle impostazioni"); return; }
-    setImporting(true);
-    try {
-      const images = await Promise.all(fileArr.map(f => compressImg(f, 1400, 0.88)));
-      const isMulti = images.length >= 2;
-      const prompt = isMulti ? BCS_MULTI_PROMPT : BCS_PROMPT;
-      const content = [...images.map(url => ({ type: "image_url", image_url: { url } })), { type: "text", text: prompt }];
-      const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${activeKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "meta-llama/llama-4-scout-17b-16e-instruct",
-          messages: [{ role: "user", content }],
-          temperature: 0, max_tokens: 2048
-        })
-      });
-      const json = await resp.json();
-      const testo = json.choices?.[0]?.message?.content || "";
-      const match = testo.match(/\{[\s\S]*\}/);
-      if (match) {
-        const parsed = JSON.parse(match[0]);
-        if (parsed.visite?.length) setImportPreview(parsed.visite);
-        else alert("Nessuna visita trovata nell'immagine.");
-      } else { alert("Formato non riconosciuto. Riprova con un'immagine più nitida."); }
-    } catch (e) { alert("Errore scan: " + e.message); }
-    setImporting(false);
-  };
-
-  const confirmImport = async () => {
-    if (!importPreview) return;
-    const existingDates = new Set(misure.map(m => m.data));
-    for (const v of importPreview) {
-      if (!existingDates.has(v.data)) {
-        await onAdd({ id: genId(), ...v });
-      }
-    }
-    setImportPreview(null);
-  };
-
   return (
     <>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, marginTop: 4 }}>
@@ -2122,10 +1944,6 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
           <div style={{ fontSize: 11, color: "var(--dim)" }}>{misure.length} rilevazioni · nutrizionista</div>
         </div>
         <div style={{ display: "flex", gap: 7 }}>
-          <input type="file" accept="image/*" multiple style={{ display: "none" }} ref={bcsFileRef} onChange={e => { const f = Array.from(e.target.files); if (f.length) importBCS(f); e.target.value = ""; }} />
-          <button className="btn btn-s" style={{ fontSize: 10, padding: "7px 10px" }} onClick={() => bcsFileRef.current?.click()} disabled={importing}>
-            {importing ? <span className="spin">⏳</span> : "📈"} {importing ? "SCAN…" : "IMPORTA BCS"}
-          </button>
           <button className="btn btn-p" style={{ fontSize: 10, padding: "7px 10px" }} onClick={() => setShowAdd(true)}>
             <IcPlus /> AGGIUNGI
           </button>
@@ -2335,49 +2153,6 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
 
       {/* CONFIRM DELETE */}
       {confirmDel && <ConfirmModal message="Eliminare questa rilevazione?" onConfirm={() => { onDel(confirmDel); setConfirmDel(null); }} onCancel={() => setConfirmDel(null)} />}
-
-      {/* IMPORT PREVIEW MODAL */}
-      {importPreview && (() => {
-        const existingDates = new Set(misure.map(m => m.data));
-        const nuove = importPreview.filter(v => !existingDates.has(v.data));
-        return (
-          <div className="mov" onClick={e => { if (e.target === e.currentTarget) setImportPreview(null); }}>
-            <div className="mod">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                <div className="wt">📈 IMPORTA STORICO BCS</div>
-                <button className="bico" onClick={() => setImportPreview(null)}>✕</button>
-              </div>
-              <p style={{ fontSize: 13, color: "var(--dim)", marginBottom: 14 }}>
-                Trovate <b style={{ color: "var(--txt)" }}>{importPreview.length}</b> visite · <b style={{ color: "var(--ok)" }}>{nuove.length} nuove</b>{nuove.length < importPreview.length ? ` · ${importPreview.length - nuove.length} già presenti` : ""}
-              </p>
-              {importPreview.map((v, i) => {
-                const exists = existingDates.has(v.data);
-                const hasCirc = [v.braccio_rilassato, v.vita, v.addome, v.fianchi].some(x => x != null);
-                return (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", background: exists ? "var(--bg)" : "var(--sur)", borderRadius: 8, marginBottom: 6, border: `1px solid ${exists ? "var(--bdr)" : "var(--ok)"}`, opacity: exists ? 0.5 : 1 }}>
-                    <div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <div style={{ fontWeight: 700, fontSize: 13 }}>{v.visita_label || `Visita ${i + 1}`}</div>
-                        {exists
-                          ? <span style={{ fontSize: 9, fontWeight: 700, background: "var(--bdr)", color: "var(--dim)", padding: "1px 6px", borderRadius: 20 }}>GIÀ PRESENTE</span>
-                          : <span style={{ fontSize: 9, fontWeight: 700, background: "rgba(48,209,88,.15)", color: "var(--ok)", padding: "1px 6px", borderRadius: 20 }}>NUOVA</span>}
-                        {hasCirc && !exists && <span style={{ fontSize: 9, fontWeight: 700, background: "rgba(30,144,255,.12)", color: "var(--acc)", padding: "1px 6px", borderRadius: 20 }}>+ CIRC</span>}
-                      </div>
-                      <div style={{ fontSize: 11, color: "var(--dim)" }}>{v.data}</div>
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--dim)", textAlign: "right" }}>
-                      {[v.peso && `${v.peso}kg`, v.ffm && `FFM ${v.ffm}`, v.fm && `FM ${v.fm}`].filter(Boolean).join(" · ")}
-                    </div>
-                  </div>
-                );
-              })}
-              <button className="btn btn-p btn-full" style={{ marginTop: 10 }} onClick={confirmImport} disabled={nuove.length === 0}>
-                <IcCheck /> {nuove.length > 0 ? `IMPORTA ${nuove.length} NUOVE` : "NESSUNA NUOVA DA IMPORTARE"}
-              </button>
-            </div>
-          </div>
-        );
-      })()}
 
       {/* ADD MODAL */}
       {showAdd && <MisuraModal onSave={m => { onAdd(m); setShowAdd(false); }} onClose={() => setShowAdd(false)} />}
@@ -2744,7 +2519,7 @@ function StoricoDieta({ logDieta, piani, onLog, targetKcal = 1420 }) {
                             <div style={{ marginTop: 4 }}>
                               {p.alimenti.map((al, ai) => (
                                 <div key={al.id || ai} className="frow">
-                                  <FoodThumb nome={al.nome} groqKey={GROQ_KEY} />
+                                  <FoodThumb nome={al.nome} />
                                   <div style={{ flex: 1, minWidth: 0 }}>
                                     <div style={{ fontSize: 13, fontWeight: 600 }}>{al.nome}</div>
                                     {al.grammi && (
@@ -2928,7 +2703,7 @@ function PianoEdit({ piano: init, onSave, onBack }) {
         <button className="bb" onClick={onBack}><IcChevL /> Indietro</button>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
           <h1 className="pt">{init.id ? "MODIFICA" : "NUOVO"}<br />PIANO</h1>
-          <button className="btn btn-s" style={{ marginTop: 6, fontSize: 11, gap: 5 }} onClick={() => setPdfModal(true)}><IcFile size={14} /> PDF AI</button>
+          <button className="btn btn-s" style={{ marginTop: 6, fontSize: 11, gap: 5 }} onClick={() => setPdfModal(true)}><IcFile size={14} /> PDF</button>
         </div>
 
         <div className="ig">
@@ -3049,7 +2824,6 @@ function PianoEdit({ piano: init, onSave, onBack }) {
       )}
       {pdfModal && (
         <PdfImportModal
-          groqKey={GROQ_KEY}
           onApply={({ nomePiano, giorniPasti: gp }) => {
             if (nomePiano) setNome(nomePiano);
             setGiorniPasti(gp);
@@ -3115,7 +2889,7 @@ function PastoEditCard({ pasto: p, pi, isAlt, altIndex, canMoveUp, canMoveDown, 
           display: "flex", alignItems: "center", gap: 10,
           background: "var(--sur)", padding: "8px 10px", borderRadius: 8, marginBottom: 6
         }}>
-          <FoodThumb nome={al.nome} groqKey={GROQ_KEY} />
+          <FoodThumb nome={al.nome} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 600, fontSize: 14 }}>{al.nome}</div>
             <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{al.grammi}g · {al.kcal} kcal</div>
@@ -3157,7 +2931,6 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
   const [showAddExtra, setShowAddExtra] = useState(false);
   const [extraNome, setExtraNome] = useState("");
   const [extraKcal, setExtraKcal] = useState("");
-  const [extraEstimating, setExtraEstimating] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const selectedDay = useMemo(() => {
@@ -3243,50 +3016,15 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
   const toggleExtra = id => setExtra(prev => prev.map(e => e.id === id ? { ...e, mangiato: !e.mangiato } : e));
   const delExtra = id => setExtra(prev => prev.filter(e => e.id !== id));
 
-  const addExtra = async () => {
+  const addExtra = () => {
     const nome = extraNome.trim();
-    if (!nome || extraEstimating) return;
-
-    setExtraEstimating(true);
-    try {
-      const manualKcal = Number(extraKcal);
-      const estimatedKcal = estimateKcalFromName(nome);
-
-      let finalKcal;
-      if (manualKcal > 0) {
-        finalKcal = manualKcal;
-      } else {
-        const aiKcal = await estimateKcalFromAI(nome, GROQ_KEY);
-        if (aiKcal && aiKcal > 0) {
-          finalKcal = aiKcal;
-        } else if (estimatedKcal > 0) {
-          finalKcal = estimatedKcal;
-        } else {
-          finalKcal = 150; // fallback
-        }
-      }
-
-      setExtra(prev => [...prev, {
-        id: genId(),
-        nome,
-        kcal: Math.round(finalKcal),
-        mangiato: true
-      }]);
-
-      setExtraNome("");
-      setExtraKcal("");
-      setShowAddExtra(false);
-    } catch (e) {
-      // AI non disponibile: aggiungi comunque con stima locale o fallback
-      const nomeVal = extraNome.trim();
-      const fallback = estimateKcalFromName(nomeVal) || 150;
-      setExtra(prev => [...prev, { id: genId(), nome: nomeVal, kcal: Math.round(fallback), mangiato: true }]);
-      setExtraNome("");
-      setExtraKcal("");
-      setShowAddExtra(false);
-    } finally {
-      setExtraEstimating(false);
-    }
+    if (!nome) return;
+    const manualKcal = Number(extraKcal);
+    const finalKcal = manualKcal > 0 ? manualKcal : (estimateKcalFromName(nome) || 150); // fallback
+    setExtra(prev => [...prev, { id: genId(), nome, kcal: Math.round(finalKcal), mangiato: true }]);
+    setExtraNome("");
+    setExtraKcal("");
+    setShowAddExtra(false);
   };
 
 
@@ -3570,7 +3308,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                         const eaten = !!mangiato[`${pi}_${ai}`];
                         return (
                           <div key={al.id || ai} className="frow">
-                            <FoodThumb nome={al.nome} groqKey={GROQ_KEY} />
+                            <FoodThumb nome={al.nome} />
                             <div style={{ flex: 1, opacity: eaten ? .45 : 1, transition: 'opacity .15s', minWidth: 0 }}>
                               <div style={{ fontWeight: 600, fontSize: 13, textDecoration: eaten ? 'line-through' : 'none' }}>{al.nome}</div>
                               <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 1 }}>{al.grammi}g</div>
@@ -3631,18 +3369,13 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexDirection: 'column' }}>
-                  {extraEstimating && (
-                    <div style={{ fontSize: 12, color: 'var(--acc)', marginBottom: 6 }}>
-                      Calcolo kcal AI in corso...
-                    </div>
-                  )}
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button className="btn btn-s" style={{ flex: 1, fontSize: 12 }}
                       onClick={() => { setShowAddExtra(false); setExtraNome(''); setExtraKcal(''); }}>
                       ANNULLA
                     </button>
                     <button className="btn btn-p" style={{ flex: 2, fontSize: 12, background: '#FF9500' }}
-                      onClick={addExtra} disabled={!extraNome.trim() || extraEstimating}>
+                      onClick={addExtra} disabled={!extraNome.trim()}>
                       <IcPlus /> AGGIUNGI
                     </button>
                   </div>

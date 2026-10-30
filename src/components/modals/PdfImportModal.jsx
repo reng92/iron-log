@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { IcClose, IcCheck, IcFile, IcUpload } from "../Icons";
-import { GROQ_PROMPT, GROQ_DAY_PROMPT } from "../../constants";
 import { estraiTestoPdf, genId } from "../../utils";
 import { GIORNI_LABEL } from "../../utils";
 
@@ -154,46 +153,8 @@ function parsaGiornoDet(testoGiorno, giornoNum) {
   return pasti;
 }
 
-// ─── AI fallback (only for days where deterministic parser finds < 2 pasti) ──
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-async function estraiPastiGiornoAI(testoGiorno, giornoNum, apiKey, tentativo = 1) {
-  const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: "llama-3.1-8b-instant",
-      messages: [
-        { role: "system", content: GROQ_DAY_PROMPT },
-        { role: "user", content: `Testo del Giorno ${giornoNum}:\n\n${testoGiorno}` }
-      ],
-      temperature: 0.05, max_tokens: 4000,
-      response_format: { type: "json_object" }
-    })
-  });
-  if (!resp.ok) {
-    if ((resp.status === 429 || resp.status === 503) && tentativo < 4) {
-      await sleep(2000 * tentativo);
-      return estraiPastiGiornoAI(testoGiorno, giornoNum, apiKey, tentativo + 1);
-    }
-    const err = await resp.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `Errore Groq G${giornoNum}: ${resp.status}`);
-  }
-  const data = await resp.json();
-  const testo = data?.choices?.[0]?.message?.content || "";
-  const match = testo.match(/\{[\s\S]+\}/);
-  if (!match) throw new Error(`G${giornoNum}: JSON non valido`);
-  const obj = JSON.parse(match[0]);
-  const pasti = obj.pasti || obj.meals || [];
-  return pasti.map(p => ({
-    ...p,
-    altGroupId: p.altGroupId ? `g${giornoNum}-${p.altGroupId}` : null
-  }));
-}
-
-export default function PdfImportModal({ groqKey, onApply, onClose }) {
+export default function PdfImportModal({ onApply, onClose }) {
   const [fase, setFase] = useState(1);
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem("groq_key") || "");
   const [file, setFile] = useState(null);
   const [loadingMsg, setLoadingMsg] = useState("");
   const [errore, setErrore] = useState("");
@@ -202,7 +163,6 @@ export default function PdfImportModal({ groqKey, onApply, onClose }) {
   const analizza = async () => {
     if (!file) return setErrore("Seleziona un file PDF");
     if (!file.name.toLowerCase().endsWith(".pdf")) return setErrore("Il file deve essere un PDF");
-    const activeKey = groqKey || apiKey.trim();
     setErrore(""); setFase(2);
     try {
       setLoadingMsg("Lettura del PDF in corso...");
@@ -215,68 +175,14 @@ export default function PdfImportModal({ groqKey, onApply, onClose }) {
       const nomePiano = estraiNomePiano(testoPdf);
       const giorniPasti = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: [] };
 
-      if (giorniTrovati.length >= 1) {
-        // ── Step 1: deterministic parser (no AI, no rate limits) ──
-        const aiNeeded = [];
-        for (const n of giorniTrovati) {
-          setLoadingMsg(`Estrazione giorno ${n}/${giorniTrovati.length}...`);
-          const pasti = parsaGiornoDet(blocchiPerGiorno[n], n);
-          if (pasti.length >= 2) {
-            giorniPasti[n] = pasti;
-          } else {
-            aiNeeded.push(n);
-          }
-        }
+      if (giorniTrovati.length === 0)
+        throw new Error("Formato PDF non riconosciuto: servono le sezioni GIORNO 1-7 con OPZIONE A/B/C.");
 
-        // ── Step 2: AI fallback only for days with insufficient results ──
-        if (aiNeeded.length > 0 && activeKey) {
-          console.log(`[PDF] AI fallback per giorni: ${aiNeeded.join(", ")}`);
-          for (let idx = 0; idx < aiNeeded.length; idx++) {
-            const n = aiNeeded[idx];
-            setLoadingMsg(`AI fallback ${GIORNI_LABEL[n]}...`);
-            try {
-              giorniPasti[n] = await estraiPastiGiornoAI(blocchiPerGiorno[n], n, activeKey);
-            } catch (e) {
-              console.warn(`[PDF] G${n} AI fallback fallito:`, e.message);
-            }
-            if (idx < aiNeeded.length - 1) await sleep(400);
-          }
-        } else if (aiNeeded.length > 0) {
-          console.warn(`[PDF] Giorni con pochi pasti: ${aiNeeded.join(", ")} (nessuna key per AI fallback)`);
-        }
-      } else {
-        // ── Fallback: tabular PDF format (single large AI call) ──
-        if (!activeKey) throw new Error("Inserisci la Groq API key per questo tipo di PDF");
-        setLoadingMsg("Analisi con Groq AI (formato tabella)...");
-        const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${activeKey}` },
-          body: JSON.stringify({
-            model: "llama-3.3-70b-versatile",
-            messages: [
-              { role: "system", content: GROQ_PROMPT },
-              { role: "user", content: `Testo del piano alimentare:\n\n${testoPdf.slice(0, 24000)}` }
-            ],
-            temperature: 0.1, max_tokens: 16000,
-            response_format: { type: "json_object" }
-          })
-        });
-        if (!resp.ok) {
-          const err = await resp.json().catch(() => ({}));
-          throw new Error(err?.error?.message || `Errore Groq: ${resp.status}`);
-        }
-        const data = await resp.json();
-        const testo = data?.choices?.[0]?.message?.content || "";
-        const match = testo.match(/\{[\s\S]+\}/);
-        if (!match) throw new Error("Il modello non ha restituito JSON valido. Riprova.");
-        const obj = JSON.parse(match[0]);
-        if (!obj.giorniPasti) throw new Error("Struttura JSON non riconosciuta.");
-        for (let d = 1; d <= 7; d++) {
-          giorniPasti[d] = obj.giorniPasti[d] || obj.giorniPasti[String(d)] || [];
-        }
+      for (const n of giorniTrovati) {
+        setLoadingMsg(`Estrazione giorno ${n}/${giorniTrovati.length}...`);
+        giorniPasti[n] = parsaGiornoDet(blocchiPerGiorno[n], n);
       }
 
-      if (activeKey) localStorage.setItem("groq_key", apiKey.trim());
       setParsed({ nomePiano, giorniPasti });
       setFase(3);
     } catch (e) { setErrore(e.message || "Errore sconosciuto"); setFase(1); }
@@ -312,14 +218,8 @@ export default function PdfImportModal({ groqKey, onApply, onClose }) {
           <>
             <div style={{ marginBottom: 16 }}>
               <div className="import-step"><span className="import-num">1</span><span style={{ fontSize: 13 }}>Carica il PDF con il piano alimentare (formato GIORNO 1-7 con OPZIONE A/B/C)</span></div>
-              <div className="import-step"><span className="import-num">2</span><span style={{ fontSize: 13 }}>Il parser estrae pasti e alternative automaticamente — la Groq Key è opzionale</span></div>
+              <div className="import-step"><span className="import-num">2</span><span style={{ fontSize: 13 }}>Il parser estrae pasti e alternative automaticamente</span></div>
             </div>
-            {!groqKey && (
-              <div className="ig">
-                <label className="lbl">Groq API Key (opzionale — usata solo se il parser fallisce){apiKey && " ✓"}</label>
-                <input className="inp" type="password" placeholder="gsk_..." value={apiKey} onChange={e => setApiKey(e.target.value)} />
-              </div>
-            )}
             <div className="ig">
               <label className="lbl">File PDF</label>
               <div
