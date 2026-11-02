@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import ConfirmModal from "./components/modals/ConfirmModal";
-import { genId, fmtDur, fmtDate, fmtShort, fmtIso, epley, GG, GIORNI_LABEL, GIORNI_SHORT, fetchMealImg, estraiTestoPdf, compressImg, estimateKcalFromName } from "./utils";
+import { genId, fmtDur, fmtDate, fmtShort, fmtIso, epley, GG, GIORNI_LABEL, GIORNI_SHORT, fetchMealImg, estraiTestoPdf, compressImg, estimateKcalFromName, pianoAttivo, pastiPerGiorno, targetKcalPiano, TIPI_GIORNO } from "./utils";
 import { IcHome, IcBook, IcHistory, IcChart, IcWeight, IcPlus, IcTrash, IcEdit, IcCheck, IcChevL, IcClose, IcPlay, IcTimer, IcCamera, IcImg, IcSun, IcMoon, IcDownload, IcCalc, IcArrowUp, IcArrowDown, IcApple, IcUser, IcFile, IcUpload, Ico } from "./components/Icons";
 import { db, auth, sb } from "./db";
 import { CSS, STATUS_OPTS } from "./constants";
@@ -445,9 +445,8 @@ function Home({ schede, sessioni, peso, piani, dark, onToggleDark, onStart, onGo
   const nextDays = [1, 3, 5]; // Lun/Mer/Ven
 
   const getPasti = (day) => {
-    if (!piani?.length) return [];
-    const plan = piani[0];
-    return (plan.giorniPasti?.[day] || plan.pasti || []);
+    const plan = pianoAttivo(piani);
+    return plan ? pastiPerGiorno(plan, day) : [];
   };
   const getWorkouts = (day) => schede.filter(s => Array.isArray(s.giorni) && s.giorni.includes(day));
 
@@ -468,13 +467,16 @@ function Home({ schede, sessioni, peso, piani, dark, onToggleDark, onStart, onGo
         const todayIso = new Date().toISOString().slice(0, 10);
         const todayLog = logDieta.find(l => (l.data || "").slice(0, 10) === todayIso);
         const kcalOggi = todayLog ? (todayLog.totKcalConsumate || todayLog.kcalTotale || todayLog.kcal || 0) : 0;
-        const target = settings?.targetKcal || 1420;
+        const plan = pianoAttivo(piani, todayIso);
+        const todayDow = ((new Date().getDay() + 6) % 7) + 1;
+        const tipoOggi = todayLog?.tipoGiorno || plan?.giorniTipo?.[todayDow];
+        const target = targetKcalPiano(plan, tipoOggi) || settings?.targetKcal || 1420;
         const perc = Math.min(Math.round((kcalOggi / target) * 100), 120);
         const barColor = perc > 110 ? "var(--dan)" : perc > 100 ? "#FF9500" : "var(--ok)";
         return (
           <div className="card" style={{ marginBottom: 12, padding: "12px 16px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".08em" }}>🍽 KCAL OGGI</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".08em" }}>🍽 KCAL OGGI{TIPI_GIORNO[tipoOggi] ? ` · ${TIPI_GIORNO[tipoOggi]}` : ""}</div>
               <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, color: barColor, letterSpacing: ".05em" }}>
                 {kcalOggi} <span style={{ fontSize: 12, color: "var(--dim)", fontFamily: "'Barlow',sans-serif", fontWeight: 400 }}>/ {target}</span>
               </div>
@@ -2600,6 +2602,12 @@ function PianoEdit({ piano: init, onSave, onBack }) {
     return gp;
   };
   const [giorniPasti, setGiorniPasti] = useState(initGP);
+  const [giorniTipo, setGiorniTipo] = useState(init.giorniTipo || {});
+  const setTipo = t => setGiorniTipo(prev => {
+    const next = { ...prev };
+    if (next[giorno] === t) delete next[giorno]; else next[giorno] = t;
+    return next;
+  });
 
   const pastiCorrente = giorniPasti[giorno] || [];
   const setPC = newPasti => setGiorniPasti(prev => ({ ...prev, [giorno]: newPasti }));
@@ -2735,6 +2743,13 @@ function PianoEdit({ piano: init, onSave, onBack }) {
           ))}
         </div>
 
+        <div className="st">TIPO GIORNO</div>
+        <div className="stab-row" style={{ marginBottom: 16 }}>
+          {Object.entries(TIPI_GIORNO).map(([k, l]) => (
+            <button key={k} className={`stab${giorniTipo[giorno] === k ? " on" : ""}`} onClick={() => setTipo(k)}>{l}</button>
+          ))}
+        </div>
+
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <div className="st" style={{ margin: 0 }}>PASTI — {GIORNI_LABEL[giorno].toUpperCase()}</div>
           <div style={{ display: "flex", gap: 6 }}>
@@ -2809,7 +2824,7 @@ function PianoEdit({ piano: init, onSave, onBack }) {
         <button className="btn btn-p btn-full" style={{ background: "#30D158", padding: 16, fontSize: 15 }}
           onClick={() => {
             if (!nome.trim()) return alert("Dai un nome al piano");
-            onSave({ ...init, nome: nome.trim(), durataGiorni: 7, pasti: giorniPasti[1] || [], giorniPasti });
+            onSave({ ...init, nome: nome.trim(), durataGiorni: init.durataGiorni || 7, pasti: giorniPasti[1] || [], giorniPasti, ...(Object.keys(giorniTipo).length ? { giorniTipo } : {}) });
           }}>
           <IcCheck /> SALVA PIANO
         </button>
@@ -2925,7 +2940,8 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
   const todayDow = ((new Date().getDay() + 6) % 7) + 1;
   const todayIso = fmtIso();
   const [selectedDate, setSelectedDate] = useState(initialDate || todayIso); // giornata solare selezionata (YYYY-MM-DD)
-  const [selectedPianoId, setSelectedPianoId] = useState(initialPianoId || piani[0]?.id || "");
+  const [selectedPianoId, setSelectedPianoId] = useState(initialPianoId || pianoAttivo(piani, initialDate || todayIso)?.id || "");
+  const [tipoOverride, setTipoOverride] = useState(null); // palestra/riposo scelto a mano (es. allenamento saltato)
   const [mangiato, setMangiato] = useState({});
   const [selectedAlts, setSelectedAlts] = useState({}); // { groupId: pastoId }
   const [extra, setExtra] = useState([]);
@@ -2950,10 +2966,10 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
 
   const piano = piani.find(p => p.id === selectedPianoId);
 
-  const pastiGiorno = useMemo(() => {
-    if (!piano) return [];
-    return piano.giorniPasti?.[selectedDay] || piano.pasti || [];
-  }, [piano, selectedDay]);
+  const tipoGiorno = tipoOverride || existingLog?.tipoGiorno || piano?.giorniTipo?.[selectedDay] || null;
+  const targetTipo = piano?.target?.[tipoGiorno] || null;
+
+  const pastiGiorno = useMemo(() => pastiPerGiorno(piano, selectedDay, tipoGiorno), [piano, selectedDay, tipoGiorno]);
 
   // Raggruppa: single o gruppi di alternative
   const pastiGroups = useMemo(() => {
@@ -2995,6 +3011,13 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
       setSelectedAlts({});
     }
   }, [existingLog, selectedDay, selectedPianoId]);
+
+  useEffect(() => { setTipoOverride(null); }, [selectedDate, selectedPianoId]);
+
+  const cambiaTipo = t => {
+    if (t === tipoGiorno) return;
+    setTipoOverride(t); setMangiato({}); setSelectedAlts({});
+  };
 
   const toggleFood = (pi, ai) =>
     setMangiato(prev => ({ ...prev, [`${pi}_${ai}`]: !prev[`${pi}_${ai}`] }));
@@ -3077,7 +3100,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
     const kcalConsumate = pastiGroups.reduce((tot, group) => {
       const sel = getSelItem(group);
       return tot + sel.pasto.alimenti.reduce((s, al, ai) =>
-        s + (mangiato[`${sel.idx}_${ai}`] ? (al.kcal || 0) : 0), 0
+        s + (mangiato[`${sel.idx}_${ai}`] ? (+al.kcal || 0) : 0), 0
       );
     }, 0);
     const kcalExtra = extra.filter(e => e.mangiato).reduce((a, e) => a + (e.kcal || 0), 0);
@@ -3089,6 +3112,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
       pianoId: piano.id,
       pianoNome: piano.nome,
       giornoNumero: selectedDay,
+      tipoGiorno,
       totKcalPreviste: totPreviste,
       totKcalConsumate: totKcal,
       kcalTotale: totKcal,
@@ -3099,7 +3123,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
         nome: p.nome,
         kcal: p.alimenti.reduce((s, al, ai) => {
           const key = `${pi}_${ai}`;
-          return s + (mangiato[key] ? (al.kcal || 0) : 0);
+          return s + (mangiato[key] ? (+al.kcal || 0) : 0);
         }, 0),
         alimenti: p.alimenti.map((al, ai) => {
           const key = `${pi}_${ai}`;
@@ -3184,6 +3208,27 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                 </button>
               ))}
             </div>
+
+            {piano?.giorniTipo && (
+              <>
+                <div className="st">TIPO GIORNO</div>
+                <div className="stab-row" style={{ marginBottom: targetTipo ? 8 : 16 }}>
+                  {Object.entries(TIPI_GIORNO).map(([k, l]) => (
+                    <button key={k} className={`stab${tipoGiorno === k ? " on" : ""}`} onClick={() => cambiaTipo(k)}>{l}</button>
+                  ))}
+                </div>
+                {targetTipo?.kcal && (
+                  <div style={{ fontSize: 11, color: "var(--dim)", marginBottom: 16, lineHeight: 1.5 }}>
+                    Obiettivo: <b style={{ color: "var(--txt)" }}>{targetTipo.kcal.min}–{targetTipo.kcal.max} kcal</b>
+                    {targetTipo.proteine_g && <> · P {targetTipo.proteine_g.min}–{targetTipo.proteine_g.max} g</>}
+                    {targetTipo.carboidrati_g && <> · C {targetTipo.carboidrati_g.min}–{targetTipo.carboidrati_g.max} g</>}
+                    {targetTipo.grassi_g && <> · G {targetTipo.grassi_g.min}–{targetTipo.grassi_g.max} g</>}
+                    {targetTipo.acqua_l && <> · 💧 {targetTipo.acqua_l.min === targetTipo.acqua_l.max ? targetTipo.acqua_l.min : `${targetTipo.acqua_l.min}–${targetTipo.acqua_l.max}`} L</>}
+                    {targetTipo.note && <div style={{ marginTop: 2 }}>{targetTipo.note}</div>}
+                  </div>
+                )}
+              </>
+            )}
 
             {/* ─── Box kcal ─── */}
             <div style={{
@@ -3312,7 +3357,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                             <FoodThumb nome={al.nome} />
                             <div style={{ flex: 1, opacity: eaten ? .45 : 1, transition: 'opacity .15s', minWidth: 0 }}>
                               <div style={{ fontWeight: 600, fontSize: 13, textDecoration: eaten ? 'line-through' : 'none' }}>{al.nome}</div>
-                              <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 1 }}>{al.grammi}g</div>
+                              {+al.grammi > 0 && <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 1 }}>{al.grammi}g</div>}
                             </div>
                             <div style={{
                               fontFamily: "'Bebas Neue',cursive", fontSize: 16,

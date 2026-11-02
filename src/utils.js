@@ -108,3 +108,32 @@ export const estimateKcalFromName = (name) => {
   if (n.includes("caffè")) return 0;
   return 0;
 };
+
+// ─── Piani alimentari: piano attivo e tipo giorno (palestra/riposo) ───
+// Piano attivo = quello con dataInizio/dataFine che coprono la data, altrimenti il più recente per dataInizio, altrimenti il primo
+export const pianoAttivo = (piani, iso = fmtIso()) => {
+  if (!piani?.length) return null;
+  const inCorso = piani.filter(p => p.dataInizio && p.dataInizio <= iso && (!p.dataFine || p.dataFine >= iso));
+  const pool = inCorso.length ? inCorso : piani.filter(p => p.dataInizio);
+  if (!pool.length) return piani[0];
+  return [...pool].sort((a, b) => b.dataInizio.localeCompare(a.dataInizio))[0];
+};
+
+export const TIPI_GIORNO = { palestra: "🏋️ Palestra", riposo: "😴 Riposo" };
+
+// Pasti per giorno (1=Lun..7=Dom). Se il tipo richiesto è diverso da quello previsto per quel giorno
+// (es. allenamento saltato), usa il primo giorno del piano con quel tipo come modello.
+export const pastiPerGiorno = (piano, dow, tipo) => {
+  if (!piano) return [];
+  const own = piano.giorniPasti?.[dow] || piano.pasti || [];
+  const tipoPrevisto = piano.giorniTipo?.[dow];
+  if (!tipo || !tipoPrevisto || tipo === tipoPrevisto) return own;
+  const modello = [1, 2, 3, 4, 5, 6, 7].find(d => piano.giorniTipo[d] === tipo && piano.giorniPasti?.[d]?.length);
+  return modello ? piano.giorniPasti[modello] : own;
+};
+
+// Target kcal del giorno: centro del range del tipo giorno, se il piano lo definisce
+export const targetKcalPiano = (piano, tipo) => {
+  const k = piano?.target?.[tipo]?.kcal;
+  return k ? Math.round((k.min + k.max) / 2) : null;
+};
