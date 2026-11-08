@@ -2929,6 +2929,8 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
   const [tipoOverride, setTipoOverride] = useState(null); // palestra/riposo scelto a mano (es. allenamento saltato)
   const [mangiato, setMangiato] = useState({});
   const [selectedAlts, setSelectedAlts] = useState({}); // { groupId: pastoId }
+  const [noteAperte, setNoteAperte] = useState({}); // { pastoId | "__piano": true } note visibili
+  const toggleNota = k => setNoteAperte(prev => ({ ...prev, [k]: !prev[k] }));
   const [extra, setExtra] = useState([]);
   const [showAddExtra, setShowAddExtra] = useState(false);
   const [extraNome, setExtraNome] = useState("");
@@ -3269,6 +3271,19 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
               </div>
             ) : (
               <>
+                {piano?.note && (
+                  <div style={{ marginBottom: 12 }}>
+                    <button className="btn btn-s" style={{ fontSize: 11, padding: '6px 10px' }} onClick={() => toggleNota('__piano')}>
+                      📋 {noteAperte.__piano ? 'Nascondi' : 'Mostra'} note del piano
+                    </button>
+                    {noteAperte.__piano && (
+                      <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.5, color: 'var(--dim)', background: 'var(--sur)', border: '1px solid var(--bdr)', borderRadius: 10, padding: 10, whiteSpace: 'pre-wrap' }}>
+                        {piano.note}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="st" style={{ marginBottom: 10 }}>PASTI — {GIORNI_LABEL[selectedDay].toUpperCase()}</div>
 
                 {pastiGroups.map((group, gi) => {
@@ -3331,6 +3346,26 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                               );
                             })}
                           </div>
+                        </div>
+                      )}
+
+                      {/* Nota del pasto (toggle) */}
+                      {pasto.nota && (
+                        <div style={{ marginBottom: 8 }}>
+                          <button onClick={() => toggleNota(pasto.id)}
+                            style={{
+                              padding: '4px 10px', borderRadius: 20, border: '1px solid var(--bdr)',
+                              background: noteAperte[pasto.id] ? 'var(--bdr)' : 'transparent',
+                              color: 'var(--dim)', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                              fontFamily: "'Barlow',sans-serif"
+                            }}>
+                            📝 Nota {noteAperte[pasto.id] ? '▴' : '▾'}
+                          </button>
+                          {noteAperte[pasto.id] && (
+                            <div style={{ marginTop: 6, fontSize: 12, lineHeight: 1.45, color: 'var(--dim)', fontStyle: 'italic' }}>
+                              {pasto.nota}
+                            </div>
+                          )}
                         </div>
                       )}
 
