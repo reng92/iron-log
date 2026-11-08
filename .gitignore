@@ -20,3 +20,7 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# impeccable: screenshot e domande temporanee
+.impeccable/review/
+.impeccable/questions/

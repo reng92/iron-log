@@ -81,7 +81,7 @@ export default function ListaSpesa({ piani, spese, onSave, onDelete }) {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12, alignItems: "end" }}>
           <div>
             <div className="st" style={{ margin: 0 }}>PRESI</div>
-            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 28, color: nPresi && nPresi === voci.length ? "#30D158" : "var(--txt)" }}>
+            <div style={{ fontFamily: "var(--fd)", fontSize: 28, color: nPresi && nPresi === voci.length ? "#30D158" : "var(--txt)" }}>
               {nPresi} / {voci.length}
             </div>
           </div>
@@ -120,7 +120,7 @@ export default function ListaSpesa({ piani, spese, onSave, onDelete }) {
                       </div>
                     )}
                   </div>
-                  {v.qta && <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 15, color: preso ? "var(--dim)" : "var(--acc)", flexShrink: 0, textAlign: "right", maxWidth: 110 }}>{v.qta}</div>}
+                  {v.qta && <div style={{ fontFamily: "var(--fd)", fontSize: 15, color: preso ? "var(--dim)" : "var(--acc)", flexShrink: 0, textAlign: "right", maxWidth: 110 }}>{v.qta}</div>}
                   {v.cat === "Extra" && <button className="bico d" onClick={() => delExtra(v.id)}><IcTrash /></button>}
                 </div>
               );
@@ -164,7 +164,7 @@ export default function ListaSpesa({ piani, spese, onSave, onDelete }) {
                   {n} articoli · {s.pianoNome || pianoS?.nome || "piano eliminato"}
                 </div>
               </div>
-              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 20, color: "var(--acc)" }}>{s.importo != null ? eur(s.importo) : "—"}</div>
+              <div style={{ fontFamily: "var(--fd)", fontSize: 20, color: "var(--acc)" }}>{s.importo != null ? eur(s.importo) : "—"}</div>
               <button className="bico d" onClick={e => { e.stopPropagation(); setConfirmState({ msg: `Eliminare la spesa del ${fmtShort(s.data + "T12:00:00")}?`, onConfirm: () => onDelete(s.id) }); }}><IcTrash /></button>
             </div>
             {aperta && (

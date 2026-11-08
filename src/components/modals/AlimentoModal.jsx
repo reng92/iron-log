@@ -9,7 +9,7 @@ export default function AlimentoModal({ init, mode, onSave, onClose }) {
     <div className="mov" onClick={onClose}>
       <div className="mod" onClick={e => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-          <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, letterSpacing: ".05em", color: "#30D158" }}>
+          <span style={{ fontFamily: "var(--fd)", fontSize: 22, letterSpacing: ".05em", color: "#30D158" }}>
             {mode === "new" ? "NUOVO ALIMENTO" : "MODIFICA"}
           </span>
           <button className="bico" onClick={onClose}><IcClose /></button>

@@ -211,7 +211,7 @@ export default function PdfImportModal({ onApply, onClose }) {
     <div className="mov" onClick={onClose}>
       <div className="mod" onClick={e => e.stopPropagation()} style={{ maxHeight: "90vh" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-          <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, letterSpacing: ".05em" }}>IMPORTA DA PDF</span>
+          <span style={{ fontFamily: "var(--fd)", fontSize: 22, letterSpacing: ".05em" }}>IMPORTA DA PDF</span>
           <button className="bico" onClick={onClose}><IcClose /></button>
         </div>
         {fase === 1 && (
@@ -240,14 +240,14 @@ export default function PdfImportModal({ onApply, onClose }) {
         {fase === 2 && (
           <div style={{ textAlign: "center", padding: "32px 16px" }}>
             <div className="spin" style={{ fontSize: 36, marginBottom: 16 }}>⚙️</div>
-            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, letterSpacing: ".05em", marginBottom: 8 }}>ANALISI IN CORSO</div>
+            <div style={{ fontFamily: "var(--fd)", fontSize: 22, letterSpacing: ".05em", marginBottom: 8 }}>ANALISI IN CORSO</div>
             <div style={{ fontSize: 13, color: "var(--dim)", marginBottom: 4 }}>{loadingMsg}</div>
           </div>
         )}
         {fase === 3 && parsed && (
           <>
             <div style={{ background: "rgba(48,209,88,.1)", border: "1px solid #30D158", borderRadius: 10, padding: 12, marginBottom: 16 }}>
-              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 16, color: "#30D158", marginBottom: 4 }}>✓ ESTRATTO CON SUCCESSO</div>
+              <div style={{ fontFamily: "var(--fd)", fontSize: 16, color: "#30D158", marginBottom: 4 }}>✓ ESTRATTO CON SUCCESSO</div>
               {parsed.nomePiano && <div style={{ fontSize: 13, fontWeight: 600 }}>{parsed.nomePiano}</div>}
             </div>
             <div className="st" style={{ marginBottom: 8 }}>ANTEPRIMA</div>
@@ -268,7 +268,7 @@ export default function PdfImportModal({ onApply, onClose }) {
                   </div>
                   <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                     <span style={{ fontSize: 11, color: "var(--dim)" }}>{pasti.length} pasti</span>
-                    <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 16, color: "#30D158" }}>{kcal > 0 ? `${kcal} kcal` : "—"}</span>
+                    <span style={{ fontFamily: "var(--fd)", fontSize: 16, color: "#30D158" }}>{kcal > 0 ? `${kcal} kcal` : "—"}</span>
                   </div>
                 </div>
               );

@@ -56,4 +56,10 @@ export const db = {
   async getSpese() { const { data } = await sb.from("spesa").select("*").order("created_at", { ascending: false }); return data ? data.map(r => r.data) : []; },
   async saveSpesa(s) { const { error } = await sb.from("spesa").upsert({ id: s.id, data: s }); if (error) throw new Error(error.message); },
   async delSpesa(id) { await sb.from("spesa").delete().eq("id", id); },
+  async getAcqua() { const { data } = await sb.from("acqua").select("*"); return data ? data.map(r => r.data) : []; },
+  async saveAcqua(a) { const { error } = await sb.from("acqua").upsert({ id: a.id, data: a }); if (error) throw new Error(error.message); },
 };
+
+// Modalità demo (solo sviluppo, ?demo=1): nessuna lettura/scrittura su Supabase
+export const IS_DEMO = process.env.NODE_ENV === "development" && typeof window !== "undefined" && new URLSearchParams(window.location.search).has("demo");
+if (IS_DEMO) Object.keys(db).forEach(k => { db[k] = async () => (k.startsWith("get") ? [] : undefined); });

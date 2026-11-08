@@ -23,11 +23,11 @@ export default function LineChart({ data, color = "#1E90FF", height = 110 }) {
       {data.map((d, i) => (
         <g key={i}>
           <circle cx={px(i)} cy={py(+d.y)} r="3" fill={color} />
-          {i % step === 0 && <text x={px(i)} y={H - 4} textAnchor="middle" fill="var(--mut)" fontSize="7.5" fontFamily="Barlow,sans-serif">{d.label}</text>}
+          {i % step === 0 && <text x={px(i)} y={H - 4} textAnchor="middle" fill="var(--mut)" fontSize="7.5" fontFamily="inherit">{d.label}</text>}
         </g>
       ))}
       {yTicks.map((v, i) => (
-        <text key={i} x={PL - 3} y={py(v) + 3} textAnchor="end" fill="var(--mut)" fontSize="7" fontFamily="Barlow,sans-serif">{Math.round(v * 10) / 10}</text>
+        <text key={i} x={PL - 3} y={py(v) + 3} textAnchor="end" fill="var(--mut)" fontSize="7" fontFamily="inherit">{Math.round(v * 10) / 10}</text>
       ))}
     </svg>
   );

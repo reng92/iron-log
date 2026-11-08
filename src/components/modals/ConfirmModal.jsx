@@ -2,7 +2,7 @@ export default function ConfirmModal({ message, onConfirm, onCancel }) {
   return (
     <div className="mov" onClick={onCancel}>
       <div className="mod" onClick={e => e.stopPropagation()} style={{ maxHeight: "40vh" }}>
-        <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 20, letterSpacing: ".05em", marginBottom: 14 }}>
+        <div style={{ fontFamily: "var(--fd)", fontSize: 20, letterSpacing: ".05em", marginBottom: 14 }}>
           CONFERMA
         </div>
         <p style={{ fontSize: 14, color: "var(--dim)", marginBottom: 24 }}>{message}</p>

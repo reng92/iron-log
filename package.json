@@ -9,6 +9,7 @@
     "@capacitor/filesystem": "^8.1.5",
     "@capacitor/local-notifications": "^8.0.2",
     "@capacitor/share": "^8.0.3",
+    "@fontsource-variable/archivo": "^5.3.0",
     "@supabase/supabase-js": "^2.39.0",
     "jspdf": "^2.5.2",
     "jspdf-autotable": "^3.8.4",

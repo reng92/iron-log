@@ -32,3 +32,14 @@ export const IcUser = () => <Ico d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2 M12 
 export const IcFile = () => <Ico d={["M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z", "M14 2v6h6", "M16 13H8M16 17H8M10 9H8"]} />;
 export const IcUpload = () => <Ico d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" />;
 export const IcChat = () => <Ico d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />;
+
+// ── Set "Etichetta": tratto 1.8, angoli arrotondati ──
+export const IcToday = (p) => <Ico {...p} d={["M4 5h16v15H4z", "M4 9h16", "M8 3v4M16 3v4", "M9 14h6"]} />;
+export const IcDumbbell = (p) => <Ico {...p} d={["M6.5 6.5v11", "M17.5 6.5v11", "M3.5 9v6", "M20.5 9v6", "M6.5 12h11"]} />;
+export const IcFork = (p) => <Ico {...p} d={["M7 3v8a2 2 0 002 2v8", "M11 3v8a2 2 0 01-2 2", "M17 3c-1.7 1.2-2.5 3.4-2.5 6.5V14H17v7"]} />;
+export const IcBody = (p) => <Ico {...p} d={["M12 6.5a2 2 0 100-4 2 2 0 000 4z", "M6 9.5l6 1.5 6-1.5", "M12 11v4", "M9 21l3-6 3 6"]} />;
+export const IcDrop = (p) => <Ico {...p} d="M12 3s6 6.6 6 11a6 6 0 01-12 0c0-4.4 6-11 6-11z" />;
+export const IcBolt = (p) => <Ico {...p} d="M13 2L4 14h7l-1 8 9-12h-7z" />;
+export const IcMoonRest = (p) => <Ico {...p} d="M20 14.5A8 8 0 019.5 4a8 8 0 1010.5 10.5z" />;
+export const IcUndo = (p) => <Ico {...p} d={["M9 14L4 9l5-5", "M4 9h11a5 5 0 010 10h-3"]} />;
+export const IcChevR = (p) => <Ico {...p} d="M9 18l6-6-6-6" />;

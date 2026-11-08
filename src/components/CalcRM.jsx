@@ -19,14 +19,14 @@ export default function CalcRM() {
           <>
             <div style={{ textAlign: "center", padding: "18px 0", background: "var(--acc2)", borderRadius: 10, marginBottom: 14 }}>
               <div style={{ fontSize: 12, color: "var(--acc)", fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase" }}>Massimale stimato</div>
-              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 58, color: "var(--acc)", letterSpacing: ".05em", lineHeight: 1 }}>{rm} kg</div>
+              <div style={{ fontFamily: "var(--fd)", fontSize: 58, color: "var(--acc)", letterSpacing: ".05em", lineHeight: 1 }}>{rm} kg</div>
             </div>
             <div className="st">PERCENTUALI DI CARICO</div>
             {pcts.map(p => (
               <div key={p} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: "1px solid var(--bdr)" }}>
                 <div style={{ fontSize: 13, color: "var(--dim)", fontWeight: 600 }}>{p}%</div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-                  <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, color: p === 100 ? "var(--acc)" : "var(--txt)", letterSpacing: ".05em" }}>{Math.round(rm * p / 100 * 2) / 2}</div>
+                  <div style={{ fontFamily: "var(--fd)", fontSize: 22, color: p === 100 ? "var(--acc)" : "var(--txt)", letterSpacing: ".05em" }}>{Math.round(rm * p / 100 * 2) / 2}</div>
                   <div style={{ fontSize: 11, color: "var(--dim)" }}>kg</div>
                 </div>
               </div>

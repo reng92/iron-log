@@ -3,7 +3,7 @@ import ConfirmModal from "./components/modals/ConfirmModal";
 import ListaSpesa from "./components/ListaSpesa";
 import { genId, fmtDur, fmtDate, fmtShort, fmtIso, epley, GG, GIORNI_LABEL, GIORNI_SHORT, fetchMealImg, estraiTestoPdf, compressImg, estimateKcalFromName, pianoAttivo, pastiPerGiorno, targetKcalPiano, TIPI_GIORNO } from "./utils";
 import { IcHome, IcBook, IcHistory, IcChart, IcWeight, IcPlus, IcTrash, IcEdit, IcCheck, IcChevL, IcClose, IcPlay, IcTimer, IcCamera, IcImg, IcSun, IcMoon, IcDownload, IcCalc, IcArrowUp, IcArrowDown, IcApple, IcUser, IcFile, IcUpload, Ico } from "./components/Icons";
-import { db, auth, sb } from "./db";
+import { db, auth, sb, IS_DEMO } from "./db";
 import { CSS, STATUS_OPTS } from "./constants";
 import { esportaStoricoPdf } from "./exportPdf";
 import LineChart from "./components/LineChart";
@@ -13,7 +13,13 @@ import CalcRM from "./components/CalcRM";
 import EsercizioModal from "./components/modals/EsercizioModal";
 import AlimentoModal from "./components/modals/AlimentoModal";
 import PdfImportModal from "./components/modals/PdfImportModal";
-import { requestNotifPermission, scheduleDaily, cancelDaily, testNotifica } from "./notifications";
+import { syncNotifiche, onNotificaAzione, cfg as notifCfg, obiettivoAcqua } from "./notifications";
+import { aggiornaWidget, consumaAggiunteWidget, onAppResume } from "./widget";
+import Acqua from "./components/Acqua";
+import Oggi from "./screens/Oggi";
+import { segnaPastoMangiato } from "./dieta";
+import { IcToday, IcDumbbell, IcFork, IcBody } from "./components/Icons";
+import NotificheSettings from "./components/NotificheSettings";
 
 // ─── NORME CIRCONFERENZE CORPOREE ────────────────────────
 // Vita e addome: soglie OMS sulla circonferenza (M ≥94 rischio aumentato, ≥102 alto; F ≥80 / ≥88)
@@ -94,7 +100,9 @@ export default function App() {
   const [authError, setAuthError] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
 
-  const [tab, setTab] = useState("profilo");
+  const [tab, setTab] = useState("oggi");
+  const [allenaTab, setAllenaTab] = useState("schede");
+  const [corpoTab, setCorpoTab] = useState("peso");
   const [schede, setSchede] = useState([]);
   const [sessioni, setSessioni] = useState([]);
   const [peso, setPeso] = useState([]);
@@ -105,15 +113,17 @@ export default function App() {
   const [logDieta, setLogDieta] = useState([]);
   const [misure, setMisure] = useState([]);
   const [spese, setSpese] = useState([]);
+  const [acqua, setAcqua] = useState([]);
 
   const [subview, setSubview] = useState(null);
+  const [dietaTab, setDietaTab] = useState("piani");
   const [loaded, setLoaded] = useState(false);
 
 
   useEffect(() => {
     const loadForUser = async (u) => {
       if (u) {
-        const [sc, ss, ps, st, pa, ld, mi, sp] = await Promise.all([
+        const [sc, ss, ps, st, pa, ld, mi, sp, aq] = await Promise.all([
           db.getSchede().catch(() => []),
           db.getSessioni().catch(() => []),
           db.getPeso().catch(() => []),
@@ -122,19 +132,30 @@ export default function App() {
           db.getLogDieta().catch(() => []),
           db.getMisure().catch(() => []),
           db.getSpese().catch(() => []),
+          db.getAcqua().catch(() => []),
         ]);
         setSchede(sc || []); setSessioni(ss || []); setPeso(ps || []);
         setSettings({ darkMode: true, ...st });
         setPiani(pa || []); setLogDieta(ld || []);
-        setMisure(mi || []); setSpese(sp || []);
+        setMisure(mi || []); setSpese(sp || []); setAcqua(aq || []);
         setLoaded(true);
       } else {
         setSchede([]); setSessioni([]); setPeso([]);
         setSettings({ darkMode: true });
-        setPiani([]); setLogDieta([]); setMisure([]); setSpese([]);
+        setPiani([]); setLogDieta([]); setMisure([]); setSpese([]); setAcqua([]);
         setLoaded(false);
       }
     };
+
+    if (IS_DEMO) {
+      {
+        const { DEMO } = require("./demoData");
+        setUser({ id: "demo" }); setAuthReady(true);
+        setSchede(DEMO.schede); setSessioni(DEMO.sessioni); setPeso(DEMO.peso); setSettings(DEMO.settings);
+        setPiani(DEMO.piani); setLogDieta(DEMO.logDieta); setAcqua(DEMO.acqua); setLoaded(true);
+      }
+      return;
+    }
 
     // Controllo sessione immediato al reload (legge da localStorage, non aspetta eventi)
     sb.auth.getSession().then(({ data: { session } }) => {
@@ -164,13 +185,81 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Schedula/cancella notifica giornaliera quando cambiano le impostazioni
-  useEffect(() => {
-    if (!settings.notifiche_attive) { cancelDaily(); return; }
-    requestNotifPermission().then(granted => {
-      if (granted) scheduleDaily(settings.notifiche_orario || '08:00');
+  // ─── Acqua ───
+  const oggiIso = fmtIso();
+  const acquaOggi = acqua.find(a => a.data === oggiIso)?.ml || 0;
+  const oraHM = () => new Date().toTimeString().slice(0, 5);
+  const saveGiornoAcqua = (iso, fn) => {
+    setAcqua(prev => {
+      const old = prev.find(a => a.data === iso) || { id: genId(), data: iso, ml: 0, voci: [] };
+      const voci = fn(old.voci || []);
+      const ml = voci.reduce((t, v) => (v.tot ? v.ml : t + v.ml), 0);
+      const row = { ...old, voci, ml };
+      db.saveAcqua(row).catch(e => alert("Errore salvataggio acqua: " + e.message));
+      return prev.some(a => a.id === row.id) ? prev.map(a => (a.id === row.id ? row : a)) : [...prev, row];
     });
-  }, [settings.notifiche_attive, settings.notifiche_orario]);
+  };
+  const addAcqua = (iso, ml, ora) => saveGiornoAcqua(iso, v => [...v, { ora: ora || oraHM(), ml }]);
+  const undoAcqua = iso => saveGiornoAcqua(iso, v => v.slice(0, -1));
+  const setTotaleAcqua = (iso, ml) => saveGiornoAcqua(iso, v => [...v, { ora: oraHM(), ml, tot: true }]);
+  const notifCtx = { piani, sessioni, logDieta, acquaOggi };
+
+  // Azioni dalle notifiche (+borraccia / +250 / tap): accodate finché i dati non sono caricati
+  const pendingAzioni = useRef([]);
+  const gestisciAzione = useRef(null);
+  gestisciAzione.current = (actionId, extra) => {
+    if (actionId === "acqua_borraccia") addAcqua(fmtIso(), +notifCfg(settings, "acqua_borraccia") || 750);
+    else if (actionId === "acqua_250") addAcqua(fmtIso(), 250);
+    else if (extra.tipo === "pasti") { setSubview(null); setTab("dieta"); }
+    else if (extra.tipo === "acqua") { setSubview(null); setTab("home"); }
+  };
+  const loadedRef = useRef(false); loadedRef.current = loaded;
+  useEffect(() => onNotificaAzione((id, extra) => {
+    if (loadedRef.current) gestisciAzione.current(id, extra);
+    else pendingAzioni.current.push([id, extra]);
+  }), []);
+  useEffect(() => {
+    if (!loaded || !pendingAzioni.current.length) return;
+    pendingAzioni.current.splice(0).forEach(([id, extra]) => gestisciAzione.current(id, extra));
+  }, [loaded]);
+
+  // ─── Widget Android ───
+  // Aggiunte fatte dal widget ad app chiusa: le salva all'avvio e a ogni ritorno in primo piano
+  useEffect(() => {
+    if (!loaded) return;
+    const raccogli = async () => (await consumaAggiunteWidget()).forEach(a => a.ml > 0 && addAcqua(a.date, a.ml, a.ora));
+    raccogli();
+    return onAppResume(raccogli);
+  }, [loaded]);
+
+  const kcalOggi = (() => {
+    const l = logDieta.find(x => (x.data || "").slice(0, 10) === oggiIso);
+    return l ? (l.totKcalConsumate || l.kcalTotale || l.kcal || 0) : 0;
+  })();
+  const kcalTargetOggi = (() => {
+    if (!piani.length) return 0;
+    const l = logDieta.find(x => (x.data || "").slice(0, 10) === oggiIso);
+    const plan = pianoAttivo(piani, oggiIso);
+    const tipo = l?.tipoGiorno || plan?.giorniTipo?.[((new Date().getDay() + 6) % 7) + 1];
+    return targetKcalPiano(plan, tipo) || settings.targetKcal || 1420;
+  })();
+  const acquaTargetOggi = obiettivoAcqua(settings, oggiIso, { piani, sessioni, logDieta }).ml;
+  const borracciaMl = +notifCfg(settings, "acqua_borraccia") || 750;
+  useEffect(() => {
+    if (!loaded) return;
+    aggiornaWidget({ date: oggiIso, ml: acquaOggi, target: acquaTargetOggi, borraccia: borracciaMl, kcal: kcalOggi, kcalTarget: kcalTargetOggi });
+  }, [loaded, oggiIso, acquaOggi, acquaTargetOggi, borracciaMl, kcalOggi, kcalTargetOggi]);
+
+  // Rischedula tutte le notifiche (promemoria, acqua, pasti) quando cambiano dati rilevanti
+  const notifKey = JSON.stringify([
+    ["notifiche_attive", "notifiche_orario", "acqua_notif", "acqua_dalle", "acqua_alle", "acqua_ogni", "acqua_obiettivo", "acqua_extra_palestra", "acqua_borraccia", "pasti_notif", "pasti_orario", "pasti_pasto"].map(k => settings[k]),
+    acquaOggi, oggiIso, sessioni.length, logDieta.length,
+  ]);
+  useEffect(() => {
+    if (!loaded) return;
+    const t = setTimeout(() => syncNotifiche(settings, notifCtx), 800);
+    return () => clearTimeout(t);
+  }, [loaded, notifKey, piani]);
 
   const saveSchede = async s => { setSchede(s); await db.setSchede(s); };
   const addSessione = async s => { setSessioni(p => [s, ...p]); await db.addSessione(s); };
@@ -188,6 +277,18 @@ export default function App() {
   const handleAddLogDieta = async l => { setLogDieta(prev => [l, ...prev]); await db.addLogDieta(l); };
   const handleDelLogDieta = async id => { setLogDieta(p => p.filter(x => x.id !== id)); await db.delLogDieta(id); };
   const onOpenDietaLog = () => setSubview({ type: "dieta-log", data: null });
+  const segnaMangiato = async idx => {
+    const r = segnaPastoMangiato(piani, logDieta, fmtIso(), idx);
+    if (!r) return;
+    if (r.oldId) await handleDelLogDieta(r.oldId);
+    await handleAddLogDieta(r.log);
+  };
+  const vaiA = (t, sub) => {
+    setTab(t);
+    if (t === "allena" && sub) setAllenaTab(sub);
+    if (t === "corpo" && sub) setCorpoTab(sub);
+    if (t === "dieta" && sub) setDietaTab(sub);
+  };
   const saveSpesa = async sp => {
     setSpese(prev => prev.some(x => x.id === sp.id) ? prev.map(x => x.id === sp.id ? sp : x) : [sp, ...prev]);
     try { await db.saveSpesa(sp); } catch (e) { alert("Errore nel salvataggio della spesa: " + e.message); }
@@ -201,6 +302,10 @@ export default function App() {
   const delMisura = async id => { setMisure(p => p.filter(x => x.id !== id)); await db.delMisura(id); };
 
   const dark = settings.darkMode !== false;
+  useEffect(() => {
+    document.documentElement.style.background = dark ? "#0A0C0B" : "#E8ECE9";
+    document.querySelector("meta[name=theme-color]")?.setAttribute("content", dark ? "#173D2E" : "#1F4D3A");
+  }, [dark]);
   const cls = `app${dark ? "" : " light"}`;
 
   // SCHERMATA AUTH (login / registrazione)
@@ -208,7 +313,7 @@ export default function App() {
     <div className={cls}>
       <style>{CSS}</style>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1 }}>
-        <div className="pls" style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 28, color: "#1E90FF", letterSpacing: ".1em" }}>CARICAMENTO...</div>
+        <div className="pls" style={{ fontSize: 15, fontWeight: 700, color: "var(--dim)" }}>Caricamento…</div>
       </div>
     </div>
   );
@@ -242,7 +347,7 @@ export default function App() {
       <div className={cls}>
         <style>{CSS}</style>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, padding: 24 }}>
-          <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 48, letterSpacing: ".1em", marginBottom: 4, color: "var(--acc)" }}>IRON LOG</div>
+          <div style={{ fontFamily: "var(--fd)", fontSize: 48, letterSpacing: ".1em", marginBottom: 4, color: "var(--acc)" }}>IRON LOG</div>
           <p className="sub" style={{ marginBottom: 32, textAlign: "center" }}>{subtitles[authMode]}</p>
 
           {authError === "__ok__" ? (
@@ -298,24 +403,24 @@ export default function App() {
           <div style={{ marginTop: 20, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
             {authMode === "login" && (
               <>
-                <button style={{ background: "none", border: "none", color: "var(--acc)", fontSize: 13, cursor: "pointer", fontFamily: "'Barlow',sans-serif" }}
+                <button style={{ background: "none", border: "none", color: "var(--acc)", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}
                   onClick={() => { setAuthMode("register"); setAuthError(""); }}>
                   Non hai un account? Registrati
                 </button>
-                <button style={{ background: "none", border: "none", color: "var(--mut)", fontSize: 12, cursor: "pointer", fontFamily: "'Barlow',sans-serif" }}
+                <button style={{ background: "none", border: "none", color: "var(--mut)", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}
                   onClick={() => { setAuthMode("reset"); setAuthError(""); }}>
                   Password dimenticata?
                 </button>
               </>
             )}
             {authMode === "register" && (
-              <button style={{ background: "none", border: "none", color: "var(--acc)", fontSize: 13, cursor: "pointer", fontFamily: "'Barlow',sans-serif" }}
+              <button style={{ background: "none", border: "none", color: "var(--acc)", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}
                 onClick={() => { setAuthMode("login"); setAuthError(""); }}>
                 Hai già un account? Accedi
               </button>
             )}
             {authMode === "reset" && (
-              <button style={{ background: "none", border: "none", color: "var(--acc)", fontSize: 13, cursor: "pointer", fontFamily: "'Barlow',sans-serif" }}
+              <button style={{ background: "none", border: "none", color: "var(--acc)", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}
                 onClick={() => { setAuthMode("login"); setAuthError(""); }}>
                 Torna al login
               </button>
@@ -331,7 +436,7 @@ export default function App() {
     <div className={cls}>
       <style>{CSS}</style>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1 }}>
-        <div className="pls" style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 28, color: "#1E90FF", letterSpacing: ".1em" }}>CARICAMENTO...</div>
+        <div className="pls" style={{ fontSize: 15, fontWeight: 700, color: "var(--dim)" }}>Caricamento…</div>
       </div>
     </div>
   );
@@ -347,7 +452,7 @@ export default function App() {
   );
   if (subview?.type === "allenamento") return (
     <div className={cls}><style>{CSS}</style>
-      <Allenamento scheda={subview.data} sessioni={sessioni} onComplete={s => { addSessione(s); setSubview(null); setTab("storico"); }} onBack={() => setSubview(null)} />
+      <Allenamento scheda={subview.data} sessioni={sessioni} onComplete={s => { addSessione(s); setSubview(null); setTab("allena"); setAllenaTab("storico"); }} onBack={() => setSubview(null)} />
     </div>
   );
   if (subview?.type === "sessione") return (
@@ -387,8 +492,41 @@ export default function App() {
     <div className={cls}>
       <style>{CSS}</style>
       <div className="content fi">
-        {tab === "home" && <Home schede={schede} sessioni={sessioni} peso={peso} piani={piani} dark={dark} onToggleDark={toggleDark} onStart={sc => setSubview({ type: "allenamento", data: sc })} onGoSchede={() => setTab("schede")} logDieta={logDieta} settings={settings} />}
-        {tab === "schede" && <Schede schede={schede} onNew={() => setSubview({ type: "scheda-edit", data: { nome: "", giorni: [], esercizi: [] } })} onEdit={sc => setSubview({ type: "scheda-edit", data: sc })} onDelete={id => saveSchede(schede.filter(s => s.id !== id))} onStart={sc => setSubview({ type: "allenamento", data: sc })} />}
+        {tab === "oggi" && (
+          <Oggi
+            settings={settings} schede={schede} sessioni={sessioni} peso={peso} piani={piani} logDieta={logDieta} acqua={acqua}
+            onAddAcqua={addAcqua} onUndoAcqua={undoAcqua}
+            onStart={sc => setSubview({ type: "allenamento", data: sc })}
+            onMangiato={segnaMangiato}
+            onOpenDiario={() => setSubview({ type: "dieta-log", data: null })}
+            onGo={vaiA}
+          />
+        )}
+
+        {tab === "allena" && (
+          <>
+            <div className="stab-row" role="tablist" style={{ marginTop: 4 }}>
+              {[["schede", "Schede"], ["storico", "Log"], ["stats", "Statistiche"]].map(([k, l]) => (
+                <button key={k} role="tab" aria-selected={allenaTab === k} className={`stab${allenaTab === k ? " on" : ""}`} onClick={() => setAllenaTab(k)}>{l}</button>
+              ))}
+            </div>
+            {allenaTab === "schede" && <Schede schede={schede} onNew={() => setSubview({ type: "scheda-edit", data: { nome: "", giorni: [], esercizi: [] } })} onEdit={sc => setSubview({ type: "scheda-edit", data: sc })} onDelete={id => saveSchede(schede.filter(s => s.id !== id))} onStart={sc => setSubview({ type: "allenamento", data: sc })} />}
+            {allenaTab === "storico" && <Storico sessioni={sessioni} onDetail={s => setSubview({ type: "sessione", data: s })} onDelete={delSessione} />}
+            {allenaTab === "stats" && <Stats sessioni={sessioni} />}
+          </>
+        )}
+
+        {tab === "corpo" && (
+          <>
+            <div className="stab-row" role="tablist" style={{ marginTop: 4 }}>
+              {[["peso", "Peso"], ["misure", "Misure"]].map(([k, l]) => (
+                <button key={k} role="tab" aria-selected={corpoTab === k} className={`stab${corpoTab === k ? " on" : ""}`} onClick={() => setCorpoTab(k)}>{l}</button>
+              ))}
+            </div>
+            {corpoTab === "peso" && <Peso peso={peso} onAdd={addPeso} onDelete={delPeso} />}
+            {corpoTab === "misure" && <StoricoCorporeo misure={misure} onAdd={addMisura} onDel={delMisura} sesso={settings.sesso || "M"} />}
+          </>
+        )}
 
         {/* -- Nuova Tab Dieta -- */}
         {tab === "dieta" && (
@@ -403,151 +541,20 @@ export default function App() {
             spese={spese}
             onSaveSpesa={saveSpesa}
             onDelSpesa={delSpesa}
+            stab={dietaTab}
+            setStab={setDietaTab}
+            acquaFull={<Acqua acqua={acqua} settings={settings} onSaveSettings={saveSettings} ctx={notifCtx} onAdd={addAcqua} onUndo={undoAcqua} onSetTotal={setTotaleAcqua} pesoKg={[...peso].sort((a, b) => a.data.localeCompare(b.data)).pop()?.valore} />}
           />
         )}
 
-        {tab === "storico" && <Storico sessioni={sessioni} onDetail={s => setSubview({ type: "sessione", data: s })} onDelete={delSessione} />}
-        {tab === "stats" && <Stats sessioni={sessioni} />}
-        {tab === "peso" && <Peso peso={peso} onAdd={addPeso} onDelete={delPeso} />}
-        {tab === "profilo" && <Profilo settings={settings} peso={peso} piani={piani} logDieta={logDieta} misure={misure} onSave={saveSettings} onOpenDietaLog={onOpenDietaLog} onLogout={() => auth.signOut()} onAddMisura={addMisura} onDelMisura={delMisura} />}
+        {tab === "io" && <Profilo dark={dark} onToggleDark={toggleDark} notifCtx={notifCtx} settings={settings} peso={peso} piani={piani} logDieta={logDieta} misure={misure} onSave={saveSettings} onOpenDietaLog={onOpenDietaLog} onLogout={() => auth.signOut()} onAddMisura={addMisura} onDelMisura={delMisura} />}
       </div>
       <nav className="nav">
-        {[["home", "HOME", <IcHome />], ["schede", "SCHEDE", <IcBook />], ["dieta", "DIETA", <IcApple />], ["storico", "LOG", <IcHistory />], ["stats", "STATS", <IcChart />], ["peso", "PESO", <IcWeight />], ["profilo", "IO", <IcUser />]].map(([t, l, ic]) => (
-          <button key={t} className={`nb${tab === t ? " on" : ""}`} onClick={() => setTab(t)}>{ic}<span>{l}</span></button>
+        {[["oggi", "Oggi", <IcToday size={22} />], ["allena", "Allena", <IcDumbbell size={22} />], ["dieta", "Dieta", <IcFork size={22} />], ["corpo", "Corpo", <IcBody size={22} />], ["io", "Io", <IcUser />]].map(([t, l, ic]) => (
+          <button key={t} className={`nb${tab === t ? " on" : ""}`} aria-current={tab === t ? "page" : undefined} onClick={() => setTab(t)}>{ic}<span>{l}</span></button>
         ))}
       </nav>
     </div>
-  );
-}
-
-// ─── HOME ─────────────────────────────────────────────────
-function Home({ schede, sessioni, peso, piani, dark, onToggleDark, onStart, onGoSchede, logDieta, settings }) {
-  const [pick, setPick] = useState(false);
-  const totKg = sessioni.reduce((a, s) => a + s.esercizi.reduce((b, e) => b + e.serie.reduce((c, sr) => c + (sr.completata ? (+sr.kg || 0) * (+sr.reps || 0) : 0), 0), 0), 0);
-  const avgMin = sessioni.length ? Math.round(sessioni.reduce((a, s) => a + (s.durata || 0), 0) / sessioni.length) : 0;
-  const last = sessioni[0];
-  const todayIdx = (new Date().getDay() + 6) % 7;
-  const suggested = schede.find(s => s.giorni?.includes(todayIdx));
-
-  const records = useMemo(() => {
-    const rec = {};
-    sessioni.forEach(s => s.esercizi.forEach(e => e.serie.filter(sr => sr.completata && +sr.kg > 0).forEach(sr => {
-      if (!rec[e.nome] || +sr.kg > rec[e.nome].kg) rec[e.nome] = { kg: +sr.kg, reps: sr.reps, data: s.data };
-    })));
-    return Object.entries(rec).sort((a, b) => b[1].kg - a[1].kg).slice(0, 5);
-  }, [sessioni]);
-
-  const latestPeso = [...peso].sort((a, b) => a.data.localeCompare(b.data)).pop() || null;
-  const nextDays = [1, 3, 5]; // Lun/Mer/Ven
-
-  const getPasti = (day) => {
-    const plan = pianoAttivo(piani);
-    return plan ? pastiPerGiorno(plan, day) : [];
-  };
-  const getWorkouts = (day) => schede.filter(s => Array.isArray(s.giorni) && s.giorni.includes(day));
-
-  return (
-    <>
-      <div style={{ paddingTop: 20, paddingBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
-        <div><h1 className="pt">RENATO'S<br />WORKOUT</h1><p className="sub">{new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })}</p></div>
-        <button className="bico" onClick={onToggleDark} title="Cambia tema">{dark ? <IcSun /> : <IcMoon />}</button>
-      </div>
-
-      <div className="hg" style={{ marginTop: 14 }}>
-        {[[sessioni.length, "Sessioni"], [schede.length, "Schede"], [Math.round(totKg / 1000) || 0, "Ton. totali"], [avgMin, "Min avg"]].map(([v, l]) => (
-          <div key={l} className="hsc"><div className="hsv">{v}</div><div className="hsl">{l}</div></div>
-        ))}
-      </div>
-
-      {piani.length > 0 && (() => {
-        const todayIso = new Date().toISOString().slice(0, 10);
-        const todayLog = logDieta.find(l => (l.data || "").slice(0, 10) === todayIso);
-        const kcalOggi = todayLog ? (todayLog.totKcalConsumate || todayLog.kcalTotale || todayLog.kcal || 0) : 0;
-        const plan = pianoAttivo(piani, todayIso);
-        const todayDow = ((new Date().getDay() + 6) % 7) + 1;
-        const tipoOggi = todayLog?.tipoGiorno || plan?.giorniTipo?.[todayDow];
-        const target = targetKcalPiano(plan, tipoOggi) || settings?.targetKcal || 1420;
-        const perc = Math.min(Math.round((kcalOggi / target) * 100), 120);
-        const barColor = perc > 110 ? "var(--dan)" : perc > 100 ? "#FF9500" : "var(--ok)";
-        return (
-          <div className="card" style={{ marginBottom: 12, padding: "12px 16px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".08em" }}>🍽 KCAL OGGI{TIPI_GIORNO[tipoOggi] ? ` · ${TIPI_GIORNO[tipoOggi]}` : ""}</div>
-              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, color: barColor, letterSpacing: ".05em" }}>
-                {kcalOggi} <span style={{ fontSize: 12, color: "var(--dim)", fontFamily: "'Barlow',sans-serif", fontWeight: 400 }}>/ {target}</span>
-              </div>
-            </div>
-            <div style={{ height: 6, background: "var(--bdr)", borderRadius: 3, overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${Math.min(perc, 100)}%`, background: barColor, borderRadius: 3, transition: "width .4s" }} />
-            </div>
-            <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 5 }}>
-              {perc >= 100 ? `Target raggiunto ✓` : `${target - kcalOggi} kcal rimanenti`}
-            </div>
-          </div>
-        );
-      })()}
-
-      {suggested && (
-        <div className="card" style={{ background: "var(--acc2)", borderColor: "var(--acc)", marginBottom: 12 }}>
-          <div style={{ fontSize: 11, color: "var(--acc)", fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", marginBottom: 4 }}>📅 Oggi — {GG[todayIdx]}</div>
-          <div className="sd">{suggested.nome}</div>
-          <button className="btn btn-p btn-full" style={{ marginTop: 10 }} onClick={() => onStart(suggested)}><IcPlay /> ALLENA ORA</button>
-        </div>
-      )}
-
-      {schede.length > 0
-        ? <button className="btn btn-p btn-full" style={{ fontSize: 15, padding: "14px", marginBottom: 10 }} onClick={() => setPick(true)}><IcPlay /> INIZIA ALLENAMENTO</button>
-        : <button className="btn btn-s btn-full" style={{ marginBottom: 10 }} onClick={onGoSchede}><IcPlus /> CREA LA TUA PRIMA SCHEDA</button>
-      }
-      {records.length > 0 && (
-        <>
-          <div className="st">🏆 RECORD PERSONALI</div>
-          <div className="card" style={{ padding: "8px 16px", marginBottom: 14 }}>
-            {records.map(([nome, r]) => (
-              <div key={nome} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--bdr)" }}>
-                <div><div style={{ fontWeight: 600, fontSize: 14 }}>{nome}</div><div style={{ fontSize: 11, color: "var(--dim)" }}>{fmtShort(r.data)}</div></div>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, color: "var(--acc)", letterSpacing: ".05em" }}>{r.kg} kg</div>
-                  <div style={{ fontSize: 11, color: "var(--dim)" }}>1RM ~{epley(r.kg, r.reps)} kg</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      {last && (
-        <>
-          <div className="st">ULTIMO ALLENAMENTO</div>
-          <div className="card" style={{ borderLeft: "3px solid var(--acc)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <div><div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 20, letterSpacing: ".05em" }}>{last.schedaNome}</div><div style={{ fontSize: 12, color: "var(--dim)" }}>{fmtDate(last.data)}</div></div>
-              <div className="tag tag-a">{last.durata || 0}min</div>
-            </div>
-            <div style={{ display: "flex", gap: 12, marginTop: 10, flexWrap: "wrap" }}>
-              {last.esercizi.slice(0, 4).map(e => <span key={e.esercizioId || e.nome} style={{ fontSize: 12, color: "var(--dim)" }}><b style={{ color: "var(--txt)" }}>{e.nome}</b> {e.serie.filter(s => s.completata).length}/{e.serie.length}</span>)}
-            </div>
-          </div>
-        </>
-      )}
-
-      {pick && (
-        <div className="mov" onClick={() => setPick(false)}>
-          <div className="mod" onClick={e => e.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
-              <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, letterSpacing: ".05em" }}>SCEGLI SCHEDA</span>
-              <button className="bico" onClick={() => setPick(false)}><IcClose /></button>
-            </div>
-            {schede.map(sc => (
-              <div key={sc.id} className="sc" onClick={() => { setPick(false); onStart(sc); }}>
-                <div className="sd">{sc.nome}</div>
-                <div className="sdn">{sc.giorni?.length > 0 ? sc.giorni.map(g => GG[g]).join(", ") + " · " : ""}{sc.esercizi?.length || 0} esercizi</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </>
   );
 }
 
@@ -568,7 +575,7 @@ function Schede({ schede, onNew, onEdit, onDelete, onStart }) {
         <div key={sc.id} className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 24, letterSpacing: ".05em" }}>{sc.nome}</div>
+              <div style={{ fontFamily: "var(--fd)", fontSize: 24, letterSpacing: ".05em" }}>{sc.nome}</div>
               {sc.giorni?.length > 0 && <div style={{ display: "flex", gap: 5, marginTop: 5 }}>{sc.giorni.sort((a, b) => a - b).map(g => <span key={g} className="tag tag-a">{GG[g]}</span>)}</div>}
               <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 5 }}>{sc.esercizi?.length || 0} esercizi</div>
             </div>
@@ -725,7 +732,7 @@ function Allenamento({ scheda, sessioni, onComplete, onBack }) {
           <button className="bb" style={{ margin: 0 }} onClick={() => {
             setConfirmState({ msg: "Interrompere l'allenamento?", onConfirm: () => { onBack(); } });
           }}><IcClose /> ESCI</button>
-          <div className="pls" style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 13, color: "var(--acc)", letterSpacing: ".1em" }}>● LIVE</div>
+          <div className="pls" style={{ fontFamily: "var(--fd)", fontSize: 13, color: "var(--acc)", letterSpacing: ".1em" }}>● LIVE</div>
         </div>
         <div className="wh">
           <div className="wt">{scheda.nome}</div>
@@ -757,7 +764,7 @@ function Allenamento({ scheda, sessioni, onComplete, onBack }) {
                   <div><input className="sinp" type="number" min="0" step="0.5" placeholder="—" value={s.kg} onChange={e => updSet(ei, si, "kg", e.target.value)} /></div>
                   <div><input className="sinp" type="text" placeholder={s.reps} value={s.reps} onChange={e => updSet(ei, si, "reps", e.target.value)} /></div>
                   <div style={{ textAlign: "center" }}>
-                    <button onClick={() => setRpeOpen(rpeOpen?.ei === ei && rpeOpen?.si === si ? null : { ei, si })} style={{ background: s.rpe ? "var(--acc2)" : "var(--card)", border: `1px solid ${s.rpe ? "var(--acc)" : "var(--bdr)"}`, borderRadius: 6, color: s.rpe ? "var(--acc)" : "var(--mut)", fontSize: 12, fontWeight: 700, width: "100%", height: 32, cursor: "pointer", fontFamily: "'Barlow',sans-serif" }}>{s.rpe || "—"}</button>
+                    <button onClick={() => setRpeOpen(rpeOpen?.ei === ei && rpeOpen?.si === si ? null : { ei, si })} style={{ background: s.rpe ? "var(--acc2)" : "var(--card)", border: `1px solid ${s.rpe ? "var(--acc)" : "var(--bdr)"}`, borderRadius: 6, color: s.rpe ? "var(--acc)" : "var(--mut)", fontSize: 12, fontWeight: 700, width: "100%", height: 32, cursor: "pointer", fontFamily: "inherit" }}>{s.rpe || "—"}</button>
                   </div>
                   <div style={{ textAlign: "center" }}>
                     <button className={`sck${s.completata ? " ok" : ""}`} onClick={() => completeSet(ei, si)}>{s.completata && <IcCheck />}</button>
@@ -890,16 +897,16 @@ function SessioneDetail({ sessione: s, sessioni, onBack }) {
             const prevMax = Math.max(...prev.serie.filter(sr => sr.completata && sr.kg).map(sr => +sr.kg), 0);
             return (
               <div key={ex.nome} className="card" style={{ marginBottom: 8, padding: 12 }}>
-                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 18, letterSpacing: ".05em", marginBottom: 8 }}>{ex.nome}</div>
+                <div style={{ fontFamily: "var(--fd)", fontSize: 18, letterSpacing: ".05em", marginBottom: 8 }}>{ex.nome}</div>
                 <div className="cmp-grid">
                   <div className="cmp-card">
                     <div className="cmp-h">QUESTA SESSIONE</div>
-                    <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 26, color: "var(--acc)" }}>{curMax}kg</div>
+                    <div style={{ fontFamily: "var(--fd)", fontSize: 26, color: "var(--acc)" }}>{curMax}kg</div>
                     <div style={{ fontSize: 11, color: "var(--dim)" }}>{ex.serie.filter(sr => sr.completata).length} serie · vol {Math.round(curVol)}</div>
                   </div>
                   <div className="cmp-card">
                     <div className="cmp-h">PRECEDENTE</div>
-                    <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 26, color: "var(--mut)" }}>{prevMax}kg</div>
+                    <div style={{ fontFamily: "var(--fd)", fontSize: 26, color: "var(--mut)" }}>{prevMax}kg</div>
                     <div style={{ fontSize: 11, color: "var(--dim)" }}>{prev.serie.filter(sr => sr.completata).length} serie · vol {Math.round(prevVol)}</div>
                   </div>
                 </div>
@@ -929,7 +936,7 @@ function SessioneDetail({ sessione: s, sessioni, onBack }) {
             </div>
             {ex.serie.map((sr, j) => (
               <div key={j} style={{ display: "grid", gridTemplateColumns: "22px 1fr 1fr 1fr 1fr", gap: 4, padding: "5px 0", borderTop: "1px solid var(--bdr)", alignItems: "center" }}>
-                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 18, color: sr.completata ? "var(--acc)" : "var(--mut)" }}>{j + 1}</div>
+                <div style={{ fontFamily: "var(--fd)", fontSize: 18, color: sr.completata ? "var(--acc)" : "var(--mut)" }}>{j + 1}</div>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>{sr.kg || "—"}</div>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>{sr.reps || "—"}</div>
                 <div style={{ fontSize: 12, color: sr.rpe >= 8 ? "var(--dan)" : sr.rpe >= 6 ? "#FF9F0A" : "var(--dim)" }}>{sr.rpe || "—"}</div>
@@ -1035,7 +1042,7 @@ function RecordTab({ sessioni }) {
             <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{fmtDate(r.data)} · {r.schedaNome}</div>
           </div>
           <div style={{ textAlign: "right" }}>
-            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 28, color: "var(--acc)", letterSpacing: ".05em", lineHeight: 1 }}>{r.kg}kg</div>
+            <div style={{ fontFamily: "var(--fd)", fontSize: 28, color: "var(--acc)", letterSpacing: ".05em", lineHeight: 1 }}>{r.kg}kg</div>
             <div style={{ fontSize: 11, color: "var(--dim)" }}>1RM ~{epley(r.kg, r.reps)}kg</div>
           </div>
         </div>
@@ -1198,11 +1205,11 @@ function Peso({ peso, onAdd, onDelete }) {
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }} onClick={() => setExpanded(isExp ? null : p.id)}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
                     <div>
-                      <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 28, color: "var(--acc)", lineHeight: 1 }}>{p.valore} <span style={{ fontSize: 13, color: "var(--dim)", fontFamily: "'Barlow',sans-serif", fontWeight: 400 }}>kg</span></div>
+                      <div style={{ fontFamily: "var(--fd)", fontSize: 28, color: "var(--acc)", lineHeight: 1 }}>{p.valore} <span style={{ fontSize: 13, color: "var(--dim)", fontFamily: "inherit", fontWeight: 400 }}>kg</span></div>
                       <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 1 }}>{fmtDate(p.data)}</div>
                     </div>
                     {p.punteggio != null && <div style={{ background: "var(--acc2)", borderRadius: 10, padding: "4px 10px", textAlign: "center", flexShrink: 0 }}>
-                      <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, color: "var(--acc)", lineHeight: 1 }}>{p.punteggio}</div>
+                      <div style={{ fontFamily: "var(--fd)", fontSize: 22, color: "var(--acc)", lineHeight: 1 }}>{p.punteggio}</div>
                       <div style={{ fontSize: 9, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".06em" }}>score</div>
                     </div>}
                     {p.tipologia && <span style={{ fontSize: 11, fontWeight: 700, background: "var(--bdr)", padding: "3px 9px", borderRadius: 20, flexShrink: 0 }}>{p.tipologia}</span>}
@@ -1333,7 +1340,7 @@ function Peso({ peso, onAdd, onDelete }) {
 }
 
 // ─── PROFILO PERSONALE ────────────────────────────────────
-function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLogout, misure = [], onAddMisura, onDelMisura }) {
+function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLogout, misure = [], onAddMisura, onDelMisura }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(fmtIso(new Date()));
@@ -1361,7 +1368,6 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLo
   // Circonferenze corporee
   const [showCircModal, setShowCircModal] = useState(false);
   const [circForm, setCircForm] = useState({});
-  const [testingNotif, setTestingNotif] = useState(false);
 
 
   const CIRC_FIELDS = [
@@ -1518,7 +1524,7 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLo
               : "👤"}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 24, letterSpacing: ".05em", lineHeight: 1, marginBottom: 4 }}>
+            <div style={{ fontFamily: "var(--fd)", fontSize: 24, letterSpacing: ".05em", lineHeight: 1, marginBottom: 4 }}>
               {nome || "Il tuo profilo"}
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -1608,7 +1614,7 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLo
             </div>
             {health && (
               <div style={{ textAlign: "center" }}>
-                {health.score != null && <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 36, color: health.color, lineHeight: 1 }}>{health.score}</div>}
+                {health.score != null && <div style={{ fontFamily: "var(--fd)", fontSize: 36, color: health.color, lineHeight: 1 }}>{health.score}</div>}
                 <div style={{ fontSize: 11, fontWeight: 700, color: health.color, textTransform: "uppercase", letterSpacing: ".08em", padding: "3px 10px", borderRadius: 20, background: `${health.color}22`, marginTop: 2 }}>{health.label}</div>
               </div>
             )}
@@ -1616,12 +1622,12 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLo
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderTop: "1px solid var(--bdr)" }}>
             <div>
               <div style={{ fontSize: 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".06em", fontWeight: 700 }}>Peso attuale</div>
-              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 28, color: "var(--acc)", lineHeight: 1 }}>{ultimoPeso.valore} <span style={{ fontSize: 13, color: "var(--dim)", fontFamily: "'Barlow',sans-serif", fontWeight: 400 }}>kg</span></div>
+              <div style={{ fontFamily: "var(--fd)", fontSize: 28, color: "var(--acc)", lineHeight: 1 }}>{ultimoPeso.valore} <span style={{ fontSize: 13, color: "var(--dim)", fontFamily: "inherit", fontWeight: 400 }}>kg</span></div>
             </div>
             {ultimoPeso.tipologia && <span style={{ fontSize: 12, fontWeight: 700, background: "var(--bdr)", padding: "4px 12px", borderRadius: 20 }}>{ultimoPeso.tipologia}</span>}
             {altezza && ultimoPeso.imc == null && (() => {
               const bmi = Math.round(ultimoPeso.valore / (altezza / 100) ** 2 * 10) / 10;
-              return <div style={{ textAlign: "right" }}><div style={{ fontSize: 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".06em", fontWeight: 700 }}>BMI calc.</div><div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, color: "var(--acc)" }}>{bmi}</div></div>;
+              return <div style={{ textAlign: "right" }}><div style={{ fontSize: 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".06em", fontWeight: 700 }}>BMI calc.</div><div style={{ fontFamily: "var(--fd)", fontSize: 22, color: "var(--acc)" }}>{bmi}</div></div>;
             })()}
           </div>
 
@@ -1632,7 +1638,7 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLo
                 <div key={m.vk} style={{ background: "var(--card)", borderRadius: 8, padding: "8px 10px", border: "1px solid var(--bdr)" }}>
                   <div style={{ fontSize: 10, color: "var(--dim)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 2 }}>{m.icon} {m.label}</div>
                   <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 4 }}>
-                    <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 20, color: "var(--txt)" }}>{ultimoPeso[m.vk]}<span style={{ fontSize: 10, color: "var(--dim)", marginLeft: 2 }}>{m.unit}</span></div>
+                    <div style={{ fontFamily: "var(--fd)", fontSize: 20, color: "var(--txt)" }}>{ultimoPeso[m.vk]}<span style={{ fontSize: 10, color: "var(--dim)", marginLeft: 2 }}>{m.unit}</span></div>
                     <StatusBadge label={ultimoPeso[m.sk]} />
                   </div>
                 </div>
@@ -1654,7 +1660,7 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLo
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
               {[[`${first.valore} kg`, "Inizio", null], [`${last.valore} kg`, "Attuale", "var(--acc)"], [`${diff > 0 ? "+" : ""}${diff} kg`, "Variazione", good ? "var(--ok)" : "var(--dan)"]].map(([v, l, c]) => (
                 <div key={l} style={{ textAlign: "center" }}>
-                  <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, color: c || "var(--txt)", lineHeight: 1 }}>{v}</div>
+                  <div style={{ fontFamily: "var(--fd)", fontSize: 22, color: c || "var(--txt)", lineHeight: 1 }}>{v}</div>
                   <div style={{ fontSize: 10, color: "var(--mut)", textTransform: "uppercase", letterSpacing: ".07em", marginTop: 2 }}>{l}</div>
                 </div>
               ))}
@@ -1681,8 +1687,8 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLo
               return (
                 <div key={f.key} style={{ background: st?.bg || "var(--sur)", borderRadius: 8, padding: "8px 10px", border: `1px solid ${st?.color || "var(--bdr)"}` }}>
                   <div style={{ fontSize: 9, color: "var(--mut)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 2 }}>{f.icon} {f.label}</div>
-                  <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 20, color: st?.color || "var(--acc)", letterSpacing: ".04em", lineHeight: 1 }}>
-                    {currentCirc[f.key]} <span style={{ fontSize: 10, color: "var(--dim)", fontFamily: "'Barlow',sans-serif", fontWeight: 400 }}>cm</span>
+                  <div style={{ fontFamily: "var(--fd)", fontSize: 20, color: st?.color || "var(--acc)", letterSpacing: ".04em", lineHeight: 1 }}>
+                    {currentCirc[f.key]} <span style={{ fontSize: 10, color: "var(--dim)", fontFamily: "inherit", fontWeight: 400 }}>cm</span>
                   </div>
                   {st && (
                     <div style={{ marginTop: 4 }}>
@@ -1703,8 +1709,6 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLo
         )}
       </div>
 
-      {/* STORICO CORPOREO */}
-      <StoricoCorporeo misure={misure} onAdd={onAddMisura} onDel={onDelMisura} sesso={settings.sesso || "M"} />
 
       {/* FOTO PROGRESSO */}
       {ultimeFoto && (
@@ -1767,51 +1771,17 @@ function Profilo({ settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLo
         </div>
       )}
 
-      {/* NOTIFICHE */}
-      <div className="card" style={{ marginBottom: 12 }}>
-        <div className="st" style={{ marginBottom: 10 }}>🔔 NOTIFICHE GIORNALIERE</div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: settings.notifiche_attive ? 12 : 0 }}>
-          <div style={{ fontSize: 13, color: "var(--dim)" }}>Promemoria quotidiano</div>
-          <button
-            className="btn btn-s"
-            style={{ padding: "6px 14px", fontSize: 12, background: settings.notifiche_attive ? "var(--acc2)" : undefined, color: settings.notifiche_attive ? "var(--acc)" : undefined, borderColor: settings.notifiche_attive ? "var(--acc)" : undefined }}
-            onClick={() => onSave({ ...settings, notifiche_attive: !settings.notifiche_attive })}
-          >
-            {settings.notifiche_attive ? "ATTIVE" : "DISATTIVE"}
-          </button>
+      {/* TEMA */}
+      <div className="card" style={{ marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <div style={{ fontWeight: 700 }}>Tema</div>
+          <div style={{ fontSize: 13, color: "var(--dim)" }}>{dark ? "Scuro" : "Chiaro"}</div>
         </div>
-        {settings.notifiche_attive && (
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <div style={{ flex: 1 }}>
-              <label className="lbl">Orario</label>
-              <input
-                className="inp"
-                type="time"
-                value={settings.notifiche_orario || '08:00'}
-                onChange={e => onSave({ ...settings, notifiche_orario: e.target.value })}
-              />
-            </div>
-            <div style={{ paddingTop: 18 }}>
-              <button
-                className="btn btn-s"
-                style={{ fontSize: 12 }}
-                disabled={testingNotif}
-                onClick={async () => {
-                  setTestingNotif(true);
-                  const granted = await requestNotifPermission();
-                  if (!granted) { alert("Permesso notifiche negato"); setTestingNotif(false); return; }
-                  const ok = await testNotifica();
-                  if (ok) alert("Notifica in arrivo tra 20 secondi. Chiudi l'app!");
-                  else alert("Errore: controlla i permessi dell'app");
-                  setTestingNotif(false);
-                }}
-              >
-                {testingNotif ? "..." : "TEST"}
-              </button>
-            </div>
-          </div>
-        )}
+        <button className="btn btn-s" onClick={onToggleDark}>{dark ? <IcSun /> : <IcMoon />} {dark ? "Passa a chiaro" : "Passa a scuro"}</button>
       </div>
+
+      {/* NOTIFICHE */}
+      <NotificheSettings settings={settings} onSave={onSave} ctx={notifCtx} />
 
       {/* EDIT MODAL */}
       {editing && (
@@ -1878,7 +1848,7 @@ function BodyCompChart({ data }) {
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", display: "block" }}>
       {yTicks.map((v, i) => <line key={i} x1={PL} x2={W - PR} y1={yS(v)} y2={yS(v)} stroke="var(--bdr)" strokeWidth=".8" />)}
-      {yTicks.map((v, i) => <text key={i} x={PL - 4} y={yS(v) + 3} textAnchor="end" fill="var(--mut)" fontSize="7" fontFamily="Barlow,sans-serif">{v}</text>)}
+      {yTicks.map((v, i) => <text key={i} x={PL - 4} y={yS(v) + 3} textAnchor="end" fill="var(--mut)" fontSize="7" fontFamily="inherit">{v}</text>)}
       {SERIES.map(({ key, color }) => {
         const pts = data.map((d, i) => d[key] != null ? `${xS(i).toFixed(1)},${yS(d[key]).toFixed(1)}` : null).filter(Boolean);
         if (pts.length < 2) return null;
@@ -1888,15 +1858,15 @@ function BodyCompChart({ data }) {
         data.map((d, i) => d[key] == null ? null : (
           <g key={`${key}-${i}`}>
             <circle cx={xS(i)} cy={yS(d[key])} r="4.5" fill={color} stroke="var(--bg)" strokeWidth="1.5" />
-            <text x={xS(i)} y={yS(d[key]) - 9} textAnchor="middle" fill={color} fontSize="8.5" fontFamily="Barlow,sans-serif" fontWeight="700">{d[key]}</text>
+            <text x={xS(i)} y={yS(d[key]) - 9} textAnchor="middle" fill={color} fontSize="8.5" fontFamily="inherit" fontWeight="700">{d[key]}</text>
           </g>
         ))
       )}
       {data.map((d, i) => (
         <g key={`x-${i}`}>
           <line x1={xS(i)} y1={PT + iH + 3} x2={xS(i)} y2={PT + iH + 8} stroke="var(--bdr)" strokeWidth=".8" />
-          <text x={xS(i)} y={H - PB + 14} textAnchor="middle" fill="var(--dim)" fontSize="7.5" fontFamily="Barlow,sans-serif" fontWeight="700">{d.visita_label || `V${i + 1}`}</text>
-          <text x={xS(i)} y={H - PB + 25} textAnchor="middle" fill="var(--mut)" fontSize="7" fontFamily="Barlow,sans-serif">{fmtShort(d.data)}</text>
+          <text x={xS(i)} y={H - PB + 14} textAnchor="middle" fill="var(--dim)" fontSize="7.5" fontFamily="inherit" fontWeight="700">{d.visita_label || `V${i + 1}`}</text>
+          <text x={xS(i)} y={H - PB + 25} textAnchor="middle" fill="var(--mut)" fontSize="7" fontFamily="inherit">{fmtShort(d.data)}</text>
         </g>
       ))}
     </svg>
@@ -1979,8 +1949,8 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
               return (
                 <div key={m.label} style={{ background: "var(--sur)", borderRadius: 10, padding: "10px 8px", border: "1px solid var(--bdr)", textAlign: "center" }}>
                   <div style={{ fontSize: 9, color: "var(--mut)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 }}>{m.label}</div>
-                  <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, color: m.color, lineHeight: 1 }}>
-                    {m.last ?? "—"}<span style={{ fontSize: 9, color: "var(--dim)", fontFamily: "Barlow,sans-serif", fontWeight: 400, marginLeft: 2 }}>{m.unit}</span>
+                  <div style={{ fontFamily: "var(--fd)", fontSize: 22, color: m.color, lineHeight: 1 }}>
+                    {m.last ?? "—"}<span style={{ fontSize: 9, color: "var(--dim)", fontFamily: "inherit", fontWeight: 400, marginLeft: 2 }}>{m.unit}</span>
                   </div>
                   {d && <div style={{ fontSize: 11, fontWeight: 700, color: d.color, marginTop: 3 }}>{d.d} {m.unit}</div>}
                 </div>
@@ -2051,7 +2021,7 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
             <div className="st" style={{ marginBottom: 10 }}>VALUTAZIONE</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
               {[
-                { label: "% Grasso corporeo", right: <><span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 18, color: bfRating.color, marginRight: 7 }}>{bfPct}%</span><span style={{ fontSize: 9, fontWeight: 700, background: bfRating.bg, color: bfRating.color, padding: "2px 8px", borderRadius: 20 }}>{bfRating.label}</span></> },
+                { label: "% Grasso corporeo", right: <><span style={{ fontFamily: "var(--fd)", fontSize: 18, color: bfRating.color, marginRight: 7 }}>{bfPct}%</span><span style={{ fontSize: 9, fontWeight: 700, background: bfRating.bg, color: bfRating.color, padding: "2px 8px", borderRadius: 20 }}>{bfRating.label}</span></> },
                 qualita ? { label: "Qualità del calo", right: <><span style={{ fontSize: 11, color: "var(--dim)", marginRight: 7 }}>{qualita.desc}</span><span style={{ fontSize: 9, fontWeight: 700, background: qualita.bg, color: qualita.color, padding: "2px 8px", borderRadius: 20 }}>{qualita.label}</span></> } : null,
                 ffmRating ? { label: "Massa magra (FFM)", right: <span style={{ fontSize: 9, fontWeight: 700, background: ffmRating.bg, color: ffmRating.color, padding: "2px 8px", borderRadius: 20 }}>{ffmRating.label}</span> } : null,
                 vitaSt && last.vita ? { label: `📏 Vita — ${last.vita} cm`, right: <span style={{ fontSize: 9, fontWeight: 700, background: vitaSt.bg, color: vitaSt.color, padding: "2px 8px", borderRadius: 20 }}>{vitaSt.label}</span> } : null,
@@ -2089,7 +2059,7 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
           <div key={m.id} className="card" style={{ marginBottom: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
               <div>
-                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 21, letterSpacing: ".05em", lineHeight: 1 }}>
+                <div style={{ fontFamily: "var(--fd)", fontSize: 21, letterSpacing: ".05em", lineHeight: 1 }}>
                   {m.visita_label || `Visita ${sorted.length - idx}`}
                 </div>
                 <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{fmtDate(m.data)}</div>
@@ -2110,7 +2080,7 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
               ].filter(Boolean).filter(x => x.v != null).map(({ label, v, unit, color, delta: d }) => (
                 <div key={label} style={{ flex: 1, background: "var(--sur)", borderRadius: 8, padding: "8px 6px", border: "1px solid var(--bdr)", textAlign: "center" }}>
                   <div style={{ fontSize: 9, color: "var(--mut)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em" }}>{label}</div>
-                  <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 20, color, lineHeight: 1.1 }}>{v}</div>
+                  <div style={{ fontFamily: "var(--fd)", fontSize: 20, color, lineHeight: 1.1 }}>{v}</div>
                   <div style={{ fontSize: 8, color: "var(--mut)" }}>{unit}</div>
                   {d && <div style={{ fontSize: 9, fontWeight: 700, color: d.color }}>{d.d}</div>}
                 </div>
@@ -2132,8 +2102,8 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
                         <div key={f.key} style={{ background: st?.bg || "var(--sur)", borderRadius: 8, padding: "7px 9px", border: `1px solid ${st?.color || "var(--bdr)"}` }}>
                           <div style={{ fontSize: 9, color: "var(--mut)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em" }}>{f.icon} {f.label}</div>
                           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 2 }}>
-                            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 18, color: st?.color || "var(--acc)", letterSpacing: ".04em" }}>
-                              {m[f.key]}<span style={{ fontSize: 9, color: "var(--dim)", fontFamily: "Barlow,sans-serif", fontWeight: 400, marginLeft: 2 }}>cm</span>
+                            <div style={{ fontFamily: "var(--fd)", fontSize: 18, color: st?.color || "var(--acc)", letterSpacing: ".04em" }}>
+                              {m[f.key]}<span style={{ fontSize: 9, color: "var(--dim)", fontFamily: "inherit", fontWeight: 400, marginLeft: 2 }}>cm</span>
                             </div>
                             {d && <div style={{ fontSize: 9, fontWeight: 700, color: d.color }}>{d.d}</div>}
                           </div>
@@ -2214,8 +2184,7 @@ function MisuraModal({ onSave, onClose }) {
 }
 
 // ─── DIETA: PIANI ALIMENTARI ──────────────────────────────
-function PianiAlimentari({ piani, logDieta, onNew, onEdit, onDelete, onLog, settings, spese = [], onSaveSpesa, onDelSpesa }) {
-  const [stab, setStab] = useState("piani");
+function PianiAlimentari({ piani, logDieta, onNew, onEdit, onDelete, onLog, settings, spese = [], onSaveSpesa, onDelSpesa, stab, setStab, acquaFull }) {
   const [confirmState, setConfirmState] = useState(null);
 
   return (
@@ -2232,9 +2201,10 @@ function PianiAlimentari({ piani, logDieta, onNew, onEdit, onDelete, onLog, sett
       </div>
 
       <div className="stab-row">
-        <button className={`stab${stab === "piani" ? " on" : ""}`} onClick={() => setStab("piani")}>📋 PIANI</button>
-        <button className={`stab${stab === "storico" ? " on" : ""}`} onClick={() => setStab("storico")}>📅 STORICO</button>
-        <button className={`stab${stab === "spesa" ? " on" : ""}`} onClick={() => setStab("spesa")}>🛒 SPESA</button>
+        <button className={`stab${stab === "piani" ? " on" : ""}`} onClick={() => setStab("piani")}>Piani</button>
+        <button className={`stab${stab === "storico" ? " on" : ""}`} onClick={() => setStab("storico")}>Storico</button>
+        <button className={`stab${stab === "spesa" ? " on" : ""}`} onClick={() => setStab("spesa")}>Spesa</button>
+        <button className={`stab${stab === "acqua" ? " on" : ""}`} onClick={() => setStab("acqua")}>Acqua</button>
       </div>
 
       {stab === "piani" && (
@@ -2253,7 +2223,7 @@ function PianiAlimentari({ piani, logDieta, onNew, onEdit, onDelete, onLog, sett
             <div key={p.id} className="card" style={{ marginBottom: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 22, letterSpacing: ".05em" }}>{p.nome}</div>
+                  <div style={{ fontFamily: "var(--fd)", fontSize: 22, letterSpacing: ".05em" }}>{p.nome}</div>
                   <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 4 }}>
                     {p.durataGiorni || 0} giorni · {p.pasti?.length || 0} pasti/giorno
                   </div>
@@ -2278,6 +2248,8 @@ function PianiAlimentari({ piani, logDieta, onNew, onEdit, onDelete, onLog, sett
           ))}
         </>
       )}
+
+      {stab === "acqua" && acquaFull}
 
       {stab === "spesa" && (
         <ListaSpesa piani={piani} spese={spese} onSave={onSaveSpesa} onDelete={onDelSpesa} />
@@ -2447,7 +2419,7 @@ function StoricoDieta({ logDieta, piani, onLog, targetKcal = 1420 }) {
           <div key={g.day} className="card" style={{ marginBottom: 10, padding: 0, overflow: "hidden", borderColor: isToday ? "var(--ok)" : "var(--bdr)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", cursor: "pointer" }} onClick={() => setSelDay(isOpen ? null : g.day)}>
               <div>
-                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 16, letterSpacing: ".05em", color: isToday ? "var(--ok)" : "var(--txt)" }}>
+                <div style={{ fontFamily: "var(--fd)", fontSize: 16, letterSpacing: ".05em", color: isToday ? "var(--ok)" : "var(--txt)" }}>
                   {isToday ? "🟢 OGGI — " : ""}{dateLabel}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
@@ -2470,7 +2442,7 @@ function StoricoDieta({ logDieta, piani, onLog, targetKcal = 1420 }) {
                 <div style={{ background: "rgba(48,209,88,0.08)", border: "1px solid rgba(48,209,88,0.25)", borderRadius: 10, padding: "10px 14px", marginBottom: 12 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ok)", letterSpacing: ".06em", textTransform: "uppercase" }}>Totale giorno</span>
-                    <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 28, color: "var(--ok)", letterSpacing: ".05em" }}>
+                    <span style={{ fontFamily: "var(--fd)", fontSize: 28, color: "var(--ok)", letterSpacing: ".05em" }}>
                       {Math.round(+g.kcalTot || 0)} kcal
                     </span>
                   </div>
@@ -2515,7 +2487,7 @@ function StoricoDieta({ logDieta, piani, onLog, targetKcal = 1420 }) {
                               <div style={{ fontSize: 14, fontWeight: 600 }}>{p.nome || p.name || "Pasto"}</div>
                               {p.orario && <div style={{ fontSize: 11, color: "var(--mut)" }}>{p.orario}</div>}
                             </div>
-                            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 18, color: "var(--ok)", flexShrink: 0 }}>
+                            <div style={{ fontFamily: "var(--fd)", fontSize: 18, color: "var(--ok)", flexShrink: 0 }}>
                               {kcalPasto ? `${kcalPasto} kcal` : ""}
                             </div>
                           </div>
@@ -2532,7 +2504,7 @@ function StoricoDieta({ logDieta, piani, onLog, targetKcal = 1420 }) {
                                       </div>
                                     )}
                                   </div>
-                                  <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 16, color: "var(--acc)", flexShrink: 0 }}>
+                                  <div style={{ fontFamily: "var(--fd)", fontSize: 16, color: "var(--acc)", flexShrink: 0 }}>
                                     {al.kcal ? `${al.kcal} kcal` : ""}
                                   </div>
                                 </div>
@@ -2555,7 +2527,7 @@ function StoricoDieta({ logDieta, piani, onLog, targetKcal = 1420 }) {
                           <div style={{fontSize:14, fontWeight:600}}>{nomeEntry}</div>
                           {dataLabel ? <div style={{fontSize:11, color:'var(--dim)'}}>{dataLabel}</div> : null}
                         </div>
-                        <div style={{fontFamily:'Bebas Neue,cursive', fontSize:18, color:'var(--ok)'}}>
+                        <div style={{fontFamily:"var(--fd)", fontSize:18, color:'var(--ok)'}}>
                           {kcalEntry > 0 ? `${kcalEntry} kcal` : ''}
                         </div>
                       </div>
@@ -2577,7 +2549,7 @@ function StoricoDieta({ logDieta, piani, onLog, targetKcal = 1420 }) {
           return (
             <div key={g.day} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", borderBottom: "1px solid var(--bdr)" }}>
               <span style={{ color: "var(--dim)" }}>{label}</span>
-              <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 16, color: "var(--ok)" }}>
+              <span style={{ fontFamily: "var(--fd)", fontSize: 16, color: "var(--ok)" }}>
                 {g.kcalTot > 0 ? `${Math.round(+g.kcalTot || 0)} kcal` : "—"}
               </span>
             </div>
@@ -2728,7 +2700,7 @@ function PianoEdit({ piano: init, onSave, onBack }) {
           </div>
           <div style={{ textAlign: "right" }}>
             <div className="st">TOT. SETTIMANA</div>
-            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 24 }}>{totKcalSett} kcal</div>
+            <div style={{ fontFamily: "var(--fd)", fontSize: 24 }}>{totKcalSett} kcal</div>
           </div>
         </div>
 
@@ -2881,7 +2853,7 @@ function PastoEditCard({ pasto: p, pi, isAlt, altIndex, canMoveUp, canMoveDown, 
             </span>
           )}
           <div style={{
-            fontFamily: "'Bebas Neue',cursive", fontSize: 20, letterSpacing: ".05em",
+            fontFamily: "var(--fd)", fontSize: 20, letterSpacing: ".05em",
             color: isAlt ? "#FF9500" : "#30D158"
           }}>
             {p.nome}
@@ -3165,7 +3137,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
             <div style={{ fontSize: 12, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
               Giorno solare
             </div>
-            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 20, letterSpacing: '.06em' }}>
+            <div style={{ fontFamily: "var(--fd)", fontSize: 20, letterSpacing: '.06em' }}>
               {GIORNI_LABEL[selectedDay]} · {selectedDate}
             </div>
           </div>
@@ -3243,9 +3215,9 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                   <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4 }}>
                     Calorie giornata
                   </div>
-                  <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 42, color: balanceColor, lineHeight: 1, transition: 'color .3s' }}>
+                  <div style={{ fontFamily: "var(--fd)", fontSize: 42, color: balanceColor, lineHeight: 1, transition: 'color .3s' }}>
                     {totConsumate}
-                    <span style={{ fontSize: 16, color: 'var(--dim)', fontFamily: "'Barlow',sans-serif", fontWeight: 400, marginLeft: 6 }}>kcal</span>
+                    <span style={{ fontSize: 16, color: 'var(--dim)', fontFamily: "inherit", fontWeight: 400, marginLeft: 6 }}>kcal</span>
                   </div>
                   {totPreviste > 0 && (
                     <div style={{ fontSize: 12, color: 'var(--dim)', marginTop: 4 }}>target: {totPreviste} kcal</div>
@@ -3253,7 +3225,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                 </div>
                 {totPreviste > 0 && (
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 28, color: balanceColor }}>{percTarget}%</div>
+                    <div style={{ fontFamily: "var(--fd)", fontSize: 28, color: balanceColor }}>{percTarget}%</div>
                     <div style={{ fontSize: 10, color: 'var(--dim)' }}>del target</div>
                   </div>
                 )}
@@ -3326,12 +3298,12 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                         marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--bdr)'
                       }}>
                         <div style={{
-                          fontFamily: "'Bebas Neue',cursive", fontSize: 18, letterSpacing: '.05em',
+                          fontFamily: "var(--fd)", fontSize: 18, letterSpacing: '.05em',
                           color: tuttiMangiati ? '#30D158' : nessuno ? 'var(--dan)' : 'var(--txt)'
                         }}>
                           {pasto.nome} {tuttiMangiati ? '✓' : nessuno && group.type === 'single' ? '✗' : ''}
                         </div>
-                        <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: 15, color: 'var(--acc)' }}>
+                        <div style={{ fontFamily: "var(--fd)", fontSize: 15, color: 'var(--acc)' }}>
                           {pastoEaten > 0 ? `${pastoEaten} / ` : ''}{pastoKcal} kcal
                         </div>
                       </div>
@@ -3351,7 +3323,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                                   style={{
                                     padding: '6px 14px', borderRadius: 20, border: 'none',
                                     cursor: 'pointer', fontSize: 12, fontWeight: 700,
-                                    fontFamily: "'Barlow',sans-serif",
+                                    fontFamily: "inherit",
                                     background: isSelected ? '#FF9500' : 'var(--bdr)',
                                     color: isSelected ? '#fff' : 'var(--dim)',
                                     transition: 'all .15s'
@@ -3373,7 +3345,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                               padding: '4px 10px', borderRadius: 20, border: '1px solid var(--bdr)',
                               background: noteAperte[pasto.id] ? 'var(--bdr)' : 'transparent',
                               color: 'var(--dim)', fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                              fontFamily: "'Barlow',sans-serif"
+                              fontFamily: "inherit"
                             }}>
                             📝 Nota {noteAperte[pasto.id] ? '▴' : '▾'}
                           </button>
@@ -3396,7 +3368,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                               {+al.grammi > 0 && <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 1 }}>{al.grammi}g</div>}
                             </div>
                             <div style={{
-                              fontFamily: "'Bebas Neue',cursive", fontSize: 16,
+                              fontFamily: "var(--fd)", fontSize: 16,
                               color: eaten ? 'var(--dim)' : 'var(--acc)', flexShrink: 0,
                               textDecoration: eaten ? 'line-through' : 'none'
                             }}>
@@ -3483,7 +3455,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                       </div>
                     </div>
                     <div style={{
-                      fontFamily: "'Bebas Neue',cursive", fontSize: 16,
+                      fontFamily: "var(--fd)", fontSize: 16,
                       color: e.mangiato ? '#FF9500' : 'var(--mut)', flexShrink: 0,
                       textDecoration: e.mangiato ? 'none' : 'line-through'
                     }}>

@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Iron Log</string>
+    <string name="title_activity_main">Iron Log</string>
+    <string name="package_name">com.ironlog.app</string>
+    <string name="custom_url_scheme">com.ironlog.app</string>
+    <string name="widget_desc">Acqua e kcal di oggi: segna i ml con un tocco</string>
+</resources>
