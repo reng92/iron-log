@@ -67,7 +67,7 @@ export default function ListaSpesa({ piani, spese, onSave, onDelete }) {
   const totaleSpeso = chiuse.reduce((a, s) => a + (+s.importo || 0), 0);
 
   if (!piani.length) {
-    return <div className="emp"><div className="emp-ic">🛒</div><div className="emp-t">Nessun piano</div><p style={{ fontSize: 13 }}>Crea un piano alimentare per generare la lista della spesa</p></div>;
+    return <div className="emp"><div className="emp-ic"></div><div className="emp-t">Nessun piano</div><p style={{ fontSize: 13 }}>Crea un piano alimentare per generare la lista della spesa</p></div>;
   }
 
   return (
@@ -80,8 +80,8 @@ export default function ListaSpesa({ piani, spese, onSave, onDelete }) {
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12, alignItems: "end" }}>
           <div>
-            <div className="st" style={{ margin: 0 }}>PRESI</div>
-            <div style={{ fontFamily: "var(--fd)", fontSize: 28, color: nPresi && nPresi === voci.length ? "#30D158" : "var(--txt)" }}>
+            <div className="st" style={{ margin: 0 }}>Presi</div>
+            <div style={{ fontFamily: "var(--fd)", fontSize: 28, color: nPresi && nPresi === voci.length ? "var(--ok)" : "var(--txt)" }}>
               {nPresi} / {voci.length}
             </div>
           </div>
@@ -93,16 +93,16 @@ export default function ListaSpesa({ piani, spese, onSave, onDelete }) {
           </div>
         </div>
         <div style={{ height: 6, borderRadius: 3, background: "var(--bdr)", marginTop: 12, overflow: "hidden" }}>
-          <div style={{ height: "100%", width: `${voci.length ? (nPresi / voci.length) * 100 : 0}%`, background: "#30D158", transition: "width .2s" }} />
+          <div style={{ height: "100%", width: `${voci.length ? (nPresi / voci.length) * 100 : 0}%`, background: "var(--ok)", transition: "width .2s" }} />
         </div>
-        <div style={{ fontSize: 11, color: "var(--mut)", marginTop: 8 }}>
+        <div style={{ fontSize: 12, color: "var(--mut)", marginTop: 8 }}>
           {sessione ? `Spesa in corso dal ${fmtShort(sessione.data + "T12:00:00")}` : "Spunta un articolo per iniziare una nuova spesa"}
         </div>
       </div>
 
       {gruppi.map(([cat, items]) => (
         <div key={cat} style={{ marginBottom: 14 }}>
-          <div className="st" style={{ marginBottom: 6 }}>{cat.toUpperCase()}</div>
+          <div className="st" style={{ marginBottom: 6 }}>{cat}</div>
           <div className="card" style={{ padding: "4px 12px" }}>
             {items.map(v => {
               const preso = !!sessione?.presi?.[v.id];
@@ -114,9 +114,9 @@ export default function ListaSpesa({ piani, spese, onSave, onDelete }) {
                   <div style={{ flex: 1, minWidth: 0, opacity: preso ? .45 : 1, cursor: "pointer" }} onClick={() => togglePreso(v.id)}>
                     <div style={{ fontWeight: 600, fontSize: 13, textDecoration: preso ? "line-through" : "none" }}>{v.nome}</div>
                     {(v.uso || presoPrima[v.id]) && (
-                      <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 1 }}>
+                      <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 1 }}>
                         {v.uso}{v.uso && presoPrima[v.id] ? " · " : ""}
-                        {presoPrima[v.id] && <span style={{ color: "#30D158" }}>preso il {fmtShort(presoPrima[v.id] + "T12:00:00")}</span>}
+                        {presoPrima[v.id] && <span style={{ color: "var(--ok)" }}>preso il {fmtShort(presoPrima[v.id] + "T12:00:00")}</span>}
                       </div>
                     )}
                   </div>
@@ -145,8 +145,8 @@ export default function ListaSpesa({ piani, spese, onSave, onDelete }) {
       )}
 
       <div className="st" style={{ display: "flex", justifyContent: "space-between" }}>
-        <span>STORICO SPESE</span>
-        {chiuse.length > 0 && <span style={{ color: "var(--acc)" }}>TOTALE {eur(totaleSpeso)}</span>}
+        <span>Storico spese</span>
+        {chiuse.length > 0 && <span style={{ color: "var(--acc)" }}>Totale {eur(totaleSpeso)}</span>}
       </div>
       {chiuse.length === 0 ? (
         <div style={{ fontSize: 12, color: "var(--mut)", marginBottom: 20 }}>Nessuna spesa chiusa</div>
@@ -159,8 +159,8 @@ export default function ListaSpesa({ piani, spese, onSave, onDelete }) {
           <div key={s.id} className="card" style={{ marginBottom: 8, cursor: "pointer" }} onClick={() => setApriStorico(aperta ? null : s.id)}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 14 }}>🛒 {fmtShort(s.data + "T12:00:00")}</div>
-                <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>{fmtShort(s.data + "T12:00:00")}</div>
+                <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {n} articoli · {s.pianoNome || pianoS?.nome || "piano eliminato"}
                 </div>
               </div>

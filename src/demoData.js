@@ -45,11 +45,11 @@ export const DEMO = {
     },
   }],
   schede: [
-    { id: "s1", nome: "Push A", giorni: [0, 4], esercizi: new Array(6).fill(0).map((_, i) => ({ id: "e" + i, nome: "Esercizio " + (i + 1), serie: [] })) },
-    { id: "s2", nome: "Pull B", giorni: [2], esercizi: new Array(5).fill(0).map((_, i) => ({ id: "f" + i, nome: "Esercizio " + (i + 1), serie: [] })) },
+    { id: "s1", nome: "Push A", giorni: [0, 4], esercizi: ["Panca piana", "Spinte manubri inclinata", "Croci ai cavi", "Military press", "Alzate laterali", "French press"].map((nome, i) => ({ id: "e" + i, nome, serie: i < 2 ? 4 : 3, ripetizioni: i < 2 ? "6-8" : "10-12", pausa: i < 2 ? 120 : 75, note: i === 0 ? "Scapole addotte, piedi a terra" : "" })) },
+    { id: "s2", nome: "Pull B", giorni: [2], esercizi: ["Trazioni", "Rematore bilanciere", "Lat machine", "Curl manubri", "Face pull"].map((nome, i) => ({ id: "f" + i, nome, serie: 3, ripetizioni: "8-10", pausa: 90 })) },
     { id: "s3", nome: "Gambe", giorni: [6, 1, 3, 5].slice(0, 0), esercizi: [] },
   ],
-  sessioni: [-1, -3, -6].map((d, i) => ({ id: "ss" + i, data: iso(d), schedaNome: ["Push A", "Pull B", "Push A"][i], durata: 58 + i * 4, esercizi: [] })),
+  sessioni: [-1, -3, -6].map((d, i) => ({ id: "ss" + i, data: iso(d), schedaId: ["s1", "s2", "s1"][i], schedaNome: ["Push A", "Pull B", "Push A"][i], durata: 58 + i * 4, esercizi: i === 1 ? [] : [{ esercizioId: "e0", nome: "Panca piana", serie: [{ kg: 80, reps: 8, completata: true }, { kg: 80, reps: 7, completata: true }, { kg: 77.5, reps: 7, completata: true }, { kg: 75, reps: 8, completata: true }] }] })),
   peso: [-27, -20, -14, -10, -7, -3, -1].map((d, i) => ({ id: "w" + i, data: giorno(d), valore: [81.2, 80.6, 80.3, 79.9, 79.8, 79.4, 79.1][i] })),
   acqua: [
     { id: "a0", data: giorno(0), ml: 1500, voci: [{ ora: "08:10", ml: 750 }, { ora: "11:40", ml: 750 }] },

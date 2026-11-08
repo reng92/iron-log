@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 
-export default function LineChart({ data, color = "#1E90FF", height = 110 }) {
+export default function LineChart({ data, color = "var(--acc)", height = 110 }) {
   if (!data || data.length < 2) return (
     <div style={{ textAlign: "center", padding: "16px", color: "var(--mut)", fontSize: 12 }}>Almeno 2 rilevazioni per il grafico</div>
   );

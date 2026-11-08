@@ -7,8 +7,8 @@ export default function ConfirmModal({ message, onConfirm, onCancel }) {
         </div>
         <p style={{ fontSize: 14, color: "var(--dim)", marginBottom: 24 }}>{message}</p>
         <div style={{ display: "flex", gap: 10 }}>
-          <button className="btn btn-s" style={{ flex: 1 }} onClick={onCancel}>ANNULLA</button>
-          <button className="btn btn-p" style={{ flex: 1, background: "var(--dan)" }} onClick={onConfirm}>CONFERMA</button>
+          <button className="btn btn-s" style={{ flex: 1 }} onClick={onCancel}>Annulla</button>
+          <button className="btn btn-p" style={{ flex: 1, background: "var(--dan)" }} onClick={onConfirm}>Conferma</button>
         </div>
       </div>
     </div>

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { fmtIso } from "../utils";
 import { cfg, obiettivoAcqua } from "../notifications";
 
-const ACQUA_COL = "#32ADE6";
+const ACQUA_COL = "var(--wat)";
 
 // Borraccia stilizzata riempita in percentuale (0..1)
 function Bottle({ fill = 0, size = 30 }) {
@@ -44,7 +44,7 @@ export default function Acqua({ acqua = [], settings, onSaveSettings, onAdd, onU
       {quick.map(([ml, l, sub]) => (
         <button key={sub} className="btn btn-s" style={{ flex: 1, padding: "8px 4px", flexDirection: "column", gap: 0, lineHeight: 1.1 }} onClick={() => onAdd(iso, ml)}>
           <span style={{ fontSize: 14, fontWeight: 700, color: ACQUA_COL }}>{l}</span>
-          <span style={{ fontSize: 10, color: "var(--dim)", fontWeight: 400 }}>{sub}</span>
+          <span style={{ fontSize: 12, color: "var(--dim)", fontWeight: 400 }}>{sub}</span>
         </button>
       ))}
       <button className="btn btn-s" style={{ padding: "8px 10px" }} disabled={!giorno?.voci?.length} onClick={() => onUndo(iso)} title="Annulla ultima">↶</button>
@@ -54,8 +54,8 @@ export default function Acqua({ acqua = [], settings, onSaveSettings, onAdd, onU
   const Progress = (
     <>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".08em" }}>
-          💧 ACQUA {iso === oggi ? "OGGI" : new Date(iso + "T12:00").toLocaleDateString("it-IT", { weekday: "short", day: "numeric", month: "short" })}{palestra ? " · 🏋️ +extra" : ""}
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--dim)", letterSpacing: ".08em" }}>
+          Acqua {iso === oggi ? "di oggi" : new Date(iso + "T12:00").toLocaleDateString("it-IT", { weekday: "short", day: "numeric", month: "short" })}{palestra ? " · giorno palestra" : ""}
         </div>
         <div style={{ fontFamily: "var(--fd)", fontSize: 22, color: raggiunto ? "var(--ok)" : ACQUA_COL, letterSpacing: ".05em" }}>
           {bevuti} <span style={{ fontSize: 12, color: "var(--dim)", fontFamily: "inherit", fontWeight: 400 }}>/ {obiettivo} ml</span>
@@ -63,7 +63,7 @@ export default function Acqua({ acqua = [], settings, onSaveSettings, onAdd, onU
       </div>
       <div style={{ display: "flex", gap: 6, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 6 }}>
         {Array.from({ length: nBottiglie }, (_, i) => <Bottle key={i} fill={(bevuti - i * borr) / borr} />)}
-        <div style={{ fontSize: 11, color: "var(--dim)", marginLeft: 4, paddingBottom: 2 }}>
+        <div style={{ fontSize: 12, color: "var(--dim)", marginLeft: 4, paddingBottom: 2 }}>
           {raggiunto ? "Obiettivo raggiunto ✓" : `mancano ${obiettivo - bevuti} ml · ${perc}%`}
         </div>
       </div>
@@ -100,7 +100,7 @@ export default function Acqua({ acqua = [], settings, onSaveSettings, onAdd, onU
             <label className="lbl">Imposta totale del giorno (ml)</label>
             <input className="inp" type="number" inputMode="numeric" min="0" step="50" placeholder={String(bevuti || obiettivo)} value={totInput} onChange={e => setTotInput(e.target.value)} />
           </div>
-          <button className="btn btn-p" disabled={totInput === ""} onClick={() => { onSetTotal(iso, Math.max(0, Math.round(+totInput))); setTotInput(""); }}>SALVA</button>
+          <button className="btn btn-p" disabled={totInput === ""} onClick={() => { onSetTotal(iso, Math.max(0, Math.round(+totInput))); setTotInput(""); }}>Salva</button>
         </div>
         {giorno?.voci?.length > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
@@ -109,16 +109,16 @@ export default function Acqua({ acqua = [], settings, onSaveSettings, onAdd, onU
         )}
       </div>
 
-      <div className="st">📊 ULTIMI 7 GIORNI</div>
+      <div className="st">Ultimi 7 giorni</div>
       <div className="card" style={{ marginBottom: 12, display: "flex", alignItems: "flex-end", gap: 6, height: 130 }}>
         {giorni.map(g => {
           const ml = acqua.find(a => a.data === g)?.ml || 0;
           const ob = obiettivoAcqua(settings, g, ctx).ml;
           return (
             <button key={g} onClick={() => setIso(g)} style={{ flex: 1, background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, height: "100%", justifyContent: "flex-end", color: "var(--txt)" }}>
-              <span style={{ fontSize: 9, color: "var(--dim)" }}>{ml ? fmtL(ml) : ""}</span>
+              <span style={{ fontSize: 12, color: "var(--dim)" }}>{ml ? fmtL(ml) : ""}</span>
               <div style={{ width: "100%", maxWidth: 28, height: `${Math.max(3, (ml / maxMl) * 80)}px`, background: ml >= ob ? "var(--ok)" : ACQUA_COL, opacity: ml ? 1 : 0.25, borderRadius: 4, outline: g === iso ? "2px solid var(--acc)" : "none", outlineOffset: 2 }} />
-              <span style={{ fontSize: 10, color: g === iso ? "var(--acc)" : "var(--dim)", fontWeight: g === iso ? 700 : 400 }}>{new Date(g + "T12:00").toLocaleDateString("it-IT", { weekday: "narrow" })}</span>
+              <span style={{ fontSize: 12, color: g === iso ? "var(--acc)" : "var(--dim)", fontWeight: g === iso ? 700 : 400 }}>{new Date(g + "T12:00").toLocaleDateString("it-IT", { weekday: "narrow" })}</span>
             </button>
           );
         })}
@@ -126,8 +126,8 @@ export default function Acqua({ acqua = [], settings, onSaveSettings, onAdd, onU
 
       <div className="card" style={{ marginBottom: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div className="st" style={{ margin: 0 }}>⚙️ OBIETTIVO</div>
-          <button className="btn btn-s" style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => setShowCfg(s => !s)}>{showCfg ? "CHIUDI" : "MODIFICA"}</button>
+          <div className="st" style={{ margin: 0 }}>Obiettivo</div>
+          <button className="btn btn-s" style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => setShowCfg(s => !s)}>{showCfg ? "Chiudi" : "Modifica"}</button>
         </div>
         <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 8 }}>
           {fmtL(+cfg(settings, "acqua_obiettivo"))} al giorno{+cfg(settings, "acqua_extra_palestra") ? ` · +${cfg(settings, "acqua_extra_palestra")} ml nei giorni di palestra` : ""} · borraccia {borr} ml
@@ -143,7 +143,7 @@ export default function Acqua({ acqua = [], settings, onSaveSettings, onAdd, onU
                 </div>
               ))}
             </div>
-            <p style={{ fontSize: 11, color: "var(--dim)", marginTop: 10, lineHeight: 1.5 }}>
+            <p style={{ fontSize: 12, color: "var(--dim)", marginTop: 10, lineHeight: 1.5 }}>
               Riferimento: ~2 L/giorno da bevande per un adulto (EFSA: 2,5 L totali per l'uomo, di cui ~20% dal cibo).
               {consigliato ? ` Col tuo peso (${pesoKg} kg) la regola dei 35 ml/kg dà ~${consigliato} ml.` : ""} Nei giorni di allenamento aggiungi 0,5–1 L.
             </p>

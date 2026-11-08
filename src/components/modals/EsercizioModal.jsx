@@ -9,8 +9,8 @@ export default function EsercizioModal({ init, mode, onSave, onClose }) {
     <div className="mov" onClick={onClose}>
       <div className="mod" onClick={e => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-          <span style={{ fontFamily: "var(--fd)", fontSize: 22, letterSpacing: ".05em", color: "#30D158" }}>
-            {mode === "new" ? "NUOVO ESERCIZIO" : "MODIFICA"}
+          <span style={{ fontFamily: "var(--fd)", fontSize: 22, letterSpacing: ".05em", color: "var(--ok)" }}>
+            {mode === "new" ? "Nuovo esercizio" : "Modifica"}
           </span>
           <button className="bico" onClick={onClose}><IcClose /></button>
         </div>
@@ -28,7 +28,7 @@ export default function EsercizioModal({ init, mode, onSave, onClose }) {
           <textarea className="inp" rows={2} value={d.note} onChange={e => upd("note", e.target.value)} placeholder="Indicazioni tecniche…" />
         </div>
         <button className="btn btn-p btn-full" onClick={() => onSave(d)}>
-          <IcCheck /> {mode === "new" ? "AGGIUNGI" : "SALVA"}
+          <IcCheck /> {mode === "new" ? "Aggiungi" : "Salva"}
         </button>
       </div>
     </div>

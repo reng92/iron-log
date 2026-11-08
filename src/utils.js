@@ -119,7 +119,7 @@ export const pianoAttivo = (piani, iso = fmtIso()) => {
   return [...pool].sort((a, b) => b.dataInizio.localeCompare(a.dataInizio))[0];
 };
 
-export const TIPI_GIORNO = { palestra: "🏋️ Palestra", riposo: "😴 Riposo" };
+export const TIPI_GIORNO = { palestra: "Palestra", riposo: "Riposo" };
 
 // Pasti per giorno (1=Lun..7=Dom). Se il tipo richiesto è diverso da quello previsto per quel giorno
 // (es. allenamento saltato), usa il primo giorno del piano con quel tipo come modello.

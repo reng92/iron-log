@@ -211,7 +211,7 @@ export default function PdfImportModal({ onApply, onClose }) {
     <div className="mov" onClick={onClose}>
       <div className="mod" onClick={e => e.stopPropagation()} style={{ maxHeight: "90vh" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-          <span style={{ fontFamily: "var(--fd)", fontSize: 22, letterSpacing: ".05em" }}>IMPORTA DA PDF</span>
+          <span style={{ fontFamily: "var(--fd)", fontSize: 22, letterSpacing: ".05em" }}>Importa da PDF</span>
           <button className="bico" onClick={onClose}><IcClose /></button>
         </div>
         {fase === 1 && (
@@ -227,30 +227,30 @@ export default function PdfImportModal({ onApply, onClose }) {
                 onClick={() => document.getElementById("pdf-input").click()}
               >
                 {file
-                  ? <><IcFile /><div style={{ fontSize: 13, fontWeight: 600, marginTop: 6, color: "var(--acc)" }}>{file.name}</div><div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{(file.size / 1024).toFixed(0)} KB</div></>
+                  ? <><IcFile /><div style={{ fontSize: 13, fontWeight: 600, marginTop: 6, color: "var(--acc)" }}>{file.name}</div><div style={{ fontSize: 12, color: "var(--dim)", marginTop: 2 }}>{(file.size / 1024).toFixed(0)} KB</div></>
                   : <><IcUpload /><div style={{ fontSize: 13, color: "var(--dim)", marginTop: 6 }}>Tocca per selezionare il PDF</div></>
                 }
                 <input id="pdf-input" type="file" accept=".pdf,application/pdf" style={{ display: "none" }} onChange={e => { setFile(e.target.files[0] || null); setErrore(""); }} />
               </div>
             </div>
             {errore && <div style={{ color: "var(--dan)", fontSize: 13, marginBottom: 12, padding: "10px", background: "var(--dan2)", borderRadius: 8 }}>{errore}</div>}
-            <button className="btn btn-p btn-full" onClick={analizza}><IcUpload /> ANALIZZA PDF</button>
+            <button className="btn btn-p btn-full" onClick={analizza}><IcUpload /> Analizza PDF</button>
           </>
         )}
         {fase === 2 && (
           <div style={{ textAlign: "center", padding: "32px 16px" }}>
-            <div className="spin" style={{ fontSize: 36, marginBottom: 16 }}>⚙️</div>
-            <div style={{ fontFamily: "var(--fd)", fontSize: 22, letterSpacing: ".05em", marginBottom: 8 }}>ANALISI IN CORSO</div>
+            <div className="spin" style={{ fontSize: 36, marginBottom: 16 }}></div>
+            <div style={{ fontFamily: "var(--fd)", fontSize: 22, letterSpacing: ".05em", marginBottom: 8 }}>Analisi in corso</div>
             <div style={{ fontSize: 13, color: "var(--dim)", marginBottom: 4 }}>{loadingMsg}</div>
           </div>
         )}
         {fase === 3 && parsed && (
           <>
-            <div style={{ background: "rgba(48,209,88,.1)", border: "1px solid #30D158", borderRadius: 10, padding: 12, marginBottom: 16 }}>
-              <div style={{ fontFamily: "var(--fd)", fontSize: 16, color: "#30D158", marginBottom: 4 }}>✓ ESTRATTO CON SUCCESSO</div>
+            <div style={{ background: "var(--acc2)", border: "1px solid var(--ok)", borderRadius: 10, padding: 12, marginBottom: 16 }}>
+              <div style={{ fontFamily: "var(--fd)", fontSize: 16, color: "var(--ok)", marginBottom: 4 }}>✓ Estratto con successo</div>
               {parsed.nomePiano && <div style={{ fontSize: 13, fontWeight: 600 }}>{parsed.nomePiano}</div>}
             </div>
-            <div className="st" style={{ marginBottom: 8 }}>ANTEPRIMA</div>
+            <div className="st" style={{ marginBottom: 8 }}>Anteprima</div>
             {[1, 2, 3, 4, 5, 6, 7].map(d => {
               const pasti = parsed.giorniPasti[d] || parsed.giorniPasti[String(d)] || [];
               const seen = new Set();
@@ -264,18 +264,18 @@ export default function PdfImportModal({ onApply, onClose }) {
                 <div key={d} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--bdr)" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <div style={{ fontSize: 13, fontWeight: 600 }}>{GIORNI_LABEL[d]}</div>
-                    {hasAlts && <span style={{ fontSize: 9, fontWeight: 700, background: "rgba(255,149,0,.15)", color: "#FF9500", padding: "2px 6px", borderRadius: 20 }}>⇄ ALT</span>}
+                    {hasAlts && <span style={{ fontSize: 12, fontWeight: 700, background: "rgba(255,149,0,.15)", color: "var(--warn)", padding: "2px 6px", borderRadius: 20 }}>⇄ Alt</span>}
                   </div>
                   <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                    <span style={{ fontSize: 11, color: "var(--dim)" }}>{pasti.length} pasti</span>
-                    <span style={{ fontFamily: "var(--fd)", fontSize: 16, color: "#30D158" }}>{kcal > 0 ? `${kcal} kcal` : "—"}</span>
+                    <span style={{ fontSize: 12, color: "var(--dim)" }}>{pasti.length} pasti</span>
+                    <span style={{ fontFamily: "var(--fd)", fontSize: 16, color: "var(--ok)" }}>{kcal > 0 ? `${kcal} kcal` : "—"}</span>
                   </div>
                 </div>
               );
             })}
             <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
-              <button className="btn btn-s" style={{ flex: 1 }} onClick={() => { setParsed(null); setFase(1); }}>RIPROVA</button>
-              <button className="btn btn-p" style={{ flex: 2, background: "#30D158" }} onClick={applica}><IcCheck /> APPLICA AL PIANO</button>
+              <button className="btn btn-s" style={{ flex: 1 }} onClick={() => { setParsed(null); setFase(1); }}>Riprova</button>
+              <button className="btn btn-p" style={{ flex: 2, background: "var(--ok)" }} onClick={applica}><IcCheck /> Applica al piano</button>
             </div>
           </>
         )}

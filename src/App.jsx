@@ -18,7 +18,7 @@ import { aggiornaWidget, consumaAggiunteWidget, onAppResume } from "./widget";
 import Acqua from "./components/Acqua";
 import Oggi from "./screens/Oggi";
 import { segnaPastoMangiato } from "./dieta";
-import { IcToday, IcDumbbell, IcFork, IcBody } from "./components/Icons";
+import { IcToday, IcDumbbell, IcFork, IcBody, IcChevR } from "./components/Icons";
 import NotificheSettings from "./components/NotificheSettings";
 
 // ─── NORME CIRCONFERENZE CORPOREE ────────────────────────
@@ -51,9 +51,9 @@ const CIRC_TREND_ONLY = ["torace", "braccio_rilassato", "braccio_flesso", "avamb
 const CIRC_LOWER_IS_BETTER = ["vita", "addome", "fianchi"];
 
 const STATI_CIRC = {
-  ottimo: { label: "Ottimo", color: "var(--ok)", bg: "rgba(48,209,88,.12)" },
-  buono: { label: "Buono", color: "#30D158", bg: "rgba(48,209,88,.08)" },
-  attenzione: { label: "Attenzione", color: "#FF9500", bg: "rgba(255,149,0,.12)" },
+  ottimo: { label: "Ottimo", color: "var(--ok)", bg: "var(--acc2)" },
+  buono: { label: "Buono", color: "var(--ok)", bg: "var(--acc2)" },
+  attenzione: { label: "Attenzione", color: "var(--warn)", bg: "rgba(255,149,0,.12)" },
   rischio: { label: "Rischio", color: "var(--dan)", bg: "rgba(255,59,48,.12)" },
 };
 const fascia = (norm, v) => ["ottimo", "buono", "attenzione", "rischio"].find(k => norm[k] && v >= norm[k][0] && v < norm[k][1]);
@@ -78,7 +78,7 @@ function getCircStatus(key, value, sesso = "M", circ = {}) {
   // Caso speciale polso: restituisce tipo di frame
   if (key === "polso") {
     if (value < norm.piccolo[1]) return { label: "Frame piccolo", color: "var(--dim)", bg: "var(--bdr)", target: norm.target, desc: norm.desc };
-    if (value < norm.medio[1]) return { label: "Frame medio", color: "var(--ok)", bg: "rgba(48,209,88,.12)", target: norm.target, desc: norm.desc };
+    if (value < norm.medio[1]) return { label: "Frame medio", color: "var(--ok)", bg: "var(--acc2)", target: norm.target, desc: norm.desc };
     return { label: "Frame grande", color: "var(--acc)", bg: "var(--acc2)", target: norm.target, desc: norm.desc };
   }
 
@@ -303,8 +303,8 @@ export default function App() {
 
   const dark = settings.darkMode !== false;
   useEffect(() => {
-    document.documentElement.style.background = dark ? "#0A0C0B" : "#E8ECE9";
-    document.querySelector("meta[name=theme-color]")?.setAttribute("content", dark ? "#173D2E" : "#1F4D3A");
+    document.documentElement.style.background = dark ? "#0A0D12" : "#E9EDF3";
+    document.querySelector("meta[name=theme-color]")?.setAttribute("content", dark ? "#0F2A5E" : "#163C88");
   }, [dark]);
   const cls = `app${dark ? "" : " light"}`;
 
@@ -347,15 +347,15 @@ export default function App() {
       <div className={cls}>
         <style>{CSS}</style>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, padding: 24 }}>
-          <div style={{ fontFamily: "var(--fd)", fontSize: 48, letterSpacing: ".1em", marginBottom: 4, color: "var(--acc)" }}>IRON LOG</div>
+          <div style={{ fontFamily: "var(--fd)", fontSize: 48, letterSpacing: ".1em", marginBottom: 4, color: "var(--acc)" }}>Iron Log</div>
           <p className="sub" style={{ marginBottom: 32, textAlign: "center" }}>{subtitles[authMode]}</p>
 
           {authError === "__ok__" ? (
-            <div style={{ background: "rgba(48,209,88,.12)", border: "1px solid #30D158", borderRadius: 10, padding: "16px 20px", marginBottom: 20, fontSize: 14, color: "#30D158", textAlign: "center", maxWidth: 300 }}>
+            <div style={{ background: "var(--acc2)", border: "1px solid var(--ok)", borderRadius: 10, padding: "16px 20px", marginBottom: 20, fontSize: 14, color: "var(--ok)", textAlign: "center", maxWidth: 300 }}>
               Account creato! Controlla la tua email per confermare, poi accedi.
             </div>
           ) : authError === "__reset__" ? (
-            <div style={{ background: "rgba(48,209,88,.12)", border: "1px solid #30D158", borderRadius: 10, padding: "16px 20px", marginBottom: 20, fontSize: 14, color: "#30D158", textAlign: "center", maxWidth: 300 }}>
+            <div style={{ background: "var(--acc2)", border: "1px solid var(--ok)", borderRadius: 10, padding: "16px 20px", marginBottom: 20, fontSize: 14, color: "var(--ok)", textAlign: "center", maxWidth: 300 }}>
               Email inviata! Controlla la tua casella e clicca il link per reimpostare la password.
             </div>
           ) : (
@@ -395,7 +395,7 @@ export default function App() {
                 disabled={authBusy || !authEmail || (authMode !== "reset" && !authPassword)}
                 onClick={handleAuth}
               >
-                {authBusy ? "..." : authMode === "login" ? "ACCEDI" : authMode === "register" ? "CREA ACCOUNT" : "INVIA EMAIL RESET"}
+                {authBusy ? "..." : authMode === "login" ? "Accedi" : authMode === "register" ? "Crea account" : "Invia email reset"}
               </button>
             </>
           )}
@@ -565,12 +565,12 @@ function Schede({ schede, onNew, onEdit, onDelete, onStart }) {
   return (
     <>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", paddingTop: 20, paddingBottom: 16 }}>
-        <div><h1 className="pt">LE MIE<br />SCHEDE</h1><p className="sub">{schede.length} schede</p></div>
-        <button className="btn btn-p" onClick={onNew}><IcPlus /> NUOVA</button>
+        <div><h1 className="pt">Schede</h1><p className="sub">{schede.length} schede</p></div>
+        <button className="btn btn-p" onClick={onNew}><IcPlus /> Nuova</button>
       </div>
       {schede.length === 0 ? (
-        <div className="emp"><div className="emp-ic">🏋️</div><div className="emp-t">Nessuna scheda</div>
-          <button className="btn btn-p" style={{ marginTop: 16 }} onClick={onNew}><IcPlus /> CREA SCHEDA</button></div>
+        <div className="emp"><div className="emp-ic"></div><div className="emp-t">Nessuna scheda</div>
+          <button className="btn btn-p" style={{ marginTop: 16 }} onClick={onNew}><IcPlus /> Crea scheda</button></div>
       ) : schede.map(sc => (
         <div key={sc.id} className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -587,7 +587,7 @@ function Schede({ schede, onNew, onEdit, onDelete, onStart }) {
             </div>
           </div>
           {sc.esercizi?.length > 0 && <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 6 }}>{sc.esercizi.map(e => <span key={e.id} className="tag tag-m">{e.nome}</span>)}</div>}
-          <button className="btn btn-s btn-full" style={{ marginTop: 12 }} onClick={() => onStart(sc)}><IcPlay /> ALLENA ORA</button>
+          <button className="btn btn-s btn-full" style={{ marginTop: 12 }} onClick={() => onStart(sc)}><IcPlay /> Allena ora</button>
         </div>
       ))}
       {confirmState && <ConfirmModal message={confirmState.msg} onConfirm={() => { confirmState.onConfirm(); setConfirmState(null); }} onCancel={() => setConfirmState(null)} />}
@@ -619,7 +619,7 @@ function SchedaEdit({ scheda: init, onSave, onBack }) {
       <div className="content fi">
         <button className="bb" onClick={onBack}><IcChevL /> Schede</button>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
-          <h1 className="pt">{init.id ? "MODIFICA" : "NUOVA"}<br />SCHEDA</h1>
+          <h1 className="pt">{init.id ? "Modifica scheda" : "Nuova scheda"}</h1>
         </div>
         <div className="ig">
           <label className="lbl">Nome scheda</label>
@@ -631,8 +631,8 @@ function SchedaEdit({ scheda: init, onSave, onBack }) {
         </div>
         <div className="div" />
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <div className="st" style={{ margin: 0 }}>ESERCIZI ({esercizi.length})</div>
-          <button className="btn btn-s" onClick={() => setModal({ mode: "new", data: { nome: "", serie: 3, ripetizioni: "10", pausa: 90, note: "" } })}><IcPlus /> AGGIUNGI</button>
+          <div className="st" style={{ margin: 0 }}>Esercizi ({esercizi.length})</div>
+          <button className="btn btn-s" onClick={() => setModal({ mode: "new", data: { nome: "", serie: 3, ripetizioni: "10", pausa: 90, note: "" } })}><IcPlus /> Aggiungi</button>
         </div>
         {esercizi.length === 0
           ? <div className="emp" style={{ padding: "20px 0" }}>
@@ -649,7 +649,7 @@ function SchedaEdit({ scheda: init, onSave, onBack }) {
                     <div className="ep"><IcTimer /><b>{e.pausa}s</b></div>
 
                   </div>
-                  {e.note && <div style={{ fontSize: 11, color: "var(--dim)", fontStyle: "italic", marginTop: 4 }}>{e.note}</div>}
+                  {e.note && <div style={{ fontSize: 12, color: "var(--dim)", fontStyle: "italic", marginTop: 4 }}>{e.note}</div>}
                 </div>
                 <div style={{ display: "flex", gap: 5, marginLeft: 8 }}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -662,7 +662,7 @@ function SchedaEdit({ scheda: init, onSave, onBack }) {
               </div>
             </div>
           ))}
-        <button className="btn btn-p btn-full" onClick={() => { if (!nome.trim()) return alert("Inserisci un nome"); onSave({ ...init, nome: nome.trim(), giorni, esercizi }); }}><IcCheck /> SALVA SCHEDA</button>
+        <button className="btn btn-p btn-full" onClick={() => { if (!nome.trim()) return alert("Inserisci un nome"); onSave({ ...init, nome: nome.trim(), giorni, esercizi }); }}><IcCheck /> Salva scheda</button>
       </div>
       {modal && <EsercizioModal init={modal.data} mode={modal.mode} onSave={applyModal} onClose={() => setModal(null)} />}
     </>
@@ -725,82 +725,139 @@ function Allenamento({ scheda, sessioni, onComplete, onBack }) {
     });
   };
 
+  // Pager: un esercizio per schermata, ultima pagina = riepilogo
+  const pagerRef = useRef(null);
+  const [pg, setPg] = useState(0);
+  const pagine = sets.length + 1;
+  const vaiPagina = i => {
+    const el = pagerRef.current; if (!el) return;
+    const n = Math.max(0, Math.min(pagine - 1, i));
+    el.scrollTo({ left: n * el.clientWidth, behavior: "smooth" });
+  };
+  const onPagerScroll = e => {
+    const el = e.currentTarget;
+    const i = Math.round(el.scrollLeft / Math.max(1, el.clientWidth));
+    if (i !== pg) setPg(i);
+  };
+  const completaEavanza = (ei, si) => {
+    const ex = sets[ei];
+    const ok = !ex.serie[si].completata;
+    completeSet(ei, si);
+    // ultima serie dell'esercizio completata e nessun recupero: passa al prossimo
+    if (ok && ex.serie.every((s, j) => j === si || s.completata)) { if (ex.pausa > 0) dopoRecupero.current = ei + 1; else setTimeout(() => vaiPagina(ei + 1), 450); }
+  };
+  const ultimaVolta = ex => {
+    const prev = lastData[ex.esercizioId] || lastData[ex.nome];
+    if (!prev?.length) return null;
+    return prev.filter(s => s.kg || s.reps).map(s => `${s.kg ? String(s.kg).replace(".", ",") : "—"}×${s.reps || "—"}`).join(" · ");
+  };
+  const dopoRecupero = useRef(null);
+  useEffect(() => {
+    if (!rest && dopoRecupero.current != null) { const i = dopoRecupero.current; dopoRecupero.current = null; setTimeout(() => vaiPagina(i), 250); }
+  }, [rest]); // eslint-disable-line
+  const pct = total ? Math.round(done / total * 100) : 0;
+
   return (
     <>
-      <div className="content fi">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 16, marginBottom: 16 }}>
-          <button className="bb" style={{ margin: 0 }} onClick={() => {
-            setConfirmState({ msg: "Interrompere l'allenamento?", onConfirm: () => { onBack(); } });
-          }}><IcClose /> ESCI</button>
-          <div className="pls" style={{ fontFamily: "var(--fd)", fontSize: 13, color: "var(--acc)", letterSpacing: ".1em" }}>● LIVE</div>
-        </div>
-        <div className="wh">
-          <div className="wt">{scheda.nome}</div>
-          <div className="wlv">{fmtDur(elapsed)}</div>
-          <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 4 }}>{done}/{total} serie · {total ? Math.round(done / total * 100) : 0}%</div>
-          <div className="pbar"><div className="pfil" style={{ width: `${total ? Math.round(done / total * 100) : 0}%` }} /></div>
-        </div>
-
-        {sets.map((ex, ei) => (
-          <div key={ex.esercizioId} className="card" style={{ marginBottom: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-              <div>
-                <div className="exn">{ex.nome}</div>
-                {ex.note && <div style={{ fontSize: 11, color: "var(--dim)", fontStyle: "italic", marginTop: 2 }}>{ex.note}</div>}
-              </div>
-              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                {ex.pausa > 0 && <div className="tag tag-m"><IcTimer />{ex.pausa}s</div>}
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "22px 1fr 1fr 38px 28px", gap: 6, fontSize: 10, color: "var(--dim)", fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", marginBottom: 6, padding: "0 0 4px", borderBottom: "1px solid var(--bdr)" }}>
-              <div>#</div><div style={{ textAlign: "center" }}>KG</div><div style={{ textAlign: "center" }}>REPS</div><div style={{ textAlign: "center" }}>RPE</div><div />
-            </div>
-
-            {ex.serie.map((s, si) => (
-              <div key={si}>
-                <div className="set-r">
-                  <div className={`set-n${s.completata ? " ok" : ""}`}>{si + 1}</div>
-                  <div><input className="sinp" type="number" min="0" step="0.5" placeholder="—" value={s.kg} onChange={e => updSet(ei, si, "kg", e.target.value)} /></div>
-                  <div><input className="sinp" type="text" placeholder={s.reps} value={s.reps} onChange={e => updSet(ei, si, "reps", e.target.value)} /></div>
-                  <div style={{ textAlign: "center" }}>
-                    <button onClick={() => setRpeOpen(rpeOpen?.ei === ei && rpeOpen?.si === si ? null : { ei, si })} style={{ background: s.rpe ? "var(--acc2)" : "var(--card)", border: `1px solid ${s.rpe ? "var(--acc)" : "var(--bdr)"}`, borderRadius: 6, color: s.rpe ? "var(--acc)" : "var(--mut)", fontSize: 12, fontWeight: 700, width: "100%", height: 32, cursor: "pointer", fontFamily: "inherit" }}>{s.rpe || "—"}</button>
-                  </div>
-                  <div style={{ textAlign: "center" }}>
-                    <button className={`sck${s.completata ? " ok" : ""}`} onClick={() => completeSet(ei, si)}>{s.completata && <IcCheck />}</button>
-                  </div>
-                </div>
-                {rpeOpen?.ei === ei && rpeOpen?.si === si && (
-                  <div style={{ background: "var(--sur)", borderRadius: 8, padding: "10px 12px", marginTop: 4, border: "1px solid var(--bdr)" }}>
-                    <div style={{ fontSize: 11, color: "var(--dim)", marginBottom: 8, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase" }}>Difficoltà percepita (RPE)</div>
-                    <div className="rpe-row">
-                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => (
-                        <button key={v} className={`rpe-btn${s.rpe === v ? " on" : ""}`} onClick={() => { updSet(ei, si, "rpe", v); setRpeOpen(null); }}>{v}</button>
-                      ))}
-                    </div>
-                    <div style={{ fontSize: 10, color: "var(--mut)", marginTop: 6 }}>1 = facilissimo · 10 = massimo sforzo</div>
-                  </div>
-                )}
-              </div>
-            ))}
+      <div className="live">
+        <header className="live-top">
+          <div className="live-bar">
+            <button className="live-x" onClick={() => setConfirmState({ msg: "Interrompere l'allenamento? Le serie fatte non verranno salvate.", onConfirm: () => { onBack(); } })} aria-label="Esci dall'allenamento"><IcClose /></button>
+            <div className="live-name">{scheda.nome}</div>
+            <div className="live-time" aria-label="Tempo trascorso">{fmtDur(elapsed)}</div>
           </div>
-        ))}
+          <div className="live-prog">
+            <div className="live-prog-b"><div className="live-prog-f" style={{ transform: `scaleX(${pct / 100})` }} /></div>
+            <span>{done}/{total} serie</span>
+          </div>
+          <div className="live-dots" role="tablist" aria-label="Esercizi">
+            {sets.map((ex, i) => {
+              const fatto = ex.serie.every(s => s.completata);
+              return <button key={ex.esercizioId || i} role="tab" aria-selected={pg === i} aria-label={ex.nome} className={`live-dot${pg === i ? " on" : ""}${fatto ? " ok" : ""}`} onClick={() => vaiPagina(i)} />;
+            })}
+            <button role="tab" aria-selected={pg === sets.length} aria-label="Riepilogo" className={`live-dot end${pg === sets.length ? " on" : ""}`} onClick={() => vaiPagina(sets.length)} />
+          </div>
+        </header>
 
-        <div className="ig" style={{ marginTop: 4 }}>
-          <label className="lbl">Note sessione</label>
-          <textarea className="inp" rows={3} placeholder="Come ti sei sentito? Osservazioni…" value={noteSess} onChange={e => setNoteSess(e.target.value)} />
+        <div className="pager" ref={pagerRef} onScroll={onPagerScroll}>
+          {sets.map((ex, ei) => {
+            const uv = ultimaVolta(ex);
+            return (
+              <section key={ex.esercizioId || ei} className="page" aria-label={ex.nome}>
+                <div className="lab">
+                  <div className="live-count">Esercizio {ei + 1} di {sets.length}</div>
+                  <h2 className="live-ex">{ex.nome}</h2>
+                  <div className="live-meta">
+                    {ex.serie.length} serie{ex.pausa > 0 ? <> · <IcTimer /> {ex.pausa}s recupero</> : null}
+                  </div>
+                  {ex.note && <div className="live-note">{ex.note}</div>}
+                  {uv && <div className="live-prev"><b>Ultima volta</b> {uv}</div>}
+                  <div className="r8" />
+                  <div className="live-head"><span>Serie</span><span>kg</span><span>Reps</span><span>RPE</span><span /></div>
+                  {ex.serie.map((s, si) => (
+                    <div key={si}>
+                      <div className={`live-set${s.completata ? " done" : ""}`}>
+                        <div className="live-n">{si + 1}</div>
+                        <input className="sinp" type="number" inputMode="decimal" min="0" step="0.5" placeholder="—" aria-label={`kg serie ${si + 1}`} value={s.kg} onChange={e => updSet(ei, si, "kg", e.target.value)} />
+                        <input className="sinp" type="text" inputMode="numeric" placeholder="—" aria-label={`ripetizioni serie ${si + 1}`} value={s.reps} onChange={e => updSet(ei, si, "reps", e.target.value)} />
+                        <button className={`live-rpe${s.rpe ? " on" : ""}`} onClick={() => setRpeOpen(rpeOpen?.ei === ei && rpeOpen?.si === si ? null : { ei, si })} aria-label={`RPE serie ${si + 1}`}>{s.rpe || "—"}</button>
+                        <button className={`live-ck${s.completata ? " ok" : ""}`} onClick={() => completaEavanza(ei, si)} aria-label={s.completata ? "Segna serie non fatta" : "Segna serie fatta"}><IcCheck /></button>
+                      </div>
+                      {rpeOpen?.ei === ei && rpeOpen?.si === si && (
+                        <div className="live-rpe-pick">
+                          <div className="rpe-row">
+                            {[6, 7, 8, 9, 10].map(v => (
+                              <button key={v} className={`rpe-btn${s.rpe === v ? " on" : ""}`} onClick={() => { updSet(ei, si, "rpe", v); setRpeOpen(null); }}>{v}</button>
+                            ))}
+                          </div>
+                          <div className="live-hint">Fatica percepita · 10 = cedimento</div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="live-nav">
+                  <button className="btn btn-s" disabled={ei === 0} onClick={() => vaiPagina(ei - 1)}><IcChevL /> Precedente</button>
+                  <button className="btn btn-p" onClick={() => vaiPagina(ei + 1)}>{ei === sets.length - 1 ? "Riepilogo" : "Prossimo"} <IcChevR /></button>
+                </div>
+              </section>
+            );
+          })}
+
+          <section className="page" aria-label="Riepilogo">
+            <div className="lab">
+              <h2 className="live-ex">Riepilogo</h2>
+              <div className="live-meta">{fmtDur(elapsed)} · {done} di {total} serie fatte</div>
+              <div className="r8" />
+              {sets.map((ex, i) => {
+                const n = ex.serie.filter(s => s.completata).length;
+                const vol = ex.serie.reduce((a, s) => a + (s.completata ? (+s.kg || 0) * (+s.reps || 0) : 0), 0);
+                return (
+                  <button key={ex.esercizioId || i} className="live-sum" onClick={() => vaiPagina(i)}>
+                    <span>{ex.nome}</span>
+                    <b>{n}/{ex.serie.length}{vol ? <span> · {Math.round(vol).toLocaleString("it-IT")} kg</span> : null}</b>
+                  </button>
+                );
+              })}
+              <div className="ig" style={{ marginTop: 14 }}>
+                <label className="lbl" htmlFor="note-sess">Note sessione</label>
+                <textarea id="note-sess" className="inp" rows={3} placeholder="Come ti sei sentito?" value={noteSess} onChange={e => setNoteSess(e.target.value)} />
+              </div>
+              <button className="btn btn-p btn-full" style={{ minHeight: 52, fontSize: 16 }} onClick={finisci}><IcCheck /> Termina e salva</button>
+            </div>
+          </section>
         </div>
-        <button className="btn btn-p btn-full" style={{ fontSize: 15, padding: 16 }} onClick={finisci}><IcCheck /> TERMINA ALLENAMENTO</button>
       </div>
 
       {rest && (
-        <div className="rest-ov" onClick={() => setRest(null)}>
-          <div className="rest-l">RECUPERO — {rest.nome}</div>
+        <div className="rest-ov" onClick={() => setRest(null)} role="timer" aria-live="polite">
+          <div className="rest-l">Recupero · {rest.nome}</div>
           <div className="rest-t">{rest.rem}</div>
-          <div style={{ width: 200, height: 4, background: "rgba(255,255,255,.1)", borderRadius: 2, overflow: "hidden" }}>
-            <div style={{ height: "100%", background: "var(--acc)", transition: "width 1s linear", width: `${(rest.rem / rest.total) * 100}%` }} />
+          <div className="rest-bat"><div style={{ transform: `scaleX(${rest.rem / rest.total})` }} /></div>
+          <div className="rest-act" onClick={e => e.stopPropagation()}>
+            <button className="btn" onClick={() => setRest(r => r ? { ...r, rem: r.rem + 15, total: r.total + 15 } : r)}>+15 s</button>
+            <button className="btn" onClick={() => setRest(null)}>Salta</button>
           </div>
-          <div className="rest-l">📳 tocca per saltare</div>
         </div>
       )}
       {confirmState && <ConfirmModal message={confirmState.msg} onConfirm={() => { confirmState.onConfirm(); setConfirmState(null); }} onCancel={() => setConfirmState(null)} />}
@@ -817,7 +874,7 @@ function Storico({ sessioni, onDetail, onDelete }) {
       <div style={{ paddingTop: 20, paddingBottom: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
           <div>
-            <h1 className="pt">STORICO<br />LOG</h1>
+            <h1 className="pt">Allenamenti</h1>
             <p className="sub">{sessioni.length} sessioni palestra</p>
           </div>
           {sessioni.length > 0 && (
@@ -831,7 +888,7 @@ function Storico({ sessioni, onDetail, onDelete }) {
       {(
         sessioni.length === 0 ? (
           <div className="emp">
-            <div className="emp-ic">📊</div>
+            <div className="emp-ic"></div>
             <div className="emp-t">Nessuna sessione</div>
             <p style={{ fontSize: 13 }}>Completa un allenamento</p>
           </div>
@@ -881,12 +938,12 @@ function SessioneDetail({ sessione: s, sessioni, onBack }) {
           <div key={l} className="hsc"><div className="hsv">{v}</div><div className="hsl">{l}</div></div>
         ))}
       </div>
-      {s.note && <div className="card" style={{ marginBottom: 12, borderLeft: "3px solid var(--acc)" }}><div className="st" style={{ marginBottom: 4 }}>NOTE</div><p style={{ fontSize: 14, color: "var(--dim)", fontStyle: "italic" }}>{s.note}</p></div>}
+      {s.note && <div className="card" style={{ marginBottom: 12, borderLeft: "3px solid var(--acc)" }}><div className="st" style={{ marginBottom: 4 }}>Note</div><p style={{ fontSize: 14, color: "var(--dim)", fontStyle: "italic" }}>{s.note}</p></div>}
 
       {prevSess && (
         <>
-          <div className="st">CONFRONTO CON SESSIONE PRECEDENTE</div>
-          <div style={{ fontSize: 11, color: "var(--dim)", marginBottom: 10 }}>{fmtDate(prevSess.data)}</div>
+          <div className="st">Confronto con sessione precedente</div>
+          <div style={{ fontSize: 12, color: "var(--dim)", marginBottom: 10 }}>{fmtDate(prevSess.data)}</div>
           {s.esercizi.map(ex => {
             const prev = prevSess.esercizi.find(e => e.nome === ex.nome || e.esercizioId === ex.esercizioId);
             if (!prev) return null;
@@ -900,14 +957,14 @@ function SessioneDetail({ sessione: s, sessioni, onBack }) {
                 <div style={{ fontFamily: "var(--fd)", fontSize: 18, letterSpacing: ".05em", marginBottom: 8 }}>{ex.nome}</div>
                 <div className="cmp-grid">
                   <div className="cmp-card">
-                    <div className="cmp-h">QUESTA SESSIONE</div>
+                    <div className="cmp-h">Questa sessione</div>
                     <div style={{ fontFamily: "var(--fd)", fontSize: 26, color: "var(--acc)" }}>{curMax}kg</div>
-                    <div style={{ fontSize: 11, color: "var(--dim)" }}>{ex.serie.filter(sr => sr.completata).length} serie · vol {Math.round(curVol)}</div>
+                    <div style={{ fontSize: 12, color: "var(--dim)" }}>{ex.serie.filter(sr => sr.completata).length} serie · vol {Math.round(curVol)}</div>
                   </div>
                   <div className="cmp-card">
-                    <div className="cmp-h">PRECEDENTE</div>
+                    <div className="cmp-h">Precedente</div>
                     <div style={{ fontFamily: "var(--fd)", fontSize: 26, color: "var(--mut)" }}>{prevMax}kg</div>
-                    <div style={{ fontSize: 11, color: "var(--dim)" }}>{prev.serie.filter(sr => sr.completata).length} serie · vol {Math.round(prevVol)}</div>
+                    <div style={{ fontSize: 12, color: "var(--dim)" }}>{prev.serie.filter(sr => sr.completata).length} serie · vol {Math.round(prevVol)}</div>
                   </div>
                 </div>
                 {delta !== 0 && <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700, color: delta > 0 ? "var(--ok)" : "var(--dan)" }}>{delta > 0 ? "↑ +" : "↓ "}{Math.round(Math.abs(delta))} volume ({delta > 0 ? "+" : "-"}{prevVol ? Math.round(Math.abs(delta / prevVol) * 100) : 0}%)</div>}
@@ -918,7 +975,7 @@ function SessioneDetail({ sessione: s, sessioni, onBack }) {
         </>
       )}
 
-      <div className="st">ESERCIZI</div>
+      <div className="st">Esercizi</div>
       {s.esercizi.map((ex, i) => {
         const best = Math.max(...ex.serie.filter(sr => sr.completata && sr.kg).map(sr => +sr.kg), 0);
         const bestSr = ex.serie.find(sr => sr.completata && +sr.kg === best);
@@ -928,19 +985,19 @@ function SessioneDetail({ sessione: s, sessioni, onBack }) {
               <div className="exn">{ex.nome}</div>
               <div style={{ textAlign: "right" }}>
                 {best > 0 && <div className="tag tag-a">max {best}kg</div>}
-                {best > 0 && bestSr && <div style={{ fontSize: 10, color: "var(--dim)", marginTop: 2 }}>1RM ~{epley(best, bestSr.reps)}kg</div>}
+                {best > 0 && bestSr && <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 2 }}>1RM ~{epley(best, bestSr.reps)}kg</div>}
               </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "22px 1fr 1fr 1fr 1fr", gap: 4, padding: "5px 0", borderTop: "1px solid var(--bdr)", alignItems: "center" }}>
-              <div>#</div><div>KG</div><div>REPS</div><div>RPE</div><div>OK</div>
+              <div>#</div><div>KG</div><div>Reps</div><div>RPE</div><div>OK</div>
             </div>
             {ex.serie.map((sr, j) => (
               <div key={j} style={{ display: "grid", gridTemplateColumns: "22px 1fr 1fr 1fr 1fr", gap: 4, padding: "5px 0", borderTop: "1px solid var(--bdr)", alignItems: "center" }}>
                 <div style={{ fontFamily: "var(--fd)", fontSize: 18, color: sr.completata ? "var(--acc)" : "var(--mut)" }}>{j + 1}</div>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>{sr.kg || "—"}</div>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>{sr.reps || "—"}</div>
-                <div style={{ fontSize: 12, color: sr.rpe >= 8 ? "var(--dan)" : sr.rpe >= 6 ? "#FF9F0A" : "var(--dim)" }}>{sr.rpe || "—"}</div>
-                <div style={{ fontSize: 11, color: sr.completata ? "var(--ok)" : "var(--mut)" }}>{sr.completata ? "✓" : "—"}</div>
+                <div style={{ fontSize: 12, color: sr.rpe >= 8 ? "var(--dan)" : sr.rpe >= 6 ? "var(--warn)" : "var(--dim)" }}>{sr.rpe || "—"}</div>
+                <div style={{ fontSize: 12, color: sr.completata ? "var(--ok)" : "var(--mut)" }}>{sr.completata ? <IcCheck /> : "—"}</div>
               </div>
             ))}
           </div>
@@ -955,9 +1012,9 @@ function Stats({ sessioni }) {
   const [stab, setStab] = useState("progressi");
   return (
     <>
-      <div style={{ paddingTop: 20, paddingBottom: 16 }}><h1 className="pt">STATS &<br />ANALISI</h1></div>
+      <div style={{ paddingTop: 20, paddingBottom: 16 }}><h1 className="pt">Statistiche</h1></div>
       <div className="stab-row">
-        {[["progressi", "📈 Progressi"], ["record", "🏆 Record"], ["freq", "📅 Freq."], ["1rm", "🧮 1RM Calc"]].map(([t, l]) => (
+        {[["progressi", "Progressi"], ["record", "Record"], ["freq", "Freq."], ["1rm", "1RM Calc"]].map(([t, l]) => (
           <button key={t} className={`stab${stab === t ? " on" : ""}`} onClick={() => setStab(t)}>{l}</button>
         ))}
       </div>
@@ -991,7 +1048,7 @@ function Progressi({ sessioni }) {
     }).filter(d => d.y > 0).sort((a, b) => a.data.localeCompare(b.data));
   }, [sessioni, selEx]);
 
-  if (exNames.length === 0) return <div className="emp"><div className="emp-ic">📈</div><div className="emp-t">Nessun dato</div><p style={{ fontSize: 13 }}>Completa almeno un allenamento</p></div>;
+  if (exNames.length === 0) return <div className="emp"><div className="emp-ic"></div><div className="emp-t">Nessun dato</div><p style={{ fontSize: 13 }}>Completa almeno un allenamento</p></div>;
 
   const progresso = chartKg.length >= 2 ? Math.round((chartKg[chartKg.length - 1].y - chartKg[0].y) * 10) / 10 : 0;
 
@@ -1005,10 +1062,10 @@ function Progressi({ sessioni }) {
       </div>
       {chartKg.length >= 2 ? (
         <>
-          <div className="st">CARICO MASSIMO (kg)</div>
+          <div className="st">Carico massimo (kg)</div>
           <div className="chart-wrap"><LineChart data={chartKg} color="var(--acc)" height={110} /></div>
-          <div className="st" style={{ marginTop: 14 }}>VOLUME TOTALE (kg × reps)</div>
-          <div className="chart-wrap"><LineChart data={chartVol} color="#30D158" height={100} /></div>
+          <div className="st" style={{ marginTop: 14 }}>Volume totale (kg × reps)</div>
+          <div className="chart-wrap"><LineChart data={chartVol} color="var(--ok)" height={100} /></div>
           <div className="hg" style={{ marginTop: 14 }}>
             {[[`${Math.max(...chartKg.map(d => d.y))}kg`, "Record"], [chartKg.length, "Sessioni"], [`${progresso > 0 ? "+" : ""}${progresso}kg`, "Progresso"], [Math.round(chartVol.reduce((a, d) => a + d.y, 0) / (chartVol.length || 1)), "Vol medio"]].map(([v, l]) => (
               <div key={l} className="hsc"><div className="hsv" style={{ fontSize: 26 }}>{v}</div><div className="hsl">{l}</div></div>
@@ -1028,22 +1085,22 @@ function RecordTab({ sessioni }) {
     })));
     return Object.entries(rec).sort((a, b) => b[1].kg - a[1].kg);
   }, [sessioni]);
-  if (records.length === 0) return <div className="emp"><div className="emp-ic">🏆</div><div className="emp-t">Nessun record</div></div>;
+  if (records.length === 0) return <div className="emp"><div className="emp-ic"></div><div className="emp-t">Nessun record</div></div>;
   return (
     <>
-      <div className="st">RECORD PERSONALI</div>
+      <div className="st">Record personali</div>
       {records.map(([nome, r], i) => (
         <div key={nome} className="card" style={{ padding: "12px 16px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {i < 3 && <span style={{ fontSize: 18 }}>{["🥇", "🥈", "🥉"][i]}</span>}
+              {i < 3 && <span style={{ fontSize: 18 }}>{["", "", ""][i]}</span>}
               <div style={{ fontWeight: 700, fontSize: 15 }}>{nome}</div>
             </div>
-            <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{fmtDate(r.data)} · {r.schedaNome}</div>
+            <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 2 }}>{fmtDate(r.data)} · {r.schedaNome}</div>
           </div>
           <div style={{ textAlign: "right" }}>
             <div style={{ fontFamily: "var(--fd)", fontSize: 28, color: "var(--acc)", letterSpacing: ".05em", lineHeight: 1 }}>{r.kg}kg</div>
-            <div style={{ fontSize: 11, color: "var(--dim)" }}>1RM ~{epley(r.kg, r.reps)}kg</div>
+            <div style={{ fontSize: 12, color: "var(--dim)" }}>1RM ~{epley(r.kg, r.reps)}kg</div>
           </div>
         </div>
       ))}
@@ -1072,14 +1129,14 @@ function FreqTab({ sessioni }) {
 
   return (
     <>
-      <div className="st">FREQUENZA SETTIMANALE (ultim. 12 sett.)</div>
-      <div className="chart-wrap"><LineChart data={weekData} color="#FF9F0A" height={100} /></div>
+      <div className="st">Frequenza settimanale (ultime 12 settimane)</div>
+      <div className="chart-wrap"><LineChart data={weekData} color="var(--warn)" height={100} /></div>
       <div className="hg" style={{ marginTop: 14 }}>
         {[[sessioni.length, "Totale"], [sessioni.length ? Math.round(sessioni.length / 12 * 10) / 10 : 0, "Sett. media"], [maxF, "Miglior sett."], [totAtt, "Sett. attive"]].map(([v, l]) => (
           <div key={l} className="hsc"><div className="hsv" style={{ fontSize: 26 }}>{v}</div><div className="hsl">{l}</div></div>
         ))}
       </div>
-      <div className="st" style={{ marginTop: 4 }}>BARRE</div>
+      <div className="st" style={{ marginTop: 4 }}>Barre</div>
       <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 80, padding: "8px 6px", background: "var(--sur)", borderRadius: 8, border: "1px solid var(--bdr)" }}>
         {weekData.map((w, i) => (
           <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
@@ -1151,8 +1208,8 @@ function Peso({ peso, onAdd, onDelete }) {
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontSize: 15 }}>{icon}</span>
         <div>
-          <div style={{ fontSize: 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".06em", fontWeight: 700 }}>{label}</div>
-          <div style={{ fontSize: 17, fontWeight: 700 }}>{value}<span style={{ fontSize: 11, color: "var(--dim)", marginLeft: 3 }}>{unit}</span></div>
+          <div style={{ fontSize: 12, color: "var(--dim)", letterSpacing: ".06em", fontWeight: 700 }}>{label}</div>
+          <div style={{ fontSize: 17, fontWeight: 700 }}>{value}<span style={{ fontSize: 12, color: "var(--dim)", marginLeft: 3 }}>{unit}</span></div>
         </div>
       </div>
       <StatusBadge label={badge} />
@@ -1164,7 +1221,7 @@ function Peso({ peso, onAdd, onDelete }) {
       <label className="lbl">{label}</label>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 130px", gap: 6 }}>
         <input className="inp" type="number" step={step} placeholder={ph} value={form[fk]} onChange={e => set(fk, e.target.value)} />
-        <select className="inp" style={{ fontSize: 11, padding: "10px 6px" }} value={form[sk]} onChange={e => set(sk, e.target.value)}>
+        <select className="inp" style={{ fontSize: 12, padding: "10px 6px" }} value={form[sk]} onChange={e => set(sk, e.target.value)}>
           {STATUS_OPTS.map(o => <option key={o} value={o}>{o || "— stato"}</option>)}
         </select>
       </div>
@@ -1174,7 +1231,7 @@ function Peso({ peso, onAdd, onDelete }) {
   return (
     <>
       <div style={{ paddingTop: 20, paddingBottom: 16 }}>
-        <h1 className="pt">PESO<br />CORPOREO</h1>
+        <h1 className="pt">Peso</h1>
         <p className="sub">Traccia peso e composizione corporea</p>
       </div>
 
@@ -1188,86 +1245,81 @@ function Peso({ peso, onAdd, onDelete }) {
               </div>
             ))}
           </div>
-          <div className="st">ANDAMENTO</div>
+          <div className="st">Andamento</div>
           <div className="chart-wrap" style={{ marginBottom: 16 }}><LineChart data={chartData} color="var(--acc)" height={120} /></div>
         </>
       )}
 
-      <button className="btn btn-p btn-full" style={{ marginBottom: 16 }} onClick={() => setShowModal(true)}><IcPlus /> NUOVA RILEVAZIONE</button>
+      <button className="btn btn-p btn-full" style={{ marginBottom: 16 }} onClick={() => setShowModal(true)}><IcPlus /> Nuova rilevazione</button>
 
       {peso.length > 0 && (
         <>
-          <div className="st">STORICO ({peso.length} rilevazioni)</div>
-          {[...peso].reverse().map(p => {
+          <section className="lab" style={{ marginTop: 14 }}>
+            <div className="lab-h">
+              <h2 className="lab-t" style={{ fontSize: 22 }}>Storico</h2>
+              <div className="lab-meta">{peso.length} pesate</div>
+            </div>
+            <div className="r4" style={{ marginTop: 8 }} />
+            <div className="lab-cols"><span>Data</span><span>kg · variazione</span></div>
+          {[...peso].reverse().map((p, i, arr) => {
             const isExp = expanded === p.id;
+            const prev = arr[i + 1];
+            const d = prev ? +(p.valore - prev.valore).toFixed(1) : null;
             return (
-              <div key={p.id} className="card" style={{ marginBottom: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }} onClick={() => setExpanded(isExp ? null : p.id)}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
-                    <div>
-                      <div style={{ fontFamily: "var(--fd)", fontSize: 28, color: "var(--acc)", lineHeight: 1 }}>{p.valore} <span style={{ fontSize: 13, color: "var(--dim)", fontFamily: "inherit", fontWeight: 400 }}>kg</span></div>
-                      <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 1 }}>{fmtDate(p.data)}</div>
+              <div key={p.id} className="hrow-w">
+                <button className="hrow" aria-expanded={isExp} onClick={() => setExpanded(isExp ? null : p.id)}>
+                  <span className="hrow-d">{fmtDate(p.data)}
+                    {(p.foto_fronte || p.foto_retro) && <span className="tag tag-m" style={{ marginLeft: 6 }}>foto</span>}
+                    {hasBody(p) && <span className="tag tag-m" style={{ marginLeft: 6 }}>bioimp.</span>}
+                  </span>
+                  <span className="hrow-v">{String(p.valore).replace(".", ",")}
+                    {d != null && <small className={d < 0 ? "dn" : d > 0 ? "up" : ""}>{d > 0 ? "+" : d < 0 ? "−" : "±"}{Math.abs(d).toLocaleString("it-IT")}</small>}
+                  </span>
+                  <IcChevR />
+                </button>
+                  {isExp && (
+                    <div style={{ marginTop: 12, borderTop: "1px solid var(--bdr)", paddingTop: 12 }}>
+                      {p.nota && <div style={{ fontSize: 13, color: "var(--dim)", marginBottom: 10, fontStyle: "italic" }}>"{p.nota}"</div>}
+  
+                      {(p.foto_fronte || p.foto_retro) && (
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+                          {p.foto_fronte && <div>
+                            <div className="st" style={{ fontSize: 12, marginBottom: 4 }}>Fronte</div>
+                            <img src={p.foto_fronte} alt="Fronte" style={{ width: "100%", borderRadius: 8, cursor: "pointer", objectFit: "cover", maxHeight: 200 }} onClick={() => setLightbox(p.foto_fronte)} />
+                          </div>}
+                          {p.foto_retro && <div>
+                            <div className="st" style={{ fontSize: 12, marginBottom: 4 }}>Retro</div>
+                            <img src={p.foto_retro} alt="Retro" style={{ width: "100%", borderRadius: 8, cursor: "pointer", objectFit: "cover", maxHeight: 200 }} onClick={() => setLightbox(p.foto_retro)} />
+                          </div>}
+                        </div>
+                      )}
+  
+                      {hasBody(p) && (
+                        <div style={{ marginBottom: 8 }}>
+                          <div className="st" style={{ marginBottom: 4 }}>Composizione corporea</div>
+                          {p.imc != null && <MR icon="" label="IMC" value={p.imc} badge={p.imc_status} />}
+                          {p.massa_grassa != null && <MR icon="" label="Massa grassa" value={p.massa_grassa} unit="%" badge={p.massa_grassa_status} />}
+                          {p.acqua != null && <MR icon="" label="Acqua" value={p.acqua} unit="%" badge={p.acqua_status} />}
+                          {p.grasso_viscerale != null && <MR icon="" label="Grasso viscerale" value={p.grasso_viscerale} badge={p.grasso_viscerale_status} />}
+                          {p.muscoli != null && <MR icon="" label="Muscoli" value={p.muscoli} unit="kg" badge={p.muscoli_status} />}
+                          {p.proteine != null && <MR icon="" label="Proteine" value={p.proteine} unit="%" badge={p.proteine_status} />}
+                          {p.metabolismo != null && <MR icon="" label="Metabolismo basale" value={p.metabolismo} unit="kcal" badge={p.metabolismo_status} />}
+                          {p.massa_ossea != null && <MR icon="" label="Massa ossea" value={p.massa_ossea} unit="kg" badge={p.massa_ossea_status} />}
+                        </div>
+                      )}
+  
+                      <button className="btn" style={{ marginTop: 6, fontSize: 12, padding: "7px 14px", color: "var(--dan)", border: "1px solid rgba(255,59,48,.25)", background: "rgba(255,59,48,.07)" }} onClick={() => {
+                        setConfirmState({ msg: "Eliminare?", onConfirm: () => { onDelete(p.id); } });
+                      }}>
+                        <IcTrash /> Elimina
+                      </button>
                     </div>
-                    {p.punteggio != null && <div style={{ background: "var(--acc2)", borderRadius: 10, padding: "4px 10px", textAlign: "center", flexShrink: 0 }}>
-                      <div style={{ fontFamily: "var(--fd)", fontSize: 22, color: "var(--acc)", lineHeight: 1 }}>{p.punteggio}</div>
-                      <div style={{ fontSize: 9, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".06em" }}>score</div>
-                    </div>}
-                    {p.tipologia && <span style={{ fontSize: 11, fontWeight: 700, background: "var(--bdr)", padding: "3px 9px", borderRadius: 20, flexShrink: 0 }}>{p.tipologia}</span>}
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                    {(p.foto_fronte || p.foto_retro) && <span style={{ fontSize: 12 }}>📷</span>}
-                    {hasBody(p) && <span style={{ fontSize: 12 }}>📊</span>}
-                  </div>
+                  )}
+  
                 </div>
-
-                {isExp && (
-                  <div style={{ marginTop: 12, borderTop: "1px solid var(--bdr)", paddingTop: 12 }}>
-                    {p.nota && <div style={{ fontSize: 13, color: "var(--dim)", marginBottom: 10, fontStyle: "italic" }}>"{p.nota}"</div>}
-
-                    {(p.foto_fronte || p.foto_retro) && (
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
-                        {p.foto_fronte && <div>
-                          <div className="st" style={{ fontSize: 9, marginBottom: 4 }}>FRONTE</div>
-                          <img src={p.foto_fronte} alt="Fronte" style={{ width: "100%", borderRadius: 8, cursor: "pointer", objectFit: "cover", maxHeight: 200 }} onClick={() => setLightbox(p.foto_fronte)} />
-                        </div>}
-                        {p.foto_retro && <div>
-                          <div className="st" style={{ fontSize: 9, marginBottom: 4 }}>RETRO</div>
-                          <img src={p.foto_retro} alt="Retro" style={{ width: "100%", borderRadius: 8, cursor: "pointer", objectFit: "cover", maxHeight: 200 }} onClick={() => setLightbox(p.foto_retro)} />
-                        </div>}
-                      </div>
-                    )}
-
-                    {hasBody(p) && (
-                      <div style={{ marginBottom: 8 }}>
-                        <div className="st" style={{ marginBottom: 4 }}>COMPOSIZIONE CORPOREA</div>
-                        {p.imc != null && <MR icon="⚖️" label="IMC" value={p.imc} badge={p.imc_status} />}
-                        {p.massa_grassa != null && <MR icon="🔸" label="Massa grassa" value={p.massa_grassa} unit="%" badge={p.massa_grassa_status} />}
-                        {p.acqua != null && <MR icon="💧" label="Acqua" value={p.acqua} unit="%" badge={p.acqua_status} />}
-                        {p.grasso_viscerale != null && <MR icon="🔶" label="Grasso viscerale" value={p.grasso_viscerale} badge={p.grasso_viscerale_status} />}
-                        {p.muscoli != null && <MR icon="💪" label="Muscoli" value={p.muscoli} unit="kg" badge={p.muscoli_status} />}
-                        {p.proteine != null && <MR icon="🥩" label="Proteine" value={p.proteine} unit="%" badge={p.proteine_status} />}
-                        {p.metabolismo != null && <MR icon="🔥" label="Metabolismo basale" value={p.metabolismo} unit="kcal" badge={p.metabolismo_status} />}
-                        {p.massa_ossea != null && <MR icon="🦴" label="Massa ossea" value={p.massa_ossea} unit="kg" badge={p.massa_ossea_status} />}
-                      </div>
-                    )}
-
-                    <button className="btn" style={{ marginTop: 6, fontSize: 12, padding: "7px 14px", color: "var(--dan)", border: "1px solid rgba(255,59,48,.25)", background: "rgba(255,59,48,.07)" }} onClick={() => {
-                      setConfirmState({ msg: "Eliminare?", onConfirm: () => { onDelete(p.id); } });
-                    }}>
-                      <IcTrash /> Elimina
-                    </button>
-                  </div>
-                )}
-
-                {!isExp && <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
-                  <button className="bico d" onClick={e => {
-                    e.stopPropagation();
-                    setConfirmState({ msg: "Eliminare questa rilevazione?", onConfirm: () => { onDelete(p.id); } });
-                  }}><IcTrash /></button>
-                </div>}
-              </div>
             );
           })}
+          </section>
         </>
       )}
 
@@ -1282,17 +1334,17 @@ function Peso({ peso, onAdd, onDelete }) {
         <div className="mov" onClick={e => { if (e.target === e.currentTarget) setShowModal(false); }}>
           <div className="mod">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <div className="wt">NUOVA RILEVAZIONE</div>
+              <div className="wt">Nuova rilevazione</div>
               <button className="bico" onClick={() => setShowModal(false)}>✕</button>
             </div>
 
-            <div className="st" style={{ marginBottom: 8 }}>PESO E DATA</div>
+            <div className="st" style={{ marginBottom: 8 }}>Peso e data</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
               <div><label className="lbl">Peso (kg)</label><input className="inp" type="number" step="0.1" min="30" placeholder="86.5" value={form.valore} onChange={e => set("valore", e.target.value)} /></div>
               <div><label className="lbl">Data</label><input className="inp" type="date" value={form.data} onChange={e => set("data", e.target.value)} /></div>
             </div>
 
-            <div className="st" style={{ marginBottom: 8 }}>COMPOSIZIONE CORPOREA <span style={{ fontSize: 10, color: "var(--mut)" }}>(OPZIONALE)</span></div>
+            <div className="st" style={{ marginBottom: 8 }}>Composizione corporea <span style={{ fontSize: 12, color: "var(--mut)" }}>(Opzionale)</span></div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
               <div><label className="lbl">Punteggio corpo</label><input className="inp" type="number" placeholder="46" value={form.punteggio} onChange={e => set("punteggio", e.target.value)} /></div>
               <div><label className="lbl">Tipologia corporea</label>
@@ -1311,9 +1363,9 @@ function Peso({ peso, onAdd, onDelete }) {
             <MI label="Metabolismo basale (kcal)" fk="metabolismo" sk="metabolismo_status" ph="1753" step="1" />
             <MI label="Massa ossea (kg)" fk="massa_ossea" sk="massa_ossea_status" ph="3.04" step="0.01" />
 
-            <div className="st" style={{ marginTop: 4, marginBottom: 8 }}>FOTO CORPOREE <span style={{ fontSize: 10, color: "var(--mut)" }}>(OPZIONALE)</span></div>
+            <div className="st" style={{ marginTop: 4, marginBottom: 8 }}>Foto corporee <span style={{ fontSize: 12, color: "var(--mut)" }}>(Opzionale)</span></div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-              {[["foto_fronte", "FRONTE"], ["foto_retro", "RETRO"]].map(([key, lab]) => (
+              {[["foto_fronte", "Fronte"], ["foto_retro", "Retro"]].map(([key, lab]) => (
                 <div key={key}>
                   <label className="lbl">{lab}</label>
                   <label style={{ display: "flex", alignItems: "center", justifyContent: "center", border: "1px dashed var(--bdr)", borderRadius: 8, cursor: "pointer", overflow: "hidden", minHeight: 90, background: "var(--sur)" }}>
@@ -1330,7 +1382,7 @@ function Peso({ peso, onAdd, onDelete }) {
             </div>
 
             <button className="btn btn-p btn-full" onClick={handleAdd} disabled={!form.valore || saving}>
-              <IcPlus /> {saving ? "SALVATAGGIO…" : "SALVA RILEVAZIONE"}
+              <IcPlus /> {saving ? "Salvataggio…" : "Salva rilevazione"}
             </button>
           </div>
         </div>
@@ -1371,18 +1423,18 @@ function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, 
 
 
   const CIRC_FIELDS = [
-    { key: "testa", label: "Testa", icon: "🧠" },
-    { key: "torace", label: "Torace", icon: "🫁" },
-    { key: "braccio_rilassato", label: "Braccio Rilassato", icon: "💪" },
-    { key: "braccio_flesso", label: "Braccio Flesso", icon: "💪" },
-    { key: "avambraccio", label: "Avambraccio", icon: "🦾" },
-    { key: "polso", label: "Polso", icon: "⌚" },
-    { key: "vita", label: "Vita", icon: "📏" },
-    { key: "addome", label: "Addome", icon: "🔶" },
-    { key: "fianchi", label: "Fianchi", icon: "🔸" },
-    { key: "coscia_max", label: "Coscia Max", icon: "🦵" },
-    { key: "coscia_med", label: "Coscia Media", icon: "🦵" },
-    { key: "polpaccio", label: "Polpaccio", icon: "🦿" },
+    { key: "testa", label: "Testa", icon: "" },
+    { key: "torace", label: "Torace", icon: "" },
+    { key: "braccio_rilassato", label: "Braccio Rilassato", icon: "" },
+    { key: "braccio_flesso", label: "Braccio Flesso", icon: "" },
+    { key: "avambraccio", label: "Avambraccio", icon: "" },
+    { key: "polso", label: "Polso", icon: "" },
+    { key: "vita", label: "Vita", icon: "" },
+    { key: "addome", label: "Addome", icon: "" },
+    { key: "fianchi", label: "Fianchi", icon: "" },
+    { key: "coscia_max", label: "Coscia Max", icon: "" },
+    { key: "coscia_med", label: "Coscia Media", icon: "" },
+    { key: "polpaccio", label: "Polpaccio", icon: "" },
   ];
 
   const currentCirc = settings.circonferenze || null;
@@ -1459,8 +1511,8 @@ function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, 
     if (!p) return null;
     if (p.punteggio != null) {
       const s = +p.punteggio;
-      if (s >= 70) return { color: "var(--ok)", bg: "rgba(48,209,88,.12)", label: "Ottimo", score: s };
-      if (s >= 55) return { color: "#FF9500", bg: "rgba(255,149,0,.12)", label: "Nella media", score: s };
+      if (s >= 70) return { color: "var(--ok)", bg: "var(--acc2)", label: "Ottimo", score: s };
+      if (s >= 55) return { color: "var(--warn)", bg: "rgba(255,149,0,.12)", label: "Nella media", score: s };
       return { color: "var(--dan)", bg: "rgba(255,59,48,.12)", label: "Da migliorare", score: s };
     }
     const BAD = ["molto alto", "insufficiente", "molto basso"];
@@ -1473,8 +1525,8 @@ function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, 
       else if (WARN.some(w => v === w)) warn++;
     });
     if (bad >= 2) return { color: "var(--dan)", bg: "rgba(255,59,48,.12)", label: "Da migliorare", score: null };
-    if (bad === 1 || warn >= 2) return { color: "#FF9500", bg: "rgba(255,149,0,.12)", label: "Attenzione", score: null };
-    if (bad === 0 && warn === 0 && (p.imc_status || p.massa_grassa_status)) return { color: "var(--ok)", bg: "rgba(48,209,88,.12)", label: "Buono", score: null };
+    if (bad === 1 || warn >= 2) return { color: "var(--warn)", bg: "rgba(255,149,0,.12)", label: "Attenzione", score: null };
+    if (bad === 0 && warn === 0 && (p.imc_status || p.massa_grassa_status)) return { color: "var(--ok)", bg: "var(--acc2)", label: "Buono", score: null };
     return null;
   };
   const health = computeHealth(ultimoPeso);
@@ -1486,26 +1538,26 @@ function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, 
 
   // Metriche rilevanti dell'ultimo tracciamento
   const METRICHE = [
-    { icon: "⚖️", label: "IMC", vk: "imc", sk: "imc_status", unit: "" },
-    { icon: "🔸", label: "Massa grassa", vk: "massa_grassa", sk: "massa_grassa_status", unit: "%" },
-    { icon: "💧", label: "Acqua", vk: "acqua", sk: "acqua_status", unit: "%" },
-    { icon: "🔶", label: "Grasso viscerale", vk: "grasso_viscerale", sk: "grasso_viscerale_status", unit: "" },
-    { icon: "💪", label: "Muscoli", vk: "muscoli", sk: "muscoli_status", unit: "kg" },
-    { icon: "🥩", label: "Proteine", vk: "proteine", sk: "proteine_status", unit: "%" },
-    { icon: "🔥", label: "Metabolismo", vk: "metabolismo", sk: "metabolismo_status", unit: "kcal" },
-    { icon: "🦴", label: "Massa ossea", vk: "massa_ossea", sk: "massa_ossea_status", unit: "kg" },
+    { icon: "", label: "IMC", vk: "imc", sk: "imc_status", unit: "" },
+    { icon: "", label: "Massa grassa", vk: "massa_grassa", sk: "massa_grassa_status", unit: "%" },
+    { icon: "", label: "Acqua", vk: "acqua", sk: "acqua_status", unit: "%" },
+    { icon: "", label: "Grasso viscerale", vk: "grasso_viscerale", sk: "grasso_viscerale_status", unit: "" },
+    { icon: "", label: "Muscoli", vk: "muscoli", sk: "muscoli_status", unit: "kg" },
+    { icon: "", label: "Proteine", vk: "proteine", sk: "proteine_status", unit: "%" },
+    { icon: "", label: "Metabolismo", vk: "metabolismo", sk: "metabolismo_status", unit: "kcal" },
+    { icon: "", label: "Massa ossea", vk: "massa_ossea", sk: "massa_ossea_status", unit: "kg" },
   ];
 
   return (
     <>
       <div style={{ paddingTop: 20, paddingBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
         <div>
-          <h1 className="pt">PROFILO<br />PERSONALE</h1>
+          <h1 className="pt">Profilo</h1>
           <p className="sub">Il tuo stato di forma attuale</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn btn-s" style={{ fontSize: 11, gap: 5, padding: "7px 10px" }} title="Esporta storico in PDF" onClick={esporta} disabled={exporting}>
-            <IcDownload /> {exporting ? "…" : "ESPORTA"}
+          <button className="btn btn-s" style={{ fontSize: 12, gap: 5, padding: "7px 10px" }} title="Esporta storico in PDF" onClick={esporta} disabled={exporting}>
+            <IcDownload /> {exporting ? "…" : "Esporta"}
           </button>
           <button className="bico" title="Esci" onClick={onLogout}>
             <Ico d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" size={18} />
@@ -1521,16 +1573,16 @@ function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, 
           <div style={{ width: 72, height: 72, borderRadius: "50%", overflow: "hidden", border: "2px solid var(--acc)", flexShrink: 0, background: "var(--sur)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: "var(--mut)" }}>
             {currentPhoto
               ? <img src={currentPhoto} alt="profilo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              : "👤"}
+              : ""}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontFamily: "var(--fd)", fontSize: 24, letterSpacing: ".05em", lineHeight: 1, marginBottom: 4 }}>
               {nome || "Il tuo profilo"}
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {sesso && <span style={{ fontSize: 11, fontWeight: 700, background: "var(--bdr)", padding: "2px 8px", borderRadius: 20 }}>{sesso === "M" ? "♂ Uomo" : sesso === "F" ? "♀ Donna" : sesso}</span>}
-              {eta && <span style={{ fontSize: 11, fontWeight: 700, background: "var(--bdr)", padding: "2px 8px", borderRadius: 20 }}>{eta} anni</span>}
-              {altezza && <span style={{ fontSize: 11, fontWeight: 700, background: "var(--bdr)", padding: "2px 8px", borderRadius: 20 }}>{altezza} cm</span>}
+              {sesso && <span style={{ fontSize: 12, fontWeight: 700, background: "var(--bdr)", padding: "2px 8px", borderRadius: 20 }}>{sesso === "M" ? "Uomo" : sesso === "F" ? "Donna" : sesso}</span>}
+              {eta && <span style={{ fontSize: 12, fontWeight: 700, background: "var(--bdr)", padding: "2px 8px", borderRadius: 20 }}>{eta} anni</span>}
+              {altezza && <span style={{ fontSize: 12, fontWeight: 700, background: "var(--bdr)", padding: "2px 8px", borderRadius: 20 }}>{altezza} cm</span>}
             </div>
           </div>
         </div>
@@ -1538,7 +1590,7 @@ function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, 
         {/* Dati mancanti prompt */}
         {(!nome || !sesso || !eta || !altezza) && (
           <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 8, background: "var(--acc2)", border: "1px solid var(--acc)", fontSize: 12, color: "var(--dim)" }}>
-            ✏️ Completa il profilo con <b style={{ color: "var(--txt)" }}>{[!nome && "nome", !sesso && "sesso", !eta && "età", !altezza && "altezza"].filter(Boolean).join(", ")}</b>
+            Completa il profilo con <b style={{ color: "var(--txt)" }}>{[!nome && "nome", !sesso && "sesso", !eta && "età", !altezza && "altezza"].filter(Boolean).join(", ")}</b>
           </div>
         )}
       </div>
@@ -1547,22 +1599,22 @@ function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, 
       <div className="card" style={{ marginBottom: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
           <div>
-            <div className="st">LOG DIETA</div>
-            <div style={{ fontSize: 11, color: "var(--dim)" }}>Calendario solare dei log alimentari</div>
+            <div className="st">Log dieta</div>
+            <div style={{ fontSize: 12, color: "var(--dim)" }}>Calendario solare dei log alimentari</div>
           </div>
-          <button className="btn btn-s" style={{ fontSize: 11, padding: "8px 12px" }} onClick={onOpenDietaLog}>
-            <IcApple /> APRI LOG DIETA
+          <button className="btn btn-s" style={{ fontSize: 12, padding: "8px 12px" }} onClick={onOpenDietaLog}>
+            <IcApple /> Apri diario
           </button>
         </div>
 
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-          <button className="bico" onClick={() => setCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}>◀</button>
+          <button className="bico" onClick={() => setCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}><IcChevL /></button>
           <div style={{ fontSize: 13, fontWeight: 700 }}>{calendarMonth.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}</div>
-          <button className="bico" onClick={() => setCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}>▶</button>
+          <button className="bico" onClick={() => setCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}><IcChevR /></button>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 4, marginBottom: 6 }}>
-          {['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'].map(d => <div key={d} style={{ fontSize: 11, textAlign: 'center', color: 'var(--dim)' }}>{d}</div>)}
+          {['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'].map(d => <div key={d} style={{ fontSize: 12, textAlign: 'center', color: 'var(--dim)' }}>{d}</div>)}
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 4 }}>
@@ -1578,11 +1630,11 @@ function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, 
               <button
                 key={idate}
                 className={`dpb${hasLog ? ' log' : ''}${isSelected ? ' on' : ''}`}
-                style={{ fontSize: 10, padding: '6px 2px', minHeight: 44, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}
+                style={{ fontSize: 12, padding: '6px 2px', minHeight: 44, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}
                 onClick={() => setSelectedCalendarDate(idate)}
               >
                 <div>{day}</div>
-                <div style={{ fontSize: 8, color: hasLog ? '#30D158' : 'var(--mut)' }}>{hasLog ? '●' : ''}</div>
+                <div style={{ fontSize: 8, color: hasLog ? "var(--ok)" : 'var(--mut)' }}>{hasLog ? '●' : ''}</div>
               </button>
             );
           })}
@@ -1609,25 +1661,25 @@ function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, 
         <div style={{ marginBottom: 12, padding: 16, borderRadius: 12, border: `1px solid ${health?.color || "var(--bdr)"}`, background: health?.bg || "var(--card)" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
             <div>
-              <div className="st" style={{ marginBottom: 2 }}>STATO DI SALUTE</div>
-              <div style={{ fontSize: 11, color: "var(--dim)" }}>Basato sull'ultima rilevazione · {fmtDate(ultimoPeso.data)}</div>
+              <div className="st" style={{ marginBottom: 2 }}>Stato di salute</div>
+              <div style={{ fontSize: 12, color: "var(--dim)" }}>Basato sull'ultima rilevazione · {fmtDate(ultimoPeso.data)}</div>
             </div>
             {health && (
               <div style={{ textAlign: "center" }}>
                 {health.score != null && <div style={{ fontFamily: "var(--fd)", fontSize: 36, color: health.color, lineHeight: 1 }}>{health.score}</div>}
-                <div style={{ fontSize: 11, fontWeight: 700, color: health.color, textTransform: "uppercase", letterSpacing: ".08em", padding: "3px 10px", borderRadius: 20, background: `${health.color}22`, marginTop: 2 }}>{health.label}</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: health.color, letterSpacing: ".08em", padding: "3px 10px", borderRadius: 20, background: `${health.color}22`, marginTop: 2 }}>{health.label}</div>
               </div>
             )}
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderTop: "1px solid var(--bdr)" }}>
             <div>
-              <div style={{ fontSize: 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".06em", fontWeight: 700 }}>Peso attuale</div>
+              <div style={{ fontSize: 12, color: "var(--dim)", letterSpacing: ".06em", fontWeight: 700 }}>Peso attuale</div>
               <div style={{ fontFamily: "var(--fd)", fontSize: 28, color: "var(--acc)", lineHeight: 1 }}>{ultimoPeso.valore} <span style={{ fontSize: 13, color: "var(--dim)", fontFamily: "inherit", fontWeight: 400 }}>kg</span></div>
             </div>
             {ultimoPeso.tipologia && <span style={{ fontSize: 12, fontWeight: 700, background: "var(--bdr)", padding: "4px 12px", borderRadius: 20 }}>{ultimoPeso.tipologia}</span>}
             {altezza && ultimoPeso.imc == null && (() => {
               const bmi = Math.round(ultimoPeso.valore / (altezza / 100) ** 2 * 10) / 10;
-              return <div style={{ textAlign: "right" }}><div style={{ fontSize: 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".06em", fontWeight: 700 }}>BMI calc.</div><div style={{ fontFamily: "var(--fd)", fontSize: 22, color: "var(--acc)" }}>{bmi}</div></div>;
+              return <div style={{ textAlign: "right" }}><div style={{ fontSize: 12, color: "var(--dim)", letterSpacing: ".06em", fontWeight: 700 }}>BMI calc.</div><div style={{ fontFamily: "var(--fd)", fontSize: 22, color: "var(--acc)" }}>{bmi}</div></div>;
             })()}
           </div>
 
@@ -1636,9 +1688,9 @@ function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
               {METRICHE.filter(m => ultimoPeso[m.vk] != null && ultimoPeso[m.vk] !== "").map(m => (
                 <div key={m.vk} style={{ background: "var(--card)", borderRadius: 8, padding: "8px 10px", border: "1px solid var(--bdr)" }}>
-                  <div style={{ fontSize: 10, color: "var(--dim)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 2 }}>{m.icon} {m.label}</div>
+                  <div style={{ fontSize: 12, color: "var(--dim)", fontWeight: 700, letterSpacing: ".06em", marginBottom: 2 }}>{m.icon} {m.label}</div>
                   <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 4 }}>
-                    <div style={{ fontFamily: "var(--fd)", fontSize: 20, color: "var(--txt)" }}>{ultimoPeso[m.vk]}<span style={{ fontSize: 10, color: "var(--dim)", marginLeft: 2 }}>{m.unit}</span></div>
+                    <div style={{ fontFamily: "var(--fd)", fontSize: 20, color: "var(--txt)" }}>{ultimoPeso[m.vk]}<span style={{ fontSize: 12, color: "var(--dim)", marginLeft: 2 }}>{m.unit}</span></div>
                     <StatusBadge label={ultimoPeso[m.sk]} />
                   </div>
                 </div>
@@ -1656,12 +1708,12 @@ function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, 
         const good = diff < 0;
         return (
           <div className="card" style={{ marginBottom: 12 }}>
-            <div className="st" style={{ marginBottom: 8 }}>ANDAMENTO PESO</div>
+            <div className="st" style={{ marginBottom: 8 }}>Andamento peso</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
               {[[`${first.valore} kg`, "Inizio", null], [`${last.valore} kg`, "Attuale", "var(--acc)"], [`${diff > 0 ? "+" : ""}${diff} kg`, "Variazione", good ? "var(--ok)" : "var(--dan)"]].map(([v, l, c]) => (
                 <div key={l} style={{ textAlign: "center" }}>
                   <div style={{ fontFamily: "var(--fd)", fontSize: 22, color: c || "var(--txt)", lineHeight: 1 }}>{v}</div>
-                  <div style={{ fontSize: 10, color: "var(--mut)", textTransform: "uppercase", letterSpacing: ".07em", marginTop: 2 }}>{l}</div>
+                  <div style={{ fontSize: 12, color: "var(--mut)", letterSpacing: ".07em", marginTop: 2 }}>{l}</div>
                 </div>
               ))}
             </div>
@@ -1673,11 +1725,11 @@ function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, 
       <div className="card" style={{ marginBottom: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: currentCirc ? 10 : 0 }}>
           <div>
-            <div className="st">📐 MISURE CORPOREE</div>
-            {currentCirc?.data && <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>Rilevate il {fmtDate(currentCirc.data)}</div>}
+            <div className="st">Misure corporee</div>
+            {currentCirc?.data && <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 2 }}>Rilevate il {fmtDate(currentCirc.data)}</div>}
           </div>
-          <button className="btn btn-s" style={{ fontSize: 11, padding: "8px 12px" }} onClick={openCircModal}>
-            {currentCirc ? <><IcEdit /> MODIFICA</> : <><IcPlus /> AGGIUNGI</>}
+          <button className="btn btn-s" style={{ fontSize: 12, padding: "8px 12px" }} onClick={openCircModal}>
+            {currentCirc ? <><IcEdit /> Modifica</> : <><IcPlus /> Aggiungi</>}
           </button>
         </div>
         {currentCirc ? (
@@ -1686,16 +1738,16 @@ function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, 
               const st = getCircStatus(f.key, currentCirc[f.key], settings.sesso || "M", currentCirc);
               return (
                 <div key={f.key} style={{ background: st?.bg || "var(--sur)", borderRadius: 8, padding: "8px 10px", border: `1px solid ${st?.color || "var(--bdr)"}` }}>
-                  <div style={{ fontSize: 9, color: "var(--mut)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 2 }}>{f.icon} {f.label}</div>
+                  <div style={{ fontSize: 12, color: "var(--mut)", fontWeight: 700, letterSpacing: ".06em", marginBottom: 2 }}>{f.icon} {f.label}</div>
                   <div style={{ fontFamily: "var(--fd)", fontSize: 20, color: st?.color || "var(--acc)", letterSpacing: ".04em", lineHeight: 1 }}>
-                    {currentCirc[f.key]} <span style={{ fontSize: 10, color: "var(--dim)", fontFamily: "inherit", fontWeight: 400 }}>cm</span>
+                    {currentCirc[f.key]} <span style={{ fontSize: 12, color: "var(--dim)", fontFamily: "inherit", fontWeight: 400 }}>cm</span>
                   </div>
                   {st && (
                     <div style={{ marginTop: 4 }}>
-                      <span style={{ fontSize: 9, fontWeight: 700, color: st.color, background: `${st.color}22`, borderRadius: 10, padding: "2px 7px", letterSpacing: ".06em", textTransform: "uppercase" }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: st.color, background: `${st.color}22`, borderRadius: 10, padding: "2px 7px", letterSpacing: ".06em" }}>
                         {st.label}
                       </span>
-                      <div style={{ fontSize: 9, color: "var(--mut)", marginTop: 3 }}>🎯 {st.target}</div>
+                      <div style={{ fontSize: 12, color: "var(--mut)", marginTop: 3 }}>{st.target}</div>
                     </div>
                   )}
                 </div>
@@ -1713,14 +1765,14 @@ function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, 
       {/* FOTO PROGRESSO */}
       {ultimeFoto && (
         <div className="card" style={{ marginBottom: 12 }}>
-          <div className="st" style={{ marginBottom: 8 }}>ULTIME FOTO CORPOREE · {fmtDate(ultimeFoto.data)}</div>
+          <div className="st" style={{ marginBottom: 8 }}>Ultime foto corporee · {fmtDate(ultimeFoto.data)}</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             {ultimeFoto.foto_fronte && <div>
-              <div style={{ fontSize: 10, color: "var(--dim)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 }}>FRONTE</div>
+              <div style={{ fontSize: 12, color: "var(--dim)", fontWeight: 700, letterSpacing: ".06em", marginBottom: 4 }}>Fronte</div>
               <img src={ultimeFoto.foto_fronte} alt="Fronte" style={{ width: "100%", borderRadius: 8, cursor: "pointer", objectFit: "cover", maxHeight: 220 }} onClick={() => setLightbox(ultimeFoto.foto_fronte)} />
             </div>}
             {ultimeFoto.foto_retro && <div>
-              <div style={{ fontSize: 10, color: "var(--dim)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 }}>RETRO</div>
+              <div style={{ fontSize: 12, color: "var(--dim)", fontWeight: 700, letterSpacing: ".06em", marginBottom: 4 }}>Retro</div>
               <img src={ultimeFoto.foto_retro} alt="Retro" style={{ width: "100%", borderRadius: 8, cursor: "pointer", objectFit: "cover", maxHeight: 220 }} onClick={() => setLightbox(ultimeFoto.foto_retro)} />
             </div>}
           </div>
@@ -1728,7 +1780,7 @@ function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, 
       )}
 
       {!ultimoPeso && (
-        <div className="emp"><div className="emp-ic">📊</div><div className="emp-t">Nessuna rilevazione</div><div style={{ fontSize: 13, color: "var(--mut)" }}>Aggiungi una rilevazione nel tab PESO per vedere il tuo stato di salute.</div></div>
+        <div className="emp"><div className="emp-ic"></div><div className="emp-t">Nessuna rilevazione</div><div style={{ fontSize: 13, color: "var(--mut)" }}>Aggiungi una rilevazione in Corpo → Peso per vedere il tuo stato di salute.</div></div>
       )}
 
       {/* LIGHTBOX */}
@@ -1744,18 +1796,18 @@ function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, 
         <div className="mov" onClick={e => { if (e.target === e.currentTarget) setShowCircModal(false); }}>
           <div className="mod" style={{ maxHeight: "88vh", overflowY: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <div className="wt">📐 MISURE CORPOREE</div>
+              <div className="wt">Misure corporee</div>
               <button className="bico" onClick={() => setShowCircModal(false)}>✕</button>
             </div>
-            <div className="st" style={{ marginBottom: 8 }}>DATA RILEVAZIONE</div>
+            <div className="st" style={{ marginBottom: 8 }}>Data rilevazione</div>
             <div style={{ marginBottom: 14 }}>
               <input className="inp" type="date" value={circForm.data || ""} onChange={e => setCircForm(f => ({ ...f, data: e.target.value }))} />
             </div>
-            <div className="st" style={{ marginBottom: 10 }}>INSERISCI MISURE (cm)</div>
+            <div className="st" style={{ marginBottom: 10 }}>Inserisci misure (cm)</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
               {CIRC_FIELDS.map(f => (
                 <div key={f.key}>
-                  <label className="lbl" style={{ fontSize: 9 }}>{f.icon} {f.label}</label>
+                  <label className="lbl" style={{ fontSize: 12 }}>{f.icon} {f.label}</label>
                   <input className="inp" type="number" step="0.1" min="0" placeholder="—"
                     value={circForm[f.key] || ""}
                     onChange={e => setCircForm(cf => ({ ...cf, [f.key]: e.target.value }))}
@@ -1765,7 +1817,7 @@ function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, 
               ))}
             </div>
             <button className="btn btn-p btn-full" onClick={saveCirc}>
-              <IcCheck /> SALVA MISURE
+              <IcCheck /> Salva misure
             </button>
           </div>
         </div>
@@ -1788,7 +1840,7 @@ function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, 
         <div className="mov" onClick={e => { if (e.target === e.currentTarget) setEditing(false); }}>
           <div className="mod">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <div className="wt">MODIFICA PROFILO</div>
+              <div className="wt">Modifica profilo</div>
               <button className="bico" onClick={() => setEditing(false)}>✕</button>
             </div>
 
@@ -1797,9 +1849,9 @@ function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, 
               <label style={{ cursor: "pointer", position: "relative" }}>
                 <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => e.target.files[0] && handleFotoProfilo(e.target.files[0])} />
                 <div style={{ width: 80, height: 80, borderRadius: "50%", overflow: "hidden", border: "2px dashed var(--acc)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, color: "var(--mut)", background: "var(--sur)" }}>
-                  {form.foto_profilo ? <img src={form.foto_profilo} alt="profilo" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "👤"}
+                  {form.foto_profilo ? <img src={form.foto_profilo} alt="profilo" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : ""}
                 </div>
-                <div style={{ position: "absolute", bottom: 0, right: 0, background: "var(--acc)", borderRadius: "50%", width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}>✏️</div>
+                <div style={{ position: "absolute", bottom: 0, right: 0, background: "var(--acc)", borderRadius: "50%", width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}></div>
               </label>
             </div>
 
@@ -1810,8 +1862,8 @@ function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, 
                 <label className="lbl">Sesso</label>
                 <select className="inp" value={form.sesso} onChange={e => set("sesso", e.target.value)}>
                   <option value="">—</option>
-                  <option value="M">♂ Uomo</option>
-                  <option value="F">♀ Donna</option>
+                  <option value="M">Uomo</option>
+                  <option value="F">Donna</option>
                 </select>
               </div>
               <div><label className="lbl">Età</label><input className="inp" type="number" min="10" max="100" placeholder="30" value={form.eta} onChange={e => set("eta", e.target.value)} /></div>
@@ -1819,7 +1871,7 @@ function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, 
             </div>
 
             <button className="btn btn-p btn-full" onClick={handleSave} disabled={saving}>
-              <IcCheck /> {saving ? "SALVATAGGIO…" : "SALVA PROFILO"}
+              <IcCheck /> {saving ? "Salvataggio…" : "Salva profilo"}
             </button>
           </div>
         </div>
@@ -1843,7 +1895,7 @@ function BodyCompChart({ data }) {
   const rng = mx - mn || 10;
   const xS = i => PL + (i / (n - 1)) * iW;
   const yS = v => PT + (1 - (v - mn) / rng) * iH;
-  const SERIES = [{ key: "peso", color: "#9E9E9E" }, { key: "ffm", color: "#30D158" }, { key: "fm", color: "#FF9500" }];
+  const SERIES = [{ key: "peso", color: "#9E9E9E" }, { key: "ffm", color: "var(--ok)" }, { key: "fm", color: "var(--warn)" }];
   const yTicks = [mn, mn + rng * 0.5, mx];
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", display: "block" }}>
@@ -1875,18 +1927,18 @@ function BodyCompChart({ data }) {
 
 // ─── STORICO CORPOREO ─────────────────────────────────────
 const CIRC_FIELDS_MAP = [
-  { key: "braccio_rilassato", label: "Braccio Ril.", icon: "💪" },
-  { key: "braccio_flesso", label: "Braccio Fless.", icon: "💪" },
-  { key: "vita", label: "Vita", icon: "📏" },
-  { key: "addome", label: "Addome", icon: "🔶" },
-  { key: "fianchi", label: "Fianchi", icon: "🔸" },
-  { key: "coscia_med", label: "Coscia Med.", icon: "🦵" },
-  { key: "coscia_max", label: "Coscia Max", icon: "🦵" },
-  { key: "polpaccio", label: "Polpaccio", icon: "🦿" },
-  { key: "testa", label: "Testa", icon: "🧠" },
-  { key: "torace", label: "Torace", icon: "🫁" },
-  { key: "avambraccio", label: "Avambraccio", icon: "🦾" },
-  { key: "polso", label: "Polso", icon: "⌚" },
+  { key: "braccio_rilassato", label: "Braccio Ril.", icon: "" },
+  { key: "braccio_flesso", label: "Braccio Fless.", icon: "" },
+  { key: "vita", label: "Vita", icon: "" },
+  { key: "addome", label: "Addome", icon: "" },
+  { key: "fianchi", label: "Fianchi", icon: "" },
+  { key: "coscia_med", label: "Coscia Med.", icon: "" },
+  { key: "coscia_max", label: "Coscia Max", icon: "" },
+  { key: "polpaccio", label: "Polpaccio", icon: "" },
+  { key: "testa", label: "Testa", icon: "" },
+  { key: "torace", label: "Torace", icon: "" },
+  { key: "avambraccio", label: "Avambraccio", icon: "" },
+  { key: "polso", label: "Polso", icon: "" },
 ];
 
 function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
@@ -1909,12 +1961,12 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
     <>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, marginTop: 4 }}>
         <div>
-          <div className="st">📊 STORICO CORPOREO</div>
-          <div style={{ fontSize: 11, color: "var(--dim)" }}>{misure.length} rilevazioni · nutrizionista</div>
+          <div className="st">Storico corporeo</div>
+          <div style={{ fontSize: 12, color: "var(--dim)" }}>{misure.length} rilevazioni · nutrizionista</div>
         </div>
         <div style={{ display: "flex", gap: 7 }}>
-          <button className="btn btn-p" style={{ fontSize: 10, padding: "7px 10px" }} onClick={() => setShowAdd(true)}>
-            <IcPlus /> AGGIUNGI
+          <button className="btn btn-p" style={{ fontSize: 12, padding: "7px 10px" }} onClick={() => setShowAdd(true)}>
+            <IcPlus /> Aggiungi
           </button>
         </div>
       </div>
@@ -1922,13 +1974,13 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
       {/* CHART */}
       {sorted.length >= 2 && (
         <div className="card" style={{ marginBottom: 12 }}>
-          <div className="st" style={{ marginBottom: 6 }}>STORICO TOTALBODY</div>
+          <div className="st" style={{ marginBottom: 6 }}>Storico totalbody</div>
           <BodyCompChart data={sorted} />
           <div style={{ display: "flex", gap: 14, marginTop: 6, justifyContent: "center" }}>
-            {[["PESO", "#9E9E9E"], ["FFM", "#30D158"], ["FM", "#FF9500"]].map(([l, c]) => (
+            {[["Peso", "#9E9E9E"], ["FFM", "var(--ok)"], ["FM", "var(--warn)"]].map(([l, c]) => (
               <div key={l} style={{ display: "flex", alignItems: "center", gap: 5 }}>
                 <div style={{ width: 16, height: 3, background: c, borderRadius: 2 }} />
-                <span style={{ fontSize: 10, color: "var(--dim)", fontWeight: 700, letterSpacing: ".06em" }}>{l}</span>
+                <span style={{ fontSize: 12, color: "var(--dim)", fontWeight: 700, letterSpacing: ".06em" }}>{l}</span>
               </div>
             ))}
           </div>
@@ -1938,21 +1990,21 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
       {/* PROGRESSO CHIAVE: prima vs ultima visita */}
       {sorted.length >= 2 && first && last && (
         <div className="card" style={{ marginBottom: 12 }}>
-          <div className="st" style={{ marginBottom: 10 }}>PROGRESSO TOTALE · {fmtShort(first.data)} → {fmtShort(last.data)}</div>
+          <div className="st" style={{ marginBottom: 10 }}>Progresso totale · {fmtShort(first.data)} → {fmtShort(last.data)}</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginBottom: 10 }}>
             {[
-              { label: "PESO", first: first.peso, last: last.peso, unit: "kg", lower: true, color: "#9E9E9E" },
-              { label: "FFM", first: first.ffm, last: last.ffm, unit: "kg", lower: false, color: "#30D158" },
-              { label: "FM", first: first.fm, last: last.fm, unit: "kg", lower: true, color: "#FF9500" },
+              { label: "Peso", first: first.peso, last: last.peso, unit: "kg", lower: true, color: "#9E9E9E" },
+              { label: "FFM", first: first.ffm, last: last.ffm, unit: "kg", lower: false, color: "var(--ok)" },
+              { label: "FM", first: first.fm, last: last.fm, unit: "kg", lower: true, color: "var(--warn)" },
             ].map(m => {
               const d = delta(m.last, m.first, m.lower);
               return (
                 <div key={m.label} style={{ background: "var(--sur)", borderRadius: 10, padding: "10px 8px", border: "1px solid var(--bdr)", textAlign: "center" }}>
-                  <div style={{ fontSize: 9, color: "var(--mut)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 }}>{m.label}</div>
+                  <div style={{ fontSize: 12, color: "var(--mut)", fontWeight: 700, letterSpacing: ".06em", marginBottom: 4 }}>{m.label}</div>
                   <div style={{ fontFamily: "var(--fd)", fontSize: 22, color: m.color, lineHeight: 1 }}>
-                    {m.last ?? "—"}<span style={{ fontSize: 9, color: "var(--dim)", fontFamily: "inherit", fontWeight: 400, marginLeft: 2 }}>{m.unit}</span>
+                    {m.last ?? "—"}<span style={{ fontSize: 12, color: "var(--dim)", fontFamily: "inherit", fontWeight: 400, marginLeft: 2 }}>{m.unit}</span>
                   </div>
-                  {d && <div style={{ fontSize: 11, fontWeight: 700, color: d.color, marginTop: 3 }}>{d.d} {m.unit}</div>}
+                  {d && <div style={{ fontSize: 12, fontWeight: 700, color: d.color, marginTop: 3 }}>{d.d} {m.unit}</div>}
                 </div>
               );
             })}
@@ -1966,12 +2018,12 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
             const pct = f && l ? Math.abs((l - f) / f) * 100 : 0;
             return (
               <div key={key} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}>
-                <div style={{ width: 80, fontSize: 10, color: "var(--dim)", fontWeight: 700, flexShrink: 0 }}>{field?.icon} {field?.label}</div>
+                <div style={{ width: 80, fontSize: 12, color: "var(--dim)", fontWeight: 700, flexShrink: 0 }}>{field?.icon} {field?.label}</div>
                 <div style={{ flex: 1, height: 6, background: "var(--bdr)", borderRadius: 3, overflow: "hidden" }}>
                   <div style={{ height: "100%", width: `${Math.min(100, (l ?? f ?? 0) / Math.max(f ?? 0, l ?? 0) * 100)}%`, background: d?.color || "var(--acc)", borderRadius: 3, transition: "width .4s" }} />
                 </div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--txt)", width: 36, textAlign: "right" }}>{l ?? f ?? "—"}</div>
-                {d && <div style={{ fontSize: 10, fontWeight: 700, color: d.color, width: 38 }}>{d.d}</div>}
+                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--txt)", width: 36, textAlign: "right" }}>{l ?? f ?? "—"}</div>
+                {d && <div style={{ fontSize: 12, fontWeight: 700, color: d.color, width: 38 }}>{d.d}</div>}
               </div>
             );
           })}
@@ -1986,46 +2038,46 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
         const deltaFfm = first?.ffm != null && last.ffm != null ? +(last.ffm - first.ffm).toFixed(1) : null;
 
         const bfThresh = sesso === "M"
-          ? [[15, "OTTIMO", "#30D158"], [20, "BUONO", "#30D158"], [25, "ATTENZIONE", "#FF9500"], [30, "ELEVATO", "#FF3B30"]]
-          : [[22, "OTTIMO", "#30D158"], [28, "BUONO", "#30D158"], [33, "ATTENZIONE", "#FF9500"], [38, "ELEVATO", "#FF3B30"]];
-        const bfEntry = bfThresh.find(([t]) => bfPct < t) || [null, "CRITICO", "#FF3B30"];
+          ? [[15, "Ottimo", "var(--ok)"], [20, "Buono", "var(--ok)"], [25, "Attenzione", "var(--warn)"], [30, "Elevato", "var(--dan)"]]
+          : [[22, "Ottimo", "var(--ok)"], [28, "Buono", "var(--ok)"], [33, "Attenzione", "var(--warn)"], [38, "Elevato", "var(--dan)"]];
+        const bfEntry = bfThresh.find(([t]) => bfPct < t) || [null, "Critico", "var(--dan)"];
         const bfRating = { label: bfEntry[1], color: bfEntry[2], bg: bfEntry[2] + "22" };
 
         const qualita = (() => {
           if (deltaPeso == null || deltaFm == null || deltaPeso >= 0) return null;
           const pct = Math.round(deltaFm / deltaPeso * 100);
           return pct >= 80
-            ? { label: "QUALITATIVO", color: "#30D158", bg: "#30D15822", desc: `${pct}% del calo è grasso` }
+            ? { label: "Qualitativo", color: "var(--ok)", bg: "var(--acc2)", desc: `${pct}% del calo è grasso` }
             : pct >= 60
-            ? { label: "ACCETTABILE", color: "#FF9500", bg: "#FF950022", desc: `${pct}% del calo è grasso` }
-            : { label: "MASSA A RISCHIO", color: "#FF3B30", bg: "#FF3B3022", desc: `Solo ${pct}% del calo è grasso` };
+            ? { label: "Accettabile", color: "var(--warn)", bg: "var(--sur)", desc: `${pct}% del calo è grasso` }
+            : { label: "Massa a rischio", color: "var(--dan)", bg: "var(--dan2)", desc: `Solo ${pct}% del calo è grasso` };
         })();
 
         const ffmRating = deltaFfm == null ? null
-          : deltaFfm >= 0 ? { label: "STABILE / ↑", color: "#30D158", bg: "#30D15822" }
-          : Math.abs(deltaFfm / (first?.ffm || 1)) < 0.03 ? { label: "CALO LIEVE", color: "#FF9500", bg: "#FF950022" }
-          : { label: "IN CALO", color: "#FF3B30", bg: "#FF3B3022" };
+          : deltaFfm >= 0 ? { label: "Stabile / ↑", color: "var(--ok)", bg: "var(--acc2)" }
+          : Math.abs(deltaFfm / (first?.ffm || 1)) < 0.03 ? { label: "Calo lieve", color: "var(--warn)", bg: "var(--sur)" }
+          : { label: "In calo", color: "var(--dan)", bg: "var(--dan2)" };
 
         const vitaSt = last.vita ? getCircStatus("vita", last.vita, sesso) : null;
         const addSt = last.addome ? getCircStatus("addome", last.addome, sesso) : null;
 
         const tips = [];
-        if (bfPct >= (sesso === "M" ? 25 : 33)) tips.push({ c: "#FF3B30", t: `% grasso al ${bfPct}% — obiettivo scendere sotto ${sesso === "M" ? "20" : "28"}%` });
-        if (last.vita && last.vita >= (sesso === "M" ? 94 : 80)) tips.push({ c: "#FF9500", t: `Vita a ${last.vita} cm — sopra soglia rischio CV. Target: <${sesso === "M" ? "94" : "80"} cm` });
-        if (last.addome && last.addome >= (sesso === "M" ? 102 : 88)) tips.push({ c: "#FF9500", t: `Addome a ${last.addome} cm — grasso viscerale ancora elevato` });
-        if (deltaFfm != null && deltaFfm < -1.5) tips.push({ c: "#FF3B30", t: "FFM calata — aumenta l'apporto proteico nelle fasi di deficit" });
-        if (tips.length === 0) tips.push({ c: "#30D158", t: "Composizione corporea in miglioramento — mantieni la rotta" });
+        if (bfPct >= (sesso === "M" ? 25 : 33)) tips.push({ c: "var(--dan)", t: `% grasso al ${bfPct}% — obiettivo scendere sotto ${sesso === "M" ? "20" : "28"}%` });
+        if (last.vita && last.vita >= (sesso === "M" ? 94 : 80)) tips.push({ c: "var(--warn)", t: `Vita a ${last.vita} cm — sopra soglia rischio CV. Target: <${sesso === "M" ? "94" : "80"} cm` });
+        if (last.addome && last.addome >= (sesso === "M" ? 102 : 88)) tips.push({ c: "var(--warn)", t: `Addome a ${last.addome} cm — grasso viscerale ancora elevato` });
+        if (deltaFfm != null && deltaFfm < -1.5) tips.push({ c: "var(--dan)", t: "FFM calata — aumenta l'apporto proteico nelle fasi di deficit" });
+        if (tips.length === 0) tips.push({ c: "var(--ok)", t: "Composizione corporea in miglioramento — mantieni la rotta" });
 
         return (
           <div className="card" style={{ marginBottom: 12 }}>
-            <div className="st" style={{ marginBottom: 10 }}>VALUTAZIONE</div>
+            <div className="st" style={{ marginBottom: 10 }}>Valutazione</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
               {[
-                { label: "% Grasso corporeo", right: <><span style={{ fontFamily: "var(--fd)", fontSize: 18, color: bfRating.color, marginRight: 7 }}>{bfPct}%</span><span style={{ fontSize: 9, fontWeight: 700, background: bfRating.bg, color: bfRating.color, padding: "2px 8px", borderRadius: 20 }}>{bfRating.label}</span></> },
-                qualita ? { label: "Qualità del calo", right: <><span style={{ fontSize: 11, color: "var(--dim)", marginRight: 7 }}>{qualita.desc}</span><span style={{ fontSize: 9, fontWeight: 700, background: qualita.bg, color: qualita.color, padding: "2px 8px", borderRadius: 20 }}>{qualita.label}</span></> } : null,
-                ffmRating ? { label: "Massa magra (FFM)", right: <span style={{ fontSize: 9, fontWeight: 700, background: ffmRating.bg, color: ffmRating.color, padding: "2px 8px", borderRadius: 20 }}>{ffmRating.label}</span> } : null,
-                vitaSt && last.vita ? { label: `📏 Vita — ${last.vita} cm`, right: <span style={{ fontSize: 9, fontWeight: 700, background: vitaSt.bg, color: vitaSt.color, padding: "2px 8px", borderRadius: 20 }}>{vitaSt.label}</span> } : null,
-                addSt && last.addome ? { label: `📏 Addome — ${last.addome} cm`, right: <span style={{ fontSize: 9, fontWeight: 700, background: addSt.bg, color: addSt.color, padding: "2px 8px", borderRadius: 20 }}>{addSt.label}</span> } : null,
+                { label: "% Grasso corporeo", right: <><span style={{ fontFamily: "var(--fd)", fontSize: 18, color: bfRating.color, marginRight: 7 }}>{bfPct}%</span><span style={{ fontSize: 12, fontWeight: 700, background: bfRating.bg, color: bfRating.color, padding: "2px 8px", borderRadius: 20 }}>{bfRating.label}</span></> },
+                qualita ? { label: "Qualità del calo", right: <><span style={{ fontSize: 12, color: "var(--dim)", marginRight: 7 }}>{qualita.desc}</span><span style={{ fontSize: 12, fontWeight: 700, background: qualita.bg, color: qualita.color, padding: "2px 8px", borderRadius: 20 }}>{qualita.label}</span></> } : null,
+                ffmRating ? { label: "Massa magra (FFM)", right: <span style={{ fontSize: 12, fontWeight: 700, background: ffmRating.bg, color: ffmRating.color, padding: "2px 8px", borderRadius: 20 }}>{ffmRating.label}</span> } : null,
+                vitaSt && last.vita ? { label: `Vita — ${last.vita} cm`, right: <span style={{ fontSize: 12, fontWeight: 700, background: vitaSt.bg, color: vitaSt.color, padding: "2px 8px", borderRadius: 20 }}>{vitaSt.label}</span> } : null,
+                addSt && last.addome ? { label: `Addome — ${last.addome} cm`, right: <span style={{ fontSize: 12, fontWeight: 700, background: addSt.bg, color: addSt.color, padding: "2px 8px", borderRadius: 20 }}>{addSt.label}</span> } : null,
               ].filter(Boolean).map((row, i) => (
                 <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: 12, color: "var(--dim)", fontWeight: 600 }}>{row.label}</span>
@@ -2033,7 +2085,7 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
                 </div>
               ))}
             </div>
-            <div style={{ fontSize: 10, color: "var(--mut)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 7 }}>COSA MIGLIORARE</div>
+            <div style={{ fontSize: 12, color: "var(--mut)", fontWeight: 700, letterSpacing: ".08em", marginBottom: 7 }}>Cosa migliorare</div>
             {tips.map((s, i) => (
               <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 6 }}>
                 <div style={{ width: 6, height: 6, borderRadius: 3, background: s.c, marginTop: 5, flexShrink: 0 }} />
@@ -2047,7 +2099,7 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
       {/* LISTA VISITE */}
       {sorted.length === 0 ? (
         <div className="emp" style={{ marginBottom: 12 }}>
-          <div className="emp-ic">📋</div>
+          <div className="emp-ic"></div>
           <div className="emp-t">Nessuna rilevazione</div>
           <p style={{ fontSize: 13 }}>Importa lo storico BCS o aggiungi la prima visita</p>
         </div>
@@ -2062,7 +2114,7 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
                 <div style={{ fontFamily: "var(--fd)", fontSize: 21, letterSpacing: ".05em", lineHeight: 1 }}>
                   {m.visita_label || `Visita ${sorted.length - idx}`}
                 </div>
-                <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{fmtDate(m.data)}</div>
+                <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 2 }}>{fmtDate(m.data)}</div>
               </div>
               <div style={{ display: "flex", gap: 6 }}>
                 <button className="bico" style={{ fontSize: 12 }} onClick={() => setExpandedId(isExpanded ? null : m.id)}>{isExpanded ? "▲" : "▼"}</button>
@@ -2073,16 +2125,16 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
             {/* Body composition pills */}
             <div style={{ display: "flex", gap: 7 }}>
               {[
-                { label: "PESO", v: m.peso, unit: "kg", color: "#9E9E9E", delta: delta(m.peso, prev?.peso, true) },
-                { label: "FFM", v: m.ffm, unit: "kg", color: "#30D158", delta: delta(m.ffm, prev?.ffm, false) },
-                { label: "FM", v: m.fm, unit: "kg", color: "#FF9500", delta: delta(m.fm, prev?.fm, true) },
-                m.bcm != null ? { label: "BCM", v: m.bcm, unit: "kg", color: "#1E90FF", delta: delta(m.bcm, prev?.bcm, false) } : null,
+                { label: "Peso", v: m.peso, unit: "kg", color: "#9E9E9E", delta: delta(m.peso, prev?.peso, true) },
+                { label: "FFM", v: m.ffm, unit: "kg", color: "var(--ok)", delta: delta(m.ffm, prev?.ffm, false) },
+                { label: "FM", v: m.fm, unit: "kg", color: "var(--warn)", delta: delta(m.fm, prev?.fm, true) },
+                m.bcm != null ? { label: "BCM", v: m.bcm, unit: "kg", color: "var(--acc)", delta: delta(m.bcm, prev?.bcm, false) } : null,
               ].filter(Boolean).filter(x => x.v != null).map(({ label, v, unit, color, delta: d }) => (
                 <div key={label} style={{ flex: 1, background: "var(--sur)", borderRadius: 8, padding: "8px 6px", border: "1px solid var(--bdr)", textAlign: "center" }}>
-                  <div style={{ fontSize: 9, color: "var(--mut)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em" }}>{label}</div>
+                  <div style={{ fontSize: 12, color: "var(--mut)", fontWeight: 700, letterSpacing: ".05em" }}>{label}</div>
                   <div style={{ fontFamily: "var(--fd)", fontSize: 20, color, lineHeight: 1.1 }}>{v}</div>
                   <div style={{ fontSize: 8, color: "var(--mut)" }}>{unit}</div>
-                  {d && <div style={{ fontSize: 9, fontWeight: 700, color: d.color }}>{d.d}</div>}
+                  {d && <div style={{ fontSize: 12, fontWeight: 700, color: d.color }}>{d.d}</div>}
                 </div>
               ))}
             </div>
@@ -2090,7 +2142,7 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
             {/* Circonferenze espanse */}
             {isExpanded && (
               <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--bdr)" }}>
-                <div style={{ fontSize: 10, color: "var(--dim)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 8 }}>📐 Circonferenze</div>
+                <div style={{ fontSize: 12, color: "var(--dim)", fontWeight: 700, letterSpacing: ".08em", marginBottom: 8 }}>Circonferenze</div>
                 {CIRC_FIELDS_MAP.filter(f => m[f.key] != null).length === 0 ? (
                   <div style={{ fontSize: 12, color: "var(--mut)", fontStyle: "italic" }}>Nessuna misura registrata</div>
                 ) : (
@@ -2100,20 +2152,20 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
                       const d = delta(m[f.key], prev?.[f.key], CIRC_LOWER_IS_BETTER.includes(f.key));
                       return (
                         <div key={f.key} style={{ background: st?.bg || "var(--sur)", borderRadius: 8, padding: "7px 9px", border: `1px solid ${st?.color || "var(--bdr)"}` }}>
-                          <div style={{ fontSize: 9, color: "var(--mut)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em" }}>{f.icon} {f.label}</div>
+                          <div style={{ fontSize: 12, color: "var(--mut)", fontWeight: 700, letterSpacing: ".05em" }}>{f.icon} {f.label}</div>
                           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 2 }}>
                             <div style={{ fontFamily: "var(--fd)", fontSize: 18, color: st?.color || "var(--acc)", letterSpacing: ".04em" }}>
-                              {m[f.key]}<span style={{ fontSize: 9, color: "var(--dim)", fontFamily: "inherit", fontWeight: 400, marginLeft: 2 }}>cm</span>
+                              {m[f.key]}<span style={{ fontSize: 12, color: "var(--dim)", fontFamily: "inherit", fontWeight: 400, marginLeft: 2 }}>cm</span>
                             </div>
-                            {d && <div style={{ fontSize: 9, fontWeight: 700, color: d.color }}>{d.d}</div>}
+                            {d && <div style={{ fontSize: 12, fontWeight: 700, color: d.color }}>{d.d}</div>}
                           </div>
-                          {st && <div style={{ fontSize: 8, fontWeight: 700, color: st.color, marginTop: 1, textTransform: "uppercase", letterSpacing: ".05em" }}>{st.label}</div>}
+                          {st && <div style={{ fontSize: 8, fontWeight: 700, color: st.color, marginTop: 1, letterSpacing: ".05em" }}>{st.label}</div>}
                         </div>
                       );
                     })}
                   </div>
                 )}
-                {m.note && <div style={{ marginTop: 8, fontSize: 12, color: "var(--dim)", fontStyle: "italic" }}>💬 {m.note}</div>}
+                {m.note && <div style={{ marginTop: 8, fontSize: 12, color: "var(--dim)", fontStyle: "italic" }}>{m.note}</div>}
               </div>
             )}
           </div>
@@ -2146,7 +2198,7 @@ function MisuraModal({ onSave, onClose }) {
     <div className="mov" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="mod" style={{ maxHeight: "90vh", overflowY: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <div className="wt">➕ NUOVA VISITA</div>
+          <div className="wt">Nuova visita</div>
           <button className="bico" onClick={onClose}>✕</button>
         </div>
 
@@ -2156,14 +2208,14 @@ function MisuraModal({ onSave, onClose }) {
         </div>
 
         <div className="stab-row" style={{ marginBottom: 14 }}>
-          <button className={`stab${tab === "corpo" ? " on" : ""}`} onClick={() => setTab("corpo")}>⚖️ COMPOSIZIONE</button>
-          <button className={`stab${tab === "circ" ? " on" : ""}`} onClick={() => setTab("circ")}>📐 MISURE</button>
+          <button className={`stab${tab === "corpo" ? " on" : ""}`} onClick={() => setTab("corpo")}>Composizione</button>
+          <button className={`stab${tab === "circ" ? " on" : ""}`} onClick={() => setTab("circ")}>Misure</button>
         </div>
 
         {tab === "corpo" && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {[{ k: "peso", l: "Peso (kg)", ph: "87.0" }, { k: "ffm", l: "FFM kg", ph: "59.4" }, { k: "fm", l: "FM kg", ph: "27.6" }, { k: "bcm", l: "BCM kg", ph: "—" }].map(({ k, l, ph }) => (
-              <div key={k}><label className="lbl" style={{ fontSize: 9 }}>{l}</label><input className="inp" type="number" step="0.1" placeholder={ph} value={form[k]} onChange={e => sv(k, e.target.value)} style={{ padding: "8px 10px" }} /></div>
+              <div key={k}><label className="lbl" style={{ fontSize: 12 }}>{l}</label><input className="inp" type="number" step="0.1" placeholder={ph} value={form[k]} onChange={e => sv(k, e.target.value)} style={{ padding: "8px 10px" }} /></div>
             ))}
           </div>
         )}
@@ -2171,13 +2223,13 @@ function MisuraModal({ onSave, onClose }) {
         {tab === "circ" && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {CIRC_FIELDS_MAP.map(({ key, label, icon }) => (
-              <div key={key}><label className="lbl" style={{ fontSize: 9 }}>{icon} {label}</label><input className="inp" type="number" step="0.1" min="0" placeholder="—" value={form[key]} onChange={e => sv(key, e.target.value)} style={{ padding: "8px 10px" }} /></div>
+              <div key={key}><label className="lbl" style={{ fontSize: 12 }}>{icon} {label}</label><input className="inp" type="number" step="0.1" min="0" placeholder="—" value={form[key]} onChange={e => sv(key, e.target.value)} style={{ padding: "8px 10px" }} /></div>
             ))}
           </div>
         )}
 
         <div style={{ marginTop: 14 }}><label className="lbl">Note</label><textarea className="inp" placeholder="Osservazioni…" value={form.note} onChange={e => sv("note", e.target.value)} style={{ minHeight: 52 }} /></div>
-        <button className="btn btn-p btn-full" style={{ marginTop: 14 }} onClick={save}><IcCheck /> SALVA VISITA</button>
+        <button className="btn btn-p btn-full" style={{ marginTop: 14 }} onClick={save}><IcCheck /> Salva visita</button>
       </div>
     </div>
   );
@@ -2192,10 +2244,10 @@ function PianiAlimentari({ piani, logDieta, onNew, onEdit, onDelete, onLog, sett
       <div style={{ paddingTop: 20, paddingBottom: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
           <div>
-            <h1 className="pt">DIETA &<br />NUTRIZIONE</h1>
+            <h1 className="pt">Dieta</h1>
           </div>
           {stab === "piani" && (
-            <button className="btn btn-p" onClick={onNew}><IcPlus /> NUOVO</button>
+            <button className="btn btn-p" onClick={onNew}><IcPlus /> Nuovo</button>
           )}
         </div>
       </div>
@@ -2210,12 +2262,12 @@ function PianiAlimentari({ piani, logDieta, onNew, onEdit, onDelete, onLog, sett
       {stab === "piani" && (
         <>
           <button className="btn btn-p btn-full" style={{ marginBottom: 14 }} onClick={onLog}>
-            🍽 LOG PASTO DI OGGI
+            LOG PASTO DI OGGI
           </button>
 
           {piani.length === 0 ? (
             <div className="emp">
-              <div className="emp-ic">🥗</div>
+              <div className="emp-ic"></div>
               <div className="emp-t">Nessun piano</div>
               <p style={{ fontSize: 13 }}>Crea il tuo primo piano alimentare</p>
             </div>
@@ -2354,7 +2406,7 @@ function StoricoDieta({ logDieta, piani, onLog, targetKcal = 1420 }) {
   if (giorni.length === 0) {
     return (
       <div className="emp">
-        <div className="emp-ic">📅</div>
+        <div className="emp-ic"></div>
         <div className="emp-t">Nessun log</div>
         <p style={{ fontSize: 13 }}>Inizia a loggare i pasti per vedere lo storico</p>
       </div>
@@ -2377,9 +2429,9 @@ function StoricoDieta({ logDieta, piani, onLog, targetKcal = 1420 }) {
 
       {hasChart && (
         <>
-          <div className="st">KCAL ULTIMI 7 GIORNI</div>
+          <div className="st">Kcal ultimi 7 giorni</div>
           <div className="chart-wrap" style={{ marginBottom: 16 }}>
-            <LineChart data={chartData} color="#30D158" height={100} />
+            <LineChart data={chartData} color="var(--ok)" height={100} />
           </div>
           <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 72, padding: "6px 4px", background: "var(--sur)", borderRadius: 8, border: "1px solid var(--bdr)", marginBottom: 16 }}>
             {chartData.map((d, i) => {
@@ -2387,7 +2439,7 @@ function StoricoDieta({ logDieta, piani, onLog, targetKcal = 1420 }) {
               const isToday = i === 6;
               return (
                 <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-                  <div style={{ width: "100%", borderRadius: 3, background: isToday ? "var(--ok)" : d.y > 0 ? "rgba(48,209,88,0.5)" : "var(--bdr)", height: `${Math.max((d.y / maxKcal) * 48, d.y > 0 ? 4 : 0)}px`, transition: "height .3s" }} />
+                  <div style={{ width: "100%", borderRadius: 3, background: isToday ? "var(--ok)" : d.y > 0 ? "var(--acc)" : "var(--bdr)", height: `${Math.max((d.y / maxKcal) * 48, d.y > 0 ? 4 : 0)}px`, transition: "height .3s" }} />
                   <div style={{ fontSize: 7, color: isToday ? "var(--ok)" : "var(--mut)", fontWeight: isToday ? 700 : 400 }}>{d.label}</div>
                 </div>
               );
@@ -2396,7 +2448,7 @@ function StoricoDieta({ logDieta, piani, onLog, targetKcal = 1420 }) {
         </>
       )}
 
-      <div className="st">DETTAGLIO GIORNALIERO</div>
+      <div className="st">Dettaglio giornaliero</div>
       {giorni.map(g => {
         const isOpen = selDay === g.day;
         const dt = new Date(g.day + "T12:00:00");
@@ -2420,7 +2472,7 @@ function StoricoDieta({ logDieta, piani, onLog, targetKcal = 1420 }) {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", cursor: "pointer" }} onClick={() => setSelDay(isOpen ? null : g.day)}>
               <div>
                 <div style={{ fontFamily: "var(--fd)", fontSize: 16, letterSpacing: ".05em", color: isToday ? "var(--ok)" : "var(--txt)" }}>
-                  {isToday ? "🟢 OGGI — " : ""}{dateLabel}
+                  {isToday ? "Oggi — " : ""}{dateLabel}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
                   <div style={{ width: 100, height: 4, background: "var(--bdr)", borderRadius: 2, overflow: "hidden" }}>
@@ -2439,9 +2491,9 @@ function StoricoDieta({ logDieta, piani, onLog, targetKcal = 1420 }) {
 
             {isOpen && (
               <div style={{ borderTop: "1px solid var(--bdr)", padding: "12px 16px", background: "var(--sur)" }}>
-                <div style={{ background: "rgba(48,209,88,0.08)", border: "1px solid rgba(48,209,88,0.25)", borderRadius: 10, padding: "10px 14px", marginBottom: 12 }}>
+                <div style={{ background: "var(--acc2)", border: "1px solid var(--bdr)", borderRadius: 10, padding: "10px 14px", marginBottom: 12 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ok)", letterSpacing: ".06em", textTransform: "uppercase" }}>Totale giorno</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ok)", letterSpacing: ".06em" }}>Totale giorno</span>
                     <span style={{ fontFamily: "var(--fd)", fontSize: 28, color: "var(--ok)", letterSpacing: ".05em" }}>
                       {Math.round(+g.kcalTot || 0)} kcal
                     </span>
@@ -2449,10 +2501,10 @@ function StoricoDieta({ logDieta, piani, onLog, targetKcal = 1420 }) {
                   <div style={{ height: 4, background: "var(--bdr)", borderRadius: 2, overflow: "hidden", marginTop: 8 }}>
                     <div style={{ height: "100%", width: `${kcalBar}%`, background: "var(--ok)", borderRadius: 2, transition: "width .4s" }} />
                   </div>
-                  <div style={{ fontSize: 10, color: "var(--mut)", marginTop: 4 }}>su ~{targetKcal || 1420} kcal obiettivo</div>
+                  <div style={{ fontSize: 12, color: "var(--mut)", marginTop: 4 }}>su ~{targetKcal || 1420} kcal obiettivo</div>
 
                   <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ fontSize: 11, color: "var(--dim)" }}>
+                    <div style={{ fontSize: 12, color: "var(--dim)" }}>
                       {g.entries[0]?.pianoNome && (
                         <span>
                           Piano: <b style={{ color: "var(--txt)" }}>{g.entries[0].pianoNome}</b>
@@ -2462,13 +2514,13 @@ function StoricoDieta({ logDieta, piani, onLog, targetKcal = 1420 }) {
                     {onLog && (
                       <button
                         className="btn btn-s"
-                        style={{ fontSize: 11, padding: "6px 10px" }}
+                        style={{ fontSize: 12, padding: "6px 10px" }}
                         onClick={() => {
                           const pianoId = g.entries[0]?.pianoId || null;
                           onLog({ date: g.day, pianoId });
                         }}
                       >
-                        <IcEdit /> MODIFICA GIORNATA
+                        <IcEdit /> Modifica giornata
                       </button>
                     )}
                   </div>
@@ -2476,7 +2528,7 @@ function StoricoDieta({ logDieta, piani, onLog, targetKcal = 1420 }) {
 
                 {pastiDelGiorno.length > 0 ? (
                   <>
-                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".09em", textTransform: "uppercase", color: "var(--dim)", marginBottom: 8 }}>PASTI LOGGATI</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".09em", color: "var(--dim)", marginBottom: 8 }}>Pasti loggati</div>
                     {pastiDelGiorno.map((p, i) => {
                       const hasAlimenti = Array.isArray(p.alimenti) && p.alimenti.length > 0;
                       const kcalPasto = calcPastoKcal(p);
@@ -2485,7 +2537,7 @@ function StoricoDieta({ logDieta, piani, onLog, targetKcal = 1420 }) {
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: hasAlimenti ? 6 : 0 }}>
                             <div>
                               <div style={{ fontSize: 14, fontWeight: 600 }}>{p.nome || p.name || "Pasto"}</div>
-                              {p.orario && <div style={{ fontSize: 11, color: "var(--mut)" }}>{p.orario}</div>}
+                              {p.orario && <div style={{ fontSize: 12, color: "var(--mut)" }}>{p.orario}</div>}
                             </div>
                             <div style={{ fontFamily: "var(--fd)", fontSize: 18, color: "var(--ok)", flexShrink: 0 }}>
                               {kcalPasto ? `${kcalPasto} kcal` : ""}
@@ -2499,7 +2551,7 @@ function StoricoDieta({ logDieta, piani, onLog, targetKcal = 1420 }) {
                                   <div style={{ flex: 1, minWidth: 0 }}>
                                     <div style={{ fontSize: 13, fontWeight: 600 }}>{al.nome}</div>
                                     {al.grammi && (
-                                      <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 1 }}>
+                                      <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 1 }}>
                                         {al.grammi}g
                                       </div>
                                     )}
@@ -2541,7 +2593,7 @@ function StoricoDieta({ logDieta, piani, onLog, targetKcal = 1420 }) {
       })}
 
       {/* Lista giorni in ordine cronologico (dal più vecchio al più recente) */}
-      <div className="st" style={{ marginTop: 18 }}>CRONOLOGIA COMPLETA</div>
+      <div className="st" style={{ marginTop: 18 }}>Cronologia completa</div>
       <div style={{ background: "var(--sur)", borderRadius: 10, border: "1px solid var(--bdr)", padding: "8px 10px", fontSize: 12 }}>
         {giorniAsc.map(g => {
           const dt = new Date(g.day + "T12:00:00");
@@ -2684,8 +2736,8 @@ function PianoEdit({ piano: init, onSave, onBack }) {
       <div className="content fi" style={{ paddingBottom: 100 }}>
         <button className="bb" onClick={onBack}><IcChevL /> Indietro</button>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
-          <h1 className="pt">{init.id ? "MODIFICA" : "NUOVO"}<br />PIANO</h1>
-          <button className="btn btn-s" style={{ marginTop: 6, fontSize: 11, gap: 5 }} onClick={() => setPdfModal(true)}><IcFile size={14} /> PDF</button>
+          <h1 className="pt">{init.id ? "Modifica piano" : "Nuovo piano"}</h1>
+          <button className="btn btn-s" style={{ marginTop: 6, fontSize: 12, gap: 5 }} onClick={() => setPdfModal(true)}><IcFile size={14} /> PDF</button>
         </div>
 
         <div className="ig">
@@ -2693,18 +2745,18 @@ function PianoEdit({ piano: init, onSave, onBack }) {
           <input className="inp" placeholder="es. Massa 2024, Definizione..." value={nome} onChange={e => setNome(e.target.value)} />
         </div>
 
-        <div className="wh" style={{ borderColor: "#30D158", background: "rgba(48,209,88,.1)", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div className="wh" style={{ borderColor: "var(--ok)", background: "var(--acc2)", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <div>
-            <div className="st" style={{ color: "#30D158", marginBottom: 2 }}>CALORIE {GIORNI_LABEL[giorno].toUpperCase()}</div>
-            <div className="wlv" style={{ color: "#30D158" }}>{totKcalGiorno} <span style={{ fontSize: 16 }}>kcal</span></div>
+            <div className="st" style={{ color: "var(--ok)", marginBottom: 2 }}>Calorie {GIORNI_LABEL[giorno].toLowerCase()}</div>
+            <div className="wlv" style={{ color: "var(--ok)" }}>{totKcalGiorno} <span style={{ fontSize: 16 }}>kcal</span></div>
           </div>
           <div style={{ textAlign: "right" }}>
-            <div className="st">TOT. SETTIMANA</div>
+            <div className="st">Tot. settimana</div>
             <div style={{ fontFamily: "var(--fd)", fontSize: 24 }}>{totKcalSett} kcal</div>
           </div>
         </div>
 
-        <div className="st">GIORNO DELLA SETTIMANA</div>
+        <div className="st">Giorno della settimana</div>
         <div className="day-pill">
           {[1, 2, 3, 4, 5, 6, 7].map(d => (
             <button key={d}
@@ -2716,7 +2768,7 @@ function PianoEdit({ piano: init, onSave, onBack }) {
           ))}
         </div>
 
-        <div className="st">TIPO GIORNO</div>
+        <div className="st">Tipo giorno</div>
         <div className="stab-row" style={{ marginBottom: 16 }}>
           {Object.entries(TIPI_GIORNO).map(([k, l]) => (
             <button key={k} className={`stab${giorniTipo[giorno] === k ? " on" : ""}`} onClick={() => setTipo(k)}>{l}</button>
@@ -2724,21 +2776,21 @@ function PianoEdit({ piano: init, onSave, onBack }) {
         </div>
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <div className="st" style={{ margin: 0 }}>PASTI — {GIORNI_LABEL[giorno].toUpperCase()}</div>
+          <div className="st" style={{ margin: 0 }}>Pasti — {GIORNI_LABEL[giorno].toLowerCase()}</div>
           <div style={{ display: "flex", gap: 6 }}>
             {giorno > 1 && (
-              <button className="btn btn-s" style={{ fontSize: 11, padding: "7px 10px" }} onClick={copyFromPrev}>
+              <button className="btn btn-s" style={{ fontSize: 12, padding: "7px 10px" }} onClick={copyFromPrev}>
                 Copia G{giorno - 1}
               </button>
             )}
-            <button className="btn btn-s" onClick={addPasto}><IcPlus /> PASTO</button>
+            <button className="btn btn-s" onClick={addPasto}><IcPlus /> Pasto</button>
           </div>
         </div>
 
         {pastiGroupsEdit.length === 0 && (
           <div className="emp" style={{ padding: "24px 0" }}>
             <div style={{ fontSize: 13, color: "var(--dim)" }}>Nessun pasto per {GIORNI_LABEL[giorno]}</div>
-            <div style={{ fontSize: 11, color: "var(--mut)", marginTop: 4 }}>Aggiungi pasti o copia dal giorno precedente</div>
+            <div style={{ fontSize: 12, color: "var(--mut)", marginTop: 4 }}>Aggiungi pasti o copia dal giorno precedente</div>
           </div>
         )}
 
@@ -2766,12 +2818,11 @@ function PianoEdit({ piano: init, onSave, onBack }) {
                 padding: 10, marginBottom: 14, background: "rgba(255,149,0,.04)"
               }}>
                 <div style={{
-                  fontSize: 10, fontWeight: 700, color: "#FF9500",
-                  textTransform: "uppercase", letterSpacing: ".08em",
+                  fontSize: 12, fontWeight: 700, color: "var(--warn)", letterSpacing: ".08em",
                   marginBottom: 10, display: "flex", alignItems: "center", gap: 6
                 }}>
                   ⇄ PASTI ALTERNATIVI
-                  <span style={{ fontSize: 9, color: "var(--mut)", fontWeight: 400, textTransform: "none" }}>
+                  <span style={{ fontSize: 12, color: "var(--mut)", fontWeight: 400, textTransform: "none" }}>
                     — nel tracking sceglierai quale hai mangiato
                   </span>
                 </div>
@@ -2794,12 +2845,12 @@ function PianoEdit({ piano: init, onSave, onBack }) {
         })}
 
         <div style={{ height: 20 }} />
-        <button className="btn btn-p btn-full" style={{ background: "#30D158", padding: 16, fontSize: 15 }}
+        <button className="btn btn-p btn-full" style={{ background: "var(--ok)", padding: 16, fontSize: 15 }}
           onClick={() => {
             if (!nome.trim()) return alert("Dai un nome al piano");
             onSave({ ...init, nome: nome.trim(), durataGiorni: init.durataGiorni || 7, pasti: giorniPasti[1] || [], giorniPasti, ...(Object.keys(giorniTipo).length ? { giorniTipo } : {}) });
           }}>
-          <IcCheck /> SALVA PIANO
+          <IcCheck /> Salva piano
         </button>
       </div>
 
@@ -2844,8 +2895,8 @@ function PastoEditCard({ pasto: p, pi, isAlt, altIndex, canMoveUp, canMoveDown, 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {isAlt && (
             <span style={{
-              fontSize: 11, fontWeight: 700, minWidth: 22, height: 22,
-              background: "#FF9500", color: "#fff",
+              fontSize: 12, fontWeight: 700, minWidth: 22, height: 22,
+              background: "var(--warn)", color: "#fff",
               borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center",
               flexShrink: 0
             }}>
@@ -2854,12 +2905,12 @@ function PastoEditCard({ pasto: p, pi, isAlt, altIndex, canMoveUp, canMoveDown, 
           )}
           <div style={{
             fontFamily: "var(--fd)", fontSize: 20, letterSpacing: ".05em",
-            color: isAlt ? "#FF9500" : "#30D158"
+            color: isAlt ? "var(--warn)" : "var(--ok)"
           }}>
             {p.nome}
           </div>
           {kcalPasto > 0 && (
-            <span style={{ fontSize: 11, color: "var(--dim)" }}>{kcalPasto} kcal</span>
+            <span style={{ fontSize: 12, color: "var(--dim)" }}>{kcalPasto} kcal</span>
           )}
         </div>
         <div style={{ display: "flex", gap: 4 }}>
@@ -2881,7 +2932,7 @@ function PastoEditCard({ pasto: p, pi, isAlt, altIndex, canMoveUp, canMoveDown, 
           <FoodThumb nome={al.nome} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 600, fontSize: 14 }}>{al.nome}</div>
-            <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{al.grammi}g · {al.kcal} kcal</div>
+            <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 2 }}>{al.grammi}g · {al.kcal} kcal</div>
           </div>
           <div style={{ display: "flex", gap: 4 }}>
             <button className="bico" style={{ padding: 5, border: "none" }} onClick={() => onEditAlim(ai)}><IcEdit size={14} /></button>
@@ -2892,13 +2943,13 @@ function PastoEditCard({ pasto: p, pi, isAlt, altIndex, canMoveUp, canMoveDown, 
 
       {/* Bottoni azioni pasto */}
       <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-        <button className="btn btn-s" style={{ flex: 1, fontSize: 11, padding: "8px" }} onClick={onAddAlim}>
-          <IcPlus /> ALIMENTO
+        <button className="btn btn-s" style={{ flex: 1, fontSize: 12, padding: "8px" }} onClick={onAddAlim}>
+          <IcPlus /> Alimento
         </button>
         {onAddAlternativa && (
           <button
             className="btn btn-s"
-            style={{ fontSize: 11, padding: "8px", color: "#FF9500", borderColor: "rgba(255,149,0,.4)" }}
+            style={{ fontSize: 12, padding: "8px", color: "var(--warn)", borderColor: "rgba(255,149,0,.4)" }}
             onClick={onAddAlternativa}>
             ⇄ ALTERNATIVA
           </button>
@@ -3055,17 +3106,17 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
 
   const balanceColor = totPreviste === 0 ? 'var(--acc)'
     : delta > 200 ? 'var(--dan)'
-      : delta > 0 ? '#FF9500'
+      : delta > 0 ? "var(--warn)"
         : delta > -200 ? 'var(--ok)'
-          : '#FF9500';
+          : "var(--warn)";
 
   const balanceLabel = totPreviste === 0
     ? `${totConsumate} kcal totali`
-    : delta > 200 ? `+${delta} kcal sopra il target ⚠️`
+    : delta > 200 ? `+${delta} kcal sopra il target `
       : delta > 0 ? `+${delta} kcal — leggermente sopra`
-        : delta === 0 ? `In target perfetto ✓`
+        : delta === 0 ? `In target`
           : delta > -200 ? `${delta} kcal — leggermente sotto`
-            : `${delta} kcal sotto il target ⚠️`;
+            : `${delta} kcal sotto il target `;
 
   const handleSave = async () => {
     if (!piano) return;
@@ -3116,7 +3167,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
     <>
       <div className="content fi">
         <button className="bb" onClick={onBack}><IcChevL /> Indietro</button>
-        <h1 className="pt" style={{ marginBottom: 6 }}>TRACKING<br />DIETA</h1>
+        <h1 className="pt" style={{ marginBottom: 6 }}>Diario dieta</h1>
         <p className="sub" style={{ marginBottom: 8 }}>
           {new Date(selectedDate + "T12:00:00").toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
         </p>
@@ -3131,10 +3182,10 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
               setSelectedDate(d.toISOString().slice(0, 10));
             }}
           >
-            ◀
+            <IcChevL />
           </button>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 12, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+            <div style={{ fontSize: 12, color: 'var(--dim)', letterSpacing: '.08em' }}>
               Giorno solare
             </div>
             <div style={{ fontFamily: "var(--fd)", fontSize: 20, letterSpacing: '.06em' }}>
@@ -3149,12 +3200,12 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
               setSelectedDate(d.toISOString().slice(0, 10));
             }}
           >
-            ▶
+            <IcChevR />
           </button>
         </div>
 
         {piani.length === 0 ? (
-          <div className="emp"><div className="emp-ic">🍎</div><div className="emp-t">Nessun piano creato</div></div>
+          <div className="emp"><div className="emp-ic"></div><div className="emp-t">Nessun piano creato</div></div>
         ) : (
           <>
             {piani.length > 1 && (
@@ -3169,7 +3220,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
             )}
 
             <div className="div" />
-            <div className="st">GIORNO DEL PIANO</div>
+            <div className="st">Giorno del piano</div>
             <div className="day-pill">
               {[1, 2, 3, 4, 5, 6, 7].map(d => (
                 <button
@@ -3186,19 +3237,19 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
 
             {piano?.giorniTipo && (
               <>
-                <div className="st">TIPO GIORNO</div>
+                <div className="st">Tipo giorno</div>
                 <div className="stab-row" style={{ marginBottom: targetTipo ? 8 : 16 }}>
                   {Object.entries(TIPI_GIORNO).map(([k, l]) => (
                     <button key={k} className={`stab${tipoGiorno === k ? " on" : ""}`} onClick={() => cambiaTipo(k)}>{l}</button>
                   ))}
                 </div>
                 {targetTipo?.kcal && (
-                  <div style={{ fontSize: 11, color: "var(--dim)", marginBottom: 16, lineHeight: 1.5 }}>
+                  <div style={{ fontSize: 12, color: "var(--dim)", marginBottom: 16, lineHeight: 1.5 }}>
                     Obiettivo: <b style={{ color: "var(--txt)" }}>{targetTipo.kcal.min}–{targetTipo.kcal.max} kcal</b>
                     {targetTipo.proteine_g && <> · P {targetTipo.proteine_g.min}–{targetTipo.proteine_g.max} g</>}
                     {targetTipo.carboidrati_g && <> · C {targetTipo.carboidrati_g.min}–{targetTipo.carboidrati_g.max} g</>}
                     {targetTipo.grassi_g && <> · G {targetTipo.grassi_g.min}–{targetTipo.grassi_g.max} g</>}
-                    {targetTipo.acqua_l && <> · 💧 {targetTipo.acqua_l.min === targetTipo.acqua_l.max ? targetTipo.acqua_l.min : `${targetTipo.acqua_l.min}–${targetTipo.acqua_l.max}`} L</>}
+                    {targetTipo.acqua_l && <> · {targetTipo.acqua_l.min === targetTipo.acqua_l.max ? targetTipo.acqua_l.min : `${targetTipo.acqua_l.min}–${targetTipo.acqua_l.max}`} L</>}
                     {targetTipo.note && <div style={{ marginTop: 2 }}>{targetTipo.note}</div>}
                   </div>
                 )}
@@ -3212,7 +3263,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--dim)', letterSpacing: '.08em', marginBottom: 4 }}>
                     Calorie giornata
                   </div>
                   <div style={{ fontFamily: "var(--fd)", fontSize: 42, color: balanceColor, lineHeight: 1, transition: 'color .3s' }}>
@@ -3226,7 +3277,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                 {totPreviste > 0 && (
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontFamily: "var(--fd)", fontSize: 28, color: balanceColor }}>{percTarget}%</div>
-                    <div style={{ fontSize: 10, color: 'var(--dim)' }}>del target</div>
+                    <div style={{ fontSize: 12, color: 'var(--dim)' }}>del target</div>
                   </div>
                 )}
               </div>
@@ -3236,7 +3287,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                   <div style={{
                     height: '100%', borderRadius: 3, transition: 'width .4s, background .3s',
                     width: `${Math.min(100, percTarget)}%`,
-                    background: percTarget > 110 ? 'var(--dan)' : percTarget > 100 ? '#FF9500' : '#30D158'
+                    background: percTarget > 110 ? 'var(--dan)' : percTarget > 100 ? "var(--warn)" : "var(--ok)"
                   }} />
                   <div style={{ position: 'absolute', top: -4, right: 0, width: 2, height: 14, background: 'var(--dim)', borderRadius: 1 }} />
                 </div>
@@ -3246,8 +3297,8 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
 
               {totConsumateExtra > 0 && (
                 <div style={{ display: 'flex', gap: 16, marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--bdr)' }}>
-                  <div style={{ fontSize: 11, color: 'var(--dim)' }}>Piano: <b style={{ color: 'var(--txt)' }}>{totConsumatePiano} kcal</b></div>
-                  <div style={{ fontSize: 11, color: 'var(--dim)' }}>Extra: <b style={{ color: '#FF9500' }}>{totConsumateExtra} kcal</b></div>
+                  <div style={{ fontSize: 12, color: 'var(--dim)' }}>Piano: <b style={{ color: 'var(--txt)' }}>{totConsumatePiano} kcal</b></div>
+                  <div style={{ fontSize: 12, color: 'var(--dim)' }}>Extra: <b style={{ color: "var(--warn)" }}>{totConsumateExtra} kcal</b></div>
                 </div>
               )}
             </div>
@@ -3261,8 +3312,8 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
               <>
                 {piano?.note && (
                   <div style={{ marginBottom: 12 }}>
-                    <button className="btn btn-s" style={{ fontSize: 11, padding: '6px 10px' }} onClick={() => toggleNota('__piano')}>
-                      📋 {noteAperte.__piano ? 'Nascondi' : 'Mostra'} note del piano
+                    <button className="btn btn-s" style={{ fontSize: 12, padding: '6px 10px' }} onClick={() => toggleNota('__piano')}>
+                      {noteAperte.__piano ? 'Nascondi' : 'Mostra'} note del piano
                     </button>
                     {noteAperte.__piano && (
                       <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.5, color: 'var(--dim)', background: 'var(--sur)', border: '1px solid var(--bdr)', borderRadius: 10, padding: 10, whiteSpace: 'pre-wrap' }}>
@@ -3272,7 +3323,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                   </div>
                 )}
 
-                <div className="st" style={{ marginBottom: 10 }}>PASTI — {GIORNI_LABEL[selectedDay].toUpperCase()}</div>
+                <div className="st" style={{ marginBottom: 10 }}>Pasti — {GIORNI_LABEL[selectedDay].toLowerCase()}</div>
 
                 {pastiGroups.map((group, gi) => {
                   const selItem = getSelItem(group);
@@ -3283,13 +3334,11 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                   );
                   const tuttiMangiati = pasto.alimenti.length > 0
                     && pasto.alimenti.every((_, ai) => mangiato[`${pi}_${ai}`]);
-                  const nessuno = pasto.alimenti.length > 0
-                    && pasto.alimenti.every((_, ai) => !mangiato[`${pi}_${ai}`]);
 
                   return (
                     <div key={gi} style={{
                       background: 'var(--sur)',
-                      border: `1px solid ${tuttiMangiati ? '#30D158' : nessuno ? 'rgba(255,59,48,.35)' : 'var(--bdr)'}`,
+                      border: `${tuttiMangiati ? 2 : 1}px solid ${tuttiMangiati ? "var(--acc)" : 'var(--bdr)'}`,
                       borderRadius: 10, padding: 12, marginBottom: 12, transition: 'border-color .2s'
                     }}>
                       {/* Header */}
@@ -3299,9 +3348,9 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                       }}>
                         <div style={{
                           fontFamily: "var(--fd)", fontSize: 18, letterSpacing: '.05em',
-                          color: tuttiMangiati ? '#30D158' : nessuno ? 'var(--dan)' : 'var(--txt)'
+                          color: 'var(--txt)', display: 'flex', alignItems: 'center', gap: 6
                         }}>
-                          {pasto.nome} {tuttiMangiati ? '✓' : nessuno && group.type === 'single' ? '✗' : ''}
+                          {pasto.nome}{tuttiMangiati && <span style={{ color: 'var(--acc)', display: 'inline-flex' }}><IcCheck /></span>}
                         </div>
                         <div style={{ fontFamily: "var(--fd)", fontSize: 15, color: 'var(--acc)' }}>
                           {pastoEaten > 0 ? `${pastoEaten} / ` : ''}{pastoKcal} kcal
@@ -3311,7 +3360,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                       {/* Pill selezione alternativa */}
                       {group.type === 'alternative' && (
                         <div style={{ marginBottom: 10 }}>
-                          <div style={{ fontSize: 10, fontWeight: 700, color: '#FF9500', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 6 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--warn)", letterSpacing: '.07em', marginBottom: 6 }}>
                             ⇄ Quale hai mangiato oggi?
                           </div>
                           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -3324,12 +3373,12 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                                     padding: '6px 14px', borderRadius: 20, border: 'none',
                                     cursor: 'pointer', fontSize: 12, fontWeight: 700,
                                     fontFamily: "inherit",
-                                    background: isSelected ? '#FF9500' : 'var(--bdr)',
+                                    background: isSelected ? "var(--warn)" : 'var(--bdr)',
                                     color: isSelected ? '#fff' : 'var(--dim)',
                                     transition: 'all .15s'
                                   }}>
                                   {String.fromCharCode(65 + altI)} · {p.nome}
-                                  <span style={{ fontSize: 10, opacity: .8, marginLeft: 5 }}>{kc} kcal</span>
+                                  <span style={{ fontSize: 12, opacity: .8, marginLeft: 5 }}>{kc} kcal</span>
                                 </button>
                               );
                             })}
@@ -3344,10 +3393,10 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                             style={{
                               padding: '4px 10px', borderRadius: 20, border: '1px solid var(--bdr)',
                               background: noteAperte[pasto.id] ? 'var(--bdr)' : 'transparent',
-                              color: 'var(--dim)', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                              color: 'var(--dim)', fontSize: 12, fontWeight: 700, cursor: 'pointer',
                               fontFamily: "inherit"
                             }}>
-                            📝 Nota {noteAperte[pasto.id] ? '▴' : '▾'}
+                            Nota {noteAperte[pasto.id] ? '▴' : '▾'}
                           </button>
                           {noteAperte[pasto.id] && (
                             <div style={{ marginTop: 6, fontSize: 12, lineHeight: 1.45, color: 'var(--dim)', fontStyle: 'italic' }}>
@@ -3365,7 +3414,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                             <FoodThumb nome={al.nome} />
                             <div style={{ flex: 1, opacity: eaten ? .45 : 1, transition: 'opacity .15s', minWidth: 0 }}>
                               <div style={{ fontWeight: 600, fontSize: 13, textDecoration: eaten ? 'line-through' : 'none' }}>{al.nome}</div>
-                              {+al.grammi > 0 && <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 1 }}>{al.grammi}g</div>}
+                              {+al.grammi > 0 && <div style={{ fontSize: 12, color: 'var(--dim)', marginTop: 1 }}>{al.grammi}g</div>}
                             </div>
                             <div style={{
                               fontFamily: "var(--fd)", fontSize: 16,
@@ -3394,10 +3443,10 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
 
             {/* ─── Extra ─── */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, marginTop: 4 }}>
-              <div className="st" style={{ margin: 0 }}>EXTRA / FUORI PIANO</div>
-              <button className="btn btn-s" style={{ fontSize: 11, padding: '7px 10px', gap: 4 }}
+              <div className="st" style={{ margin: 0 }}>Extra / fuori piano</div>
+              <button className="btn btn-s" style={{ fontSize: 12, padding: '7px 10px', gap: 4 }}
                 onClick={() => setShowAddExtra(v => !v)}>
-                <IcPlus /> AGGIUNGI
+                <IcPlus /> Aggiungi
               </button>
             </div>
 
@@ -3410,7 +3459,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                       onChange={e => setExtraNome(e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && addExtra()} />
                     {extraNome.trim() && !extraKcal && (
-                      <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 6 }}>
+                      <div style={{ fontSize: 12, color: 'var(--dim)', marginTop: 6 }}>
                         Kcal stimate: {estimateKcalFromName(extraNome.trim()) || '150'} kcal
                       </div>
                     )}
@@ -3428,9 +3477,9 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                       onClick={() => { setShowAddExtra(false); setExtraNome(''); setExtraKcal(''); }}>
                       ANNULLA
                     </button>
-                    <button className="btn btn-p" style={{ flex: 2, fontSize: 12, background: '#FF9500' }}
+                    <button className="btn btn-p" style={{ flex: 2, fontSize: 12, background: "var(--warn)" }}
                       onClick={addExtra} disabled={!extraNome.trim()}>
-                      <IcPlus /> AGGIUNGI
+                      <IcPlus /> Aggiungi
                     </button>
                   </div>
                 </div>
@@ -3447,22 +3496,22 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                       border: `1px solid ${e.mangiato ? 'rgba(255,149,0,.4)' : 'var(--bdr)'}`,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: 20, flexShrink: 0
-                    }}>🍹</div>
+                    }}></div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 600, fontSize: 13, textDecoration: e.mangiato ? 'none' : 'line-through' }}>{e.nome}</div>
-                      <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 1 }}>
+                      <div style={{ fontSize: 12, color: 'var(--dim)', marginTop: 1 }}>
                         {e.mangiato ? 'conteggiato' : 'escluso dal conteggio'}
                       </div>
                     </div>
                     <div style={{
                       fontFamily: "var(--fd)", fontSize: 16,
-                      color: e.mangiato ? '#FF9500' : 'var(--mut)', flexShrink: 0,
+                      color: e.mangiato ? "var(--warn)" : 'var(--mut)', flexShrink: 0,
                       textDecoration: e.mangiato ? 'none' : 'line-through'
                     }}>
                       {e.kcal} kcal
                     </div>
                     <button className={`fck${e.mangiato ? ' ok' : ''}`}
-                      style={{ borderColor: e.mangiato ? '#30D158' : 'var(--bdr)' }}
+                      style={{ borderColor: e.mangiato ? "var(--ok)" : 'var(--bdr)' }}
                       onClick={() => toggleExtra(e.id)}>
                       {e.mangiato && <Ico d="M20 6L9 17l-5-5" size={12} stroke="#fff" sw={2.5} />}
                     </button>
@@ -3481,12 +3530,12 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
             )}
 
             {existingLog && (
-              <div style={{background:'rgba(255,59,48,0.12)', border:'1px solid #FF3B30', borderRadius:10, padding:'10px 14px', marginBottom:12, fontSize:13, color:'#FF3B30', fontWeight:700}}>
-                ⚠️ Hai già un log per oggi con questo piano. Salvando sovrascriverai quello esistente.
+              <div style={{background:'rgba(255,59,48,0.12)', border:'1px solid var(--dan)', borderRadius:10, padding:'10px 14px', marginBottom:12, fontSize:13, color:'var(--dan)', fontWeight:700}}>
+                Hai già un log per oggi con questo piano. Salvando sovrascriverai quello esistente.
               </div>
             )}
-            <button className="btn btn-p btn-full" style={{background: saved ? '#30D158' : existingLog ? '#FF9500' : '#30D158', padding:16, fontSize:15}} onClick={handleSave}>
-              {saved ? '✓ SALVATO' : existingLog ? 'AGGIORNA LOG' : 'SALVA LOG GIORNATA'}
+            <button className="btn btn-p btn-full" style={{background: saved ? "var(--ok)" : existingLog ? "var(--warn)" : "var(--ok)", padding:16, fontSize:15}} onClick={handleSave}>
+              {saved ? 'Salvato' : existingLog ? 'Aggiorna diario' : 'Salva giornata'}
             </button>
           </>
         )}
