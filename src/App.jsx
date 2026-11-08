@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import ConfirmModal from "./components/modals/ConfirmModal";
+import ListaSpesa from "./components/ListaSpesa";
 import { genId, fmtDur, fmtDate, fmtShort, fmtIso, epley, GG, GIORNI_LABEL, GIORNI_SHORT, fetchMealImg, estraiTestoPdf, compressImg, estimateKcalFromName, pianoAttivo, pastiPerGiorno, targetKcalPiano, TIPI_GIORNO } from "./utils";
 import { IcHome, IcBook, IcHistory, IcChart, IcWeight, IcPlus, IcTrash, IcEdit, IcCheck, IcChevL, IcClose, IcPlay, IcTimer, IcCamera, IcImg, IcSun, IcMoon, IcDownload, IcCalc, IcArrowUp, IcArrowDown, IcApple, IcUser, IcFile, IcUpload, Ico } from "./components/Icons";
 import { db, auth, sb } from "./db";
@@ -103,6 +104,7 @@ export default function App() {
   const [piani, setPiani] = useState([]);
   const [logDieta, setLogDieta] = useState([]);
   const [misure, setMisure] = useState([]);
+  const [spese, setSpese] = useState([]);
 
   const [subview, setSubview] = useState(null);
   const [loaded, setLoaded] = useState(false);
@@ -111,7 +113,7 @@ export default function App() {
   useEffect(() => {
     const loadForUser = async (u) => {
       if (u) {
-        const [sc, ss, ps, st, pa, ld, mi] = await Promise.all([
+        const [sc, ss, ps, st, pa, ld, mi, sp] = await Promise.all([
           db.getSchede().catch(() => []),
           db.getSessioni().catch(() => []),
           db.getPeso().catch(() => []),
@@ -119,16 +121,17 @@ export default function App() {
           db.getPiani().catch(() => []),
           db.getLogDieta().catch(() => []),
           db.getMisure().catch(() => []),
+          db.getSpese().catch(() => []),
         ]);
         setSchede(sc || []); setSessioni(ss || []); setPeso(ps || []);
         setSettings({ darkMode: true, ...st });
         setPiani(pa || []); setLogDieta(ld || []);
-        setMisure(mi || []);
+        setMisure(mi || []); setSpese(sp || []);
         setLoaded(true);
       } else {
         setSchede([]); setSessioni([]); setPeso([]);
         setSettings({ darkMode: true });
-        setPiani([]); setLogDieta([]); setMisure([]);
+        setPiani([]); setLogDieta([]); setMisure([]); setSpese([]);
         setLoaded(false);
       }
     };
@@ -185,6 +188,11 @@ export default function App() {
   const handleAddLogDieta = async l => { setLogDieta(prev => [l, ...prev]); await db.addLogDieta(l); };
   const handleDelLogDieta = async id => { setLogDieta(p => p.filter(x => x.id !== id)); await db.delLogDieta(id); };
   const onOpenDietaLog = () => setSubview({ type: "dieta-log", data: null });
+  const saveSpesa = async sp => {
+    setSpese(prev => prev.some(x => x.id === sp.id) ? prev.map(x => x.id === sp.id ? sp : x) : [sp, ...prev]);
+    try { await db.saveSpesa(sp); } catch (e) { alert("Errore nel salvataggio della spesa: " + e.message); }
+  };
+  const delSpesa = async id => { setSpese(p => p.filter(x => x.id !== id)); await db.delSpesa(id); };
 
   const addMisura = async m => {
     setMisure(prev => [...prev, m].sort((a, b) => a.data.localeCompare(b.data)));
@@ -392,6 +400,9 @@ export default function App() {
             onDelete={id => savePiani(piani.filter(p => p.id !== id))}
             onLog={(opts) => setSubview({ type: "dieta-log", data: opts || null })}
             settings={settings}
+            spese={spese}
+            onSaveSpesa={saveSpesa}
+            onDelSpesa={delSpesa}
           />
         )}
 
@@ -2203,7 +2214,7 @@ function MisuraModal({ onSave, onClose }) {
 }
 
 // ─── DIETA: PIANI ALIMENTARI ──────────────────────────────
-function PianiAlimentari({ piani, logDieta, onNew, onEdit, onDelete, onLog, settings }) {
+function PianiAlimentari({ piani, logDieta, onNew, onEdit, onDelete, onLog, settings, spese = [], onSaveSpesa, onDelSpesa }) {
   const [stab, setStab] = useState("piani");
   const [confirmState, setConfirmState] = useState(null);
 
@@ -2223,6 +2234,7 @@ function PianiAlimentari({ piani, logDieta, onNew, onEdit, onDelete, onLog, sett
       <div className="stab-row">
         <button className={`stab${stab === "piani" ? " on" : ""}`} onClick={() => setStab("piani")}>📋 PIANI</button>
         <button className={`stab${stab === "storico" ? " on" : ""}`} onClick={() => setStab("storico")}>📅 STORICO</button>
+        <button className={`stab${stab === "spesa" ? " on" : ""}`} onClick={() => setStab("spesa")}>🛒 SPESA</button>
       </div>
 
       {stab === "piani" && (
@@ -2265,6 +2277,10 @@ function PianiAlimentari({ piani, logDieta, onNew, onEdit, onDelete, onLog, sett
             </div>
           ))}
         </>
+      )}
+
+      {stab === "spesa" && (
+        <ListaSpesa piani={piani} spese={spese} onSave={onSaveSpesa} onDelete={onDelSpesa} />
       )}
 
       {stab === "storico" && (

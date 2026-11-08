@@ -137,3 +137,36 @@ export const targetKcalPiano = (piano, tipo) => {
   const k = piano?.target?.[tipo]?.kcal;
   return k ? Math.round((k.min + k.max) / 2) : null;
 };
+
+// ─── Lista della spesa ───
+// Usa piano.spesa se presente (lista curata), altrimenti somma gli alimenti dei 7 giorni
+// (per i pasti alternativi conta solo la prima opzione; salta le voci senza grammi né kcal).
+export const listaSpesaDaPiano = (piano) => {
+  if (!piano) return [];
+  if (Array.isArray(piano.spesa) && piano.spesa.length) return piano.spesa;
+  const acc = {};
+  const giorni = piano.giorniPasti ? Object.values(piano.giorniPasti) : [piano.pasti || []];
+  giorni.forEach(pasti => {
+    const visti = new Set();
+    (pasti || []).forEach(p => {
+      if (p.altGroupId) { if (visti.has(p.altGroupId)) return; visti.add(p.altGroupId); }
+      (p.alimenti || []).forEach(a => {
+        const nome = (a.nome || "").trim();
+        if (!nome || (!(+a.grammi > 0) && !(+a.kcal > 0))) return;
+        const k = nome.toLowerCase();
+        if (!acc[k]) acc[k] = { nome, grammi: 0, volte: 0 };
+        acc[k].grammi += +a.grammi || 0;
+        acc[k].volte += 1;
+      });
+    });
+  });
+  return Object.values(acc)
+    .sort((a, b) => a.nome.localeCompare(b.nome))
+    .map(x => ({
+      id: "auto_" + x.nome.toLowerCase().replace(/[^a-z0-9]+/g, "_"),
+      cat: "Dal piano",
+      nome: x.nome,
+      qta: x.grammi > 0 ? (x.grammi >= 1000 ? (x.grammi / 1000).toLocaleString("it-IT", { maximumFractionDigits: 2 }) + " kg" : x.grammi + " g") : x.volte + "×",
+      uso: x.volte > 1 ? `${x.volte} volte` : "",
+    }));
+};

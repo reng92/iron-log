@@ -53,4 +53,7 @@ export const db = {
   async getMisure() { const { data } = await sb.from("misure_corporee").select("*").order("created_at", { ascending: true }); return data ? data.map(r => r.data) : []; },
   async addMisura(m) { const { error } = await sb.from("misure_corporee").insert({ id: m.id, data: m }); if (error) throw new Error(error.message); },
   async delMisura(id) { await sb.from("misure_corporee").delete().eq("id", id); },
+  async getSpese() { const { data } = await sb.from("spesa").select("*").order("created_at", { ascending: false }); return data ? data.map(r => r.data) : []; },
+  async saveSpesa(s) { const { error } = await sb.from("spesa").upsert({ id: s.id, data: s }); if (error) throw new Error(error.message); },
+  async delSpesa(id) { await sb.from("spesa").delete().eq("id", id); },
 };
