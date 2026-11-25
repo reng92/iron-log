@@ -1,4 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { Capacitor } from "@capacitor/core";
+import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 import ConfirmModal from "./components/modals/ConfirmModal";
 import ListaSpesa from "./components/ListaSpesa";
 import { genId, fmtDur, fmtDate, fmtShort, fmtIso, epley, GG, GIORNI_LABEL, GIORNI_SHORT, fetchMealImg, estraiTestoPdf, compressImg, estimateKcalFromName, pianoAttivo, pastiPerGiorno, targetKcalPiano, TIPI_GIORNO } from "./utils";
@@ -99,6 +102,7 @@ export default function App() {
   const [authPassword, setAuthPassword] = useState("");
   const [authError, setAuthError] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
+  const [privacyOk, setPrivacyOk] = useState(false);
 
   const [tab, setTab] = useState("oggi");
   const [allenaTab, setAllenaTab] = useState("schede");
@@ -118,22 +122,27 @@ export default function App() {
   const [subview, setSubview] = useState(null);
   const [dietaTab, setDietaTab] = useState("piani");
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const reloadRef = useRef(null);
 
 
   useEffect(() => {
     const loadForUser = async (u) => {
       if (u) {
-        const [sc, ss, ps, st, pa, ld, mi, sp, aq] = await Promise.all([
-          db.getSchede().catch(() => []),
-          db.getSessioni().catch(() => []),
-          db.getPeso().catch(() => []),
-          db.getSettings().catch(() => ({})),
-          db.getPiani().catch(() => []),
-          db.getLogDieta().catch(() => []),
-          db.getMisure().catch(() => []),
-          db.getSpese().catch(() => []),
-          db.getAcqua().catch(() => []),
-        ]);
+        setLoadError("");
+        let res;
+        // Se anche una sola lettura fallisce NON si parte con liste vuote:
+        // un salvataggio successivo sovrascriverebbe i dati veri.
+        try {
+          res = await Promise.all([
+            db.getSchede(), db.getSessioni(), db.getPeso(), db.getSettings(), db.getPiani(),
+            db.getLogDieta(), db.getMisure(), db.getSpese(), db.getAcqua(),
+          ]);
+        } catch (e) {
+          setLoadError(e.message || "Errore di rete");
+          return;
+        }
+        const [sc, ss, ps, st, pa, ld, mi, sp, aq] = res;
         setSchede(sc || []); setSessioni(ss || []); setPeso(ps || []);
         setSettings({ darkMode: true, ...st });
         setPiani(pa || []); setLogDieta(ld || []);
@@ -146,6 +155,7 @@ export default function App() {
         setLoaded(false);
       }
     };
+    reloadRef.current = () => sb.auth.getSession().then(({ data: { session } }) => loadForUser(session?.user || null));
 
     if (IS_DEMO) {
       {
@@ -189,15 +199,19 @@ export default function App() {
   const oggiIso = fmtIso();
   const acquaOggi = acqua.find(a => a.data === oggiIso)?.ml || 0;
   const oraHM = () => new Date().toTimeString().slice(0, 5);
+  // Lo stato più recente sta in un ref: il salvataggio su DB avviene fuori da setAcqua
+  // (gli updater di setState devono essere puri, in sviluppo React li esegue due volte)
+  const acquaRef = useRef(acqua); acquaRef.current = acqua;
   const saveGiornoAcqua = (iso, fn) => {
-    setAcqua(prev => {
-      const old = prev.find(a => a.data === iso) || { id: genId(), data: iso, ml: 0, voci: [] };
-      const voci = fn(old.voci || []);
-      const ml = voci.reduce((t, v) => (v.tot ? v.ml : t + v.ml), 0);
-      const row = { ...old, voci, ml };
-      db.saveAcqua(row).catch(e => alert("Errore salvataggio acqua: " + e.message));
-      return prev.some(a => a.id === row.id) ? prev.map(a => (a.id === row.id ? row : a)) : [...prev, row];
-    });
+    const prev = acquaRef.current;
+    const old = prev.find(a => a.data === iso) || { id: genId(), data: iso, ml: 0, voci: [] };
+    const voci = fn(old.voci || []);
+    const ml = voci.reduce((t, v) => (v.tot ? v.ml : t + v.ml), 0);
+    const row = { ...old, voci, ml };
+    const next = prev.some(a => a.id === row.id) ? prev.map(a => (a.id === row.id ? row : a)) : [...prev, row];
+    acquaRef.current = next;
+    setAcqua(next);
+    salva(db.saveAcqua(row), "acqua");
   };
   const addAcqua = (iso, ml, ora) => saveGiornoAcqua(iso, v => [...v, { ora: ora || oraHM(), ml }]);
   const undoAcqua = iso => saveGiornoAcqua(iso, v => v.slice(0, -1));
@@ -261,21 +275,32 @@ export default function App() {
     return () => clearTimeout(t);
   }, [loaded, notifKey, piani]);
 
-  const saveSchede = async s => { setSchede(s); await db.setSchede(s); };
-  const addSessione = async s => { setSessioni(p => [s, ...p]); await db.addSessione(s); };
-  const delSessione = async id => { setSessioni(p => p.filter(s => s.id !== id)); await db.delSessione(id); };
+  // Salvataggio con avviso: se Supabase rifiuta o la rete cade l'utente lo sa,
+  // e (dove possibile) l'interfaccia torna allo stato precedente.
+  const salva = async (promise, cosa, rollback) => {
+    try { await promise; return true; }
+    catch (e) {
+      rollback?.();
+      alert(`Salvataggio ${cosa} non riuscito: ${e.message}\nControlla la connessione e riprova.`);
+      return false;
+    }
+  };
+
+  const saveSchede = async s => { const old = schede; setSchede(s); await salva(db.setSchede(s), "schede", () => setSchede(old)); };
+  const addSessione = async s => { setSessioni(p => [s, ...p]); await salva(db.addSessione(s), "allenamento", () => setSessioni(p => p.filter(x => x.id !== s.id))); };
+  const delSessione = async id => { const old = sessioni; setSessioni(p => p.filter(s => s.id !== id)); await salva(db.delSessione(id), "eliminazione", () => setSessioni(old)); };
   const addPeso = async p => {
     setPeso(prev => [...prev, p].sort((a, b) => a.data.localeCompare(b.data)));
-    try { await db.addPeso(p); } catch (e) { alert("Errore salvataggio: " + e.message); setPeso(prev => prev.filter(x => x.id !== p.id)); }
+    await salva(db.addPeso(p), "peso", () => setPeso(prev => prev.filter(x => x.id !== p.id)));
   };
-  const delPeso = async id => { setPeso(p => p.filter(x => x.id !== id)); await db.delPeso(id); };
-  const toggleDark = async () => { const n = { ...settings, darkMode: !settings.darkMode }; setSettings(n); await db.saveSettings(n); };
-  const saveSettings = async n => { setSettings(n); await db.saveSettings(n); };
+  const delPeso = async id => { const old = peso; setPeso(p => p.filter(x => x.id !== id)); await salva(db.delPeso(id), "eliminazione", () => setPeso(old)); };
+  const toggleDark = async () => { const n = { ...settings, darkMode: !settings.darkMode }; setSettings(n); await salva(db.saveSettings(n), "impostazioni"); };
+  const saveSettings = async n => { setSettings(n); await salva(db.saveSettings(n), "impostazioni"); };
 
   // -- Nuove funzioni salvataggio Dieta --
-  const savePiani = async p => { setPiani(p); await db.setPiani(p); };
-  const handleAddLogDieta = async l => { setLogDieta(prev => [l, ...prev]); await db.addLogDieta(l); };
-  const handleDelLogDieta = async id => { setLogDieta(p => p.filter(x => x.id !== id)); await db.delLogDieta(id); };
+  const savePiani = async p => { const old = piani; setPiani(p); await salva(db.setPiani(p), "piani", () => setPiani(old)); };
+  const handleAddLogDieta = async l => { setLogDieta(prev => [l, ...prev]); await salva(db.addLogDieta(l), "diario", () => setLogDieta(prev => prev.filter(x => x.id !== l.id))); };
+  const handleDelLogDieta = async id => { const old = logDieta; setLogDieta(p => p.filter(x => x.id !== id)); await salva(db.delLogDieta(id), "eliminazione", () => setLogDieta(old)); };
   const onOpenDietaLog = () => setSubview({ type: "dieta-log", data: null });
   const segnaMangiato = async idx => {
     const r = segnaPastoMangiato(piani, logDieta, fmtIso(), idx);
@@ -291,15 +316,41 @@ export default function App() {
   };
   const saveSpesa = async sp => {
     setSpese(prev => prev.some(x => x.id === sp.id) ? prev.map(x => x.id === sp.id ? sp : x) : [sp, ...prev]);
-    try { await db.saveSpesa(sp); } catch (e) { alert("Errore nel salvataggio della spesa: " + e.message); }
+    await salva(db.saveSpesa(sp), "spesa");
   };
-  const delSpesa = async id => { setSpese(p => p.filter(x => x.id !== id)); await db.delSpesa(id); };
+  const delSpesa = async id => { const old = spese; setSpese(p => p.filter(x => x.id !== id)); await salva(db.delSpesa(id), "eliminazione", () => setSpese(old)); };
 
   const addMisura = async m => {
     setMisure(prev => [...prev, m].sort((a, b) => a.data.localeCompare(b.data)));
-    try { await db.addMisura(m); } catch (e) { alert("Errore salvataggio: " + e.message); setMisure(prev => prev.filter(x => x.id !== m.id)); }
+    await salva(db.addMisura(m), "misure", () => setMisure(prev => prev.filter(x => x.id !== m.id)));
   };
-  const delMisura = async id => { setMisure(p => p.filter(x => x.id !== id)); await db.delMisura(id); };
+  const delMisura = async id => { const old = misure; setMisure(p => p.filter(x => x.id !== id)); await salva(db.delMisura(id), "eliminazione", () => setMisure(old)); };
+
+  // GDPR: esportazione completa dei dati (diritto di accesso/portabilità)
+  const esportaDati = async () => {
+    const dump = { esportato_il: new Date().toISOString(), account: user?.email, impostazioni: settings, schede, sessioni, peso, misure, piani, logDieta, spese, acqua };
+    const json = JSON.stringify(dump, null, 2);
+    const filename = `iron-log-dati-${fmtIso()}.json`;
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const { uri } = await Filesystem.writeFile({ path: filename, data: json, directory: Directory.Cache, encoding: Encoding.UTF8 });
+        await Share.share({ title: "I miei dati Iron Log", url: uri, dialogTitle: "Esporta i tuoi dati" });
+      } else {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+        a.download = filename;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      }
+    } catch (e) { alert("Esportazione non riuscita: " + e.message); }
+  };
+  // GDPR: cancellazione definitiva di account e dati (diritto all'oblio)
+  const eliminaAccount = async () => {
+    try { await db.deleteAccount(); }
+    catch (e) { alert("Eliminazione non riuscita: " + e.message); return; }
+    await auth.signOut().catch(() => {});
+    alert("Account e dati eliminati definitivamente.");
+  };
 
   const dark = settings.darkMode !== false;
   useEffect(() => {
@@ -331,6 +382,8 @@ export default function App() {
           const { error } = await auth.signIn(authEmail.trim(), authPassword);
           if (error) setAuthError(error.message);
         } else {
+          if (authPassword.length < 8) { setAuthError("La password deve avere almeno 8 caratteri."); setAuthBusy(false); return; }
+          if (!privacyOk) { setAuthError("Per registrarti devi accettare l'informativa privacy."); setAuthBusy(false); return; }
           const { error } = await auth.signUp(authEmail.trim(), authPassword);
           if (error) setAuthError(error.message);
           else setAuthError("__ok__");
@@ -384,6 +437,12 @@ export default function App() {
                   />
                 </div>
               )}
+              {authMode === "register" && (
+                <label style={{ display: "flex", gap: 10, alignItems: "flex-start", maxWidth: 300, width: "100%", fontSize: 12, color: "var(--dim)", marginBottom: 14, lineHeight: 1.4, cursor: "pointer" }}>
+                  <input type="checkbox" checked={privacyOk} onChange={e => setPrivacyOk(e.target.checked)} style={{ marginTop: 2, width: 18, height: 18, flexShrink: 0 }} />
+                  <span>Ho letto l'<a href="privacy.html" target="_blank" rel="noopener noreferrer" style={{ color: "var(--acc)" }}>informativa privacy</a> e acconsento al trattamento dei miei dati, inclusi quelli relativi alla salute (peso, misure, alimentazione, allenamenti).</span>
+                </label>
+              )}
               {authError && !["__ok__", "__reset__"].includes(authError) && (
                 <div style={{ color: "var(--dan)", fontSize: 13, marginBottom: 12, padding: "10px 14px", background: "var(--dan2)", borderRadius: 8, maxWidth: 300, width: "100%" }}>
                   {authError}
@@ -392,7 +451,7 @@ export default function App() {
               <button
                 className="btn btn-p"
                 style={{ width: "100%", maxWidth: 300, padding: 14 }}
-                disabled={authBusy || !authEmail || (authMode !== "reset" && !authPassword)}
+                disabled={authBusy || !authEmail || (authMode !== "reset" && !authPassword) || (authMode === "register" && !privacyOk)}
                 onClick={handleAuth}
               >
                 {authBusy ? "..." : authMode === "login" ? "Accedi" : authMode === "register" ? "Crea account" : "Invia email reset"}
@@ -435,8 +494,18 @@ export default function App() {
   if (!loaded) return (
     <div className={cls}>
       <style>{CSS}</style>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1 }}>
-        <div className="pls" style={{ fontSize: 15, fontWeight: 700, color: "var(--dim)" }}>Caricamento…</div>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, padding: 24, gap: 14, textAlign: "center" }}>
+        {loadError ? (
+          <>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>Impossibile caricare i tuoi dati</div>
+            <div style={{ fontSize: 13, color: "var(--dim)", maxWidth: 300 }}>Controlla la connessione. I dati sono al sicuro sul server: niente è stato modificato.</div>
+            <div style={{ fontSize: 12, color: "var(--mut)" }}>{loadError}</div>
+            <button className="btn btn-p" onClick={() => { setLoadError(""); reloadRef.current?.(); }}>Riprova</button>
+            <button className="btn btn-s" onClick={() => auth.signOut()}>Esci</button>
+          </>
+        ) : (
+          <div className="pls" style={{ fontSize: 15, fontWeight: 700, color: "var(--dim)" }}>Caricamento…</div>
+        )}
       </div>
     </div>
   );
@@ -547,7 +616,7 @@ export default function App() {
           />
         )}
 
-        {tab === "io" && <Profilo dark={dark} onToggleDark={toggleDark} notifCtx={notifCtx} settings={settings} peso={peso} piani={piani} logDieta={logDieta} misure={misure} onSave={saveSettings} onOpenDietaLog={onOpenDietaLog} onLogout={() => auth.signOut()} onAddMisura={addMisura} onDelMisura={delMisura} />}
+        {tab === "io" && <Profilo dark={dark} onToggleDark={toggleDark} notifCtx={notifCtx} settings={settings} peso={peso} piani={piani} logDieta={logDieta} misure={misure} onSave={saveSettings} onOpenDietaLog={onOpenDietaLog} onLogout={() => auth.signOut()} onAddMisura={addMisura} onDelMisura={delMisura} onEsportaDati={esportaDati} onEliminaAccount={eliminaAccount} />}
       </div>
       <nav className="nav">
         {[["oggi", "Oggi", <IcToday size={22} />], ["allena", "Allena", <IcDumbbell size={22} />], ["dieta", "Dieta", <IcFork size={22} />], ["corpo", "Corpo", <IcBody size={22} />], ["io", "Io", <IcUser />]].map(([t, l, ic]) => (
@@ -1392,7 +1461,7 @@ function Peso({ peso, onAdd, onDelete }) {
 }
 
 // ─── PROFILO PERSONALE ────────────────────────────────────
-function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLogout, misure = [], onAddMisura, onDelMisura }) {
+function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLogout, misure = [], onAddMisura, onDelMisura, onEsportaDati, onEliminaAccount }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(fmtIso(new Date()));
@@ -1834,6 +1903,21 @@ function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, 
 
       {/* NOTIFICHE */}
       <NotificheSettings settings={settings} onSave={onSave} ctx={notifCtx} />
+
+      {/* PRIVACY E DATI (GDPR) */}
+      <div className="card" style={{ marginTop: 12, marginBottom: 12 }}>
+        <div style={{ fontWeight: 700, marginBottom: 4 }}>Privacy e dati</div>
+        <div style={{ fontSize: 13, color: "var(--dim)", marginBottom: 12 }}>
+          I tuoi dati sono visibili solo a te. <a href="privacy.html" target="_blank" rel="noopener noreferrer" style={{ color: "var(--acc)" }}>Informativa privacy</a>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button className="btn btn-s" onClick={onEsportaDati}><IcDownload size={16} /> Scarica tutti i miei dati</button>
+          <button className="btn btn-s" style={{ color: "var(--dan)" }}
+            onClick={() => setConfirmState({ msg: "Eliminare definitivamente account e TUTTI i dati (allenamenti, diete, peso, misure)? L'operazione non si può annullare. Se vuoi una copia, scarica prima i tuoi dati.", onConfirm: onEliminaAccount })}>
+            <IcTrash size={16} /> Elimina account
+          </button>
+        </div>
+      </div>
 
       {/* EDIT MODAL */}
       {editing && (

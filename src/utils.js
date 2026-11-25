@@ -61,10 +61,10 @@ export async function fetchMealImg(rawName) {
 export const loadPdfJs = () => new Promise((resolve, reject) => {
   if (window.pdfjsLib) return resolve(window.pdfjsLib);
   const script = document.createElement("script");
-  script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+  script.src = `${process.env.PUBLIC_URL}/pdfjs/pdf.min.js`;
   script.onload = () => {
     window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      `${process.env.PUBLIC_URL}/pdfjs/pdf.worker.min.js`;
     resolve(window.pdfjsLib);
   };
   script.onerror = () => reject(new Error("Impossibile caricare PDF.js"));
@@ -74,7 +74,7 @@ export const loadPdfJs = () => new Promise((resolve, reject) => {
 export const estraiTestoPdf = async (file) => {
   const pdfjsLib = await loadPdfJs();
   const buffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+  const pdf = await pdfjsLib.getDocument({ data: buffer, isEvalSupported: false }).promise;
   let testo = "";
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);

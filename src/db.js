@@ -15,49 +15,68 @@ export const auth = {
   }
 };
 
+// Ogni chiamata a Supabase passa da qui: se c'è un errore viene lanciato,
+// così l'interfaccia può avvisare l'utente invece di perdere il dato in silenzio.
+const ok = ({ data, error }) => {
+  if (error) throw new Error(error.message);
+  return data;
+};
+
+const getJson = async (table, order) => {
+  let q = sb.from(table).select("*");
+  if (order) q = q.order(order.col, { ascending: order.asc });
+  return (ok(await q) || []).map(r => r.data);
+};
+
+// Sincronizza una lista completa (schede, piani) senza mai svuotare la tabella:
+// prima salva/aggiorna tutte le righe attuali, poi elimina solo quelle tolte.
+// Se il salvataggio fallisce, non viene cancellato niente.
+export async function syncList(table, items) {
+  if (items.length) ok(await sb.from(table).upsert(items.map(s => ({ id: s.id, data: s }))));
+  const keep = items.map(s => s.id);
+  let del = sb.from(table).delete();
+  del = keep.length ? del.not("id", "in", `(${keep.map(id => `"${String(id).replace(/"/g, '\\"')}"`).join(",")})`) : del.not("id", "is", null);
+  ok(await del);
+}
+
 export const db = {
-  async getSchede() { const { data } = await sb.from("schede").select("*"); return data ? data.map(r => r.data) : []; },
-  async setSchede(a) { await sb.from("schede").delete().neq("id", "__x__"); if (a.length) await sb.from("schede").insert(a.map(s => ({ id: s.id, data: s }))); },
-  async getSessioni() { const { data } = await sb.from("sessioni").select("*").order("created_at", { ascending: false }); return data ? data.map(r => r.data) : []; },
-  async addSessione(s) { await sb.from("sessioni").insert({ id: s.id, data: s }); },
-  async delSessione(id) { await sb.from("sessioni").delete().eq("id", id); },
-  async getPeso() { const { data } = await sb.from("peso").select("*").order("data", { ascending: true }); return data || []; },
-  async addPeso(p) {
-    const { error } = await sb.from("peso").insert(p);
-    if (error) throw new Error(error.message);
-  },
-  async delPeso(id) { await sb.from("peso").delete().eq("id", id); },
+  getSchede: () => getJson("schede"),
+  setSchede: a => syncList("schede", a),
+  getSessioni: () => getJson("sessioni", { col: "created_at", asc: false }),
+  async addSessione(s) { ok(await sb.from("sessioni").insert({ id: s.id, data: s })); },
+  async delSessione(id) { ok(await sb.from("sessioni").delete().eq("id", id)); },
+  async getPeso() { return ok(await sb.from("peso").select("*").order("data", { ascending: true })) || []; },
+  async addPeso(p) { ok(await sb.from("peso").insert(p)); },
+  async delPeso(id) { ok(await sb.from("peso").delete().eq("id", id)); },
   async getSettings() {
-    try {
-      const { data: { user } } = await sb.auth.getUser();
-      if (!user) return {};
-      const { data } = await sb.from("impostazioni").select("*").eq("id", user.id).single();
-      return data?.data || {};
-    } catch { return {}; }
+    const { data: { user } } = await sb.auth.getUser();
+    if (!user) return {};
+    const data = ok(await sb.from("impostazioni").select("*").eq("id", user.id).maybeSingle());
+    return data?.data || {};
   },
   async saveSettings(s) {
-    try {
-      const { data: { user } } = await sb.auth.getUser();
-      if (!user) return;
-      await sb.from("impostazioni").upsert({ id: user.id, data: s });
-    } catch {}
+    const { data: { user } } = await sb.auth.getUser();
+    if (!user) return;
+    ok(await sb.from("impostazioni").upsert({ id: user.id, data: s }));
   },
-  async getPiani() { const { data } = await sb.from("piani_alimentari").select("*"); return data ? data.map(r => r.data) : []; },
-  async setPiani(a) { await sb.from("piani_alimentari").delete().neq("id", "__x__"); if (a.length) await sb.from("piani_alimentari").insert(a.map(s => ({ id: s.id, data: s }))); },
+  getPiani: () => getJson("piani_alimentari"),
+  setPiani: a => syncList("piani_alimentari", a),
   async getLogDieta() {
-    const { data } = await sb.from("log_dieta").select("*").order("created_at", { ascending: false });
-    return data ? data.map(r => ({ ...r.data, _created_at: r.created_at })) : [];
+    const data = ok(await sb.from("log_dieta").select("*").order("created_at", { ascending: false })) || [];
+    return data.map(r => ({ ...r.data, _created_at: r.created_at }));
   },
-  async addLogDieta(s) { await sb.from("log_dieta").insert({ id: s.id, data: s }); },
-  async delLogDieta(id) { await sb.from("log_dieta").delete().eq("id", id); },
-  async getMisure() { const { data } = await sb.from("misure_corporee").select("*").order("created_at", { ascending: true }); return data ? data.map(r => r.data) : []; },
-  async addMisura(m) { const { error } = await sb.from("misure_corporee").insert({ id: m.id, data: m }); if (error) throw new Error(error.message); },
-  async delMisura(id) { await sb.from("misure_corporee").delete().eq("id", id); },
-  async getSpese() { const { data } = await sb.from("spesa").select("*").order("created_at", { ascending: false }); return data ? data.map(r => r.data) : []; },
-  async saveSpesa(s) { const { error } = await sb.from("spesa").upsert({ id: s.id, data: s }); if (error) throw new Error(error.message); },
-  async delSpesa(id) { await sb.from("spesa").delete().eq("id", id); },
-  async getAcqua() { const { data } = await sb.from("acqua").select("*"); return data ? data.map(r => r.data) : []; },
-  async saveAcqua(a) { const { error } = await sb.from("acqua").upsert({ id: a.id, data: a }); if (error) throw new Error(error.message); },
+  async addLogDieta(s) { ok(await sb.from("log_dieta").insert({ id: s.id, data: s })); },
+  async delLogDieta(id) { ok(await sb.from("log_dieta").delete().eq("id", id)); },
+  getMisure: () => getJson("misure_corporee", { col: "created_at", asc: true }),
+  async addMisura(m) { ok(await sb.from("misure_corporee").insert({ id: m.id, data: m })); },
+  async delMisura(id) { ok(await sb.from("misure_corporee").delete().eq("id", id)); },
+  getSpese: () => getJson("spesa", { col: "created_at", asc: false }),
+  async saveSpesa(s) { ok(await sb.from("spesa").upsert({ id: s.id, data: s })); },
+  async delSpesa(id) { ok(await sb.from("spesa").delete().eq("id", id)); },
+  getAcqua: () => getJson("acqua"),
+  async saveAcqua(a) { ok(await sb.from("acqua").upsert({ id: a.id, data: a })); },
+  // GDPR: cancella tutti i dati dell'utente e il suo account (funzione SQL delete_my_account)
+  async deleteAccount() { ok(await sb.rpc("delete_my_account")); },
 };
 
 // Modalità demo (solo sviluppo, ?demo=1): nessuna lettura/scrittura su Supabase
