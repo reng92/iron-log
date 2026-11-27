@@ -323,7 +323,7 @@ export default function App() {
     else if (azione?.tipo === "upd") await updPeso(azione.riga);
   };
   const delPeso = async id => { const old = peso; setPeso(p => p.filter(x => x.id !== id)); await salva(db.delPeso(id), "eliminazione", () => setPeso(old)); };
-  const toggleDark = async () => { const n = { ...settings, darkMode: !settings.darkMode }; setSettings(n); await salva(db.saveSettings(n), "impostazioni"); };
+  const toggleDark = async () => { const n = { ...settings, tema: settings.tema === "scuro" ? "chiaro" : "scuro" }; setSettings(n); await salva(db.saveSettings(n), "impostazioni"); };
   const saveSettings = async n => { setSettings(n); await salva(db.saveSettings(n), "impostazioni"); };
 
   // -- Nuove funzioni salvataggio Dieta --
@@ -418,7 +418,7 @@ export default function App() {
     alert("Account e dati eliminati definitivamente.");
   };
 
-  const dark = settings.darkMode !== false;
+  const dark = settings.tema === "scuro"; // tema A: chiaro predefinito, scuro a scelta dal Profilo
   useEffect(() => {
     document.documentElement.style.background = dark ? "#0A0D12" : "#E9EDF3";
     document.querySelector("meta[name=theme-color]")?.setAttribute("content", dark ? "#0F2A5E" : "#163C88");
