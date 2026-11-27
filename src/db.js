@@ -27,10 +27,12 @@ export const mioId = async () => (await sb.auth.getSession())?.data?.session?.us
 
 // Le policy permettono a un personal trainer di leggere anche i dati dei suoi clienti:
 // per questo ogni lettura "mia" filtra esplicitamente per user_id.
-const soloMiei = async q => { const uid = await mioId(); return uid ? q.eq("user_id", uid) : q; };
+// ATTENZIONE: la query di Supabase è "thenable": non va mai restituita da una funzione async
+// (l'await la eseguirebbe subito). Prima si legge l'id, poi si costruisce la query in modo sincrono.
+const mieRighe = (table, uid) => { const q = sb.from(table).select("*"); return uid ? q.eq("user_id", uid) : q; };
 
 const getJson = async (table, order) => {
-  let q = await soloMiei(sb.from(table).select("*"));
+  let q = mieRighe(table, await mioId());
   if (order) q = q.order(order.col, { ascending: order.asc });
   return (ok(await q) || []).map(r => r.data);
 };
@@ -60,7 +62,7 @@ export const db = {
   getSessioni: () => getJson("sessioni", { col: "created_at", asc: false }),
   async addSessione(s) { ok(await sb.from("sessioni").insert({ id: s.id, data: s })); },
   async delSessione(id) { ok(await sb.from("sessioni").delete().eq("id", id)); },
-  async getPeso() { return ok(await (await soloMiei(sb.from("peso").select("*"))).order("data", { ascending: true })) || []; },
+  async getPeso() { return ok(await mieRighe("peso", await mioId()).order("data", { ascending: true })) || []; },
   async addPeso(p) { ok(await sb.from("peso").insert(p)); },
   async delPeso(id) { ok(await sb.from("peso").delete().eq("id", id)); },
   async getSettings() {
@@ -77,7 +79,7 @@ export const db = {
   getPiani: () => getJson("piani_alimentari"),
   setPiani: (a, prev) => syncList("piani_alimentari", a, prev),
   async getLogDieta() {
-    const data = ok(await (await soloMiei(sb.from("log_dieta").select("*"))).order("created_at", { ascending: false })) || [];
+    const data = ok(await mieRighe("log_dieta", await mioId()).order("created_at", { ascending: false })) || [];
     return data.map(r => ({ ...r.data, _created_at: r.created_at }));
   },
   async addLogDieta(s) { ok(await sb.from("log_dieta").insert({ id: s.id, data: s })); },
