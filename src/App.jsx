@@ -23,6 +23,16 @@ import Oggi from "./screens/Oggi";
 import { segnaPastoMangiato } from "./dieta";
 import { IcToday, IcDumbbell, IcFork, IcBody, IcChevR } from "./components/Icons";
 import NotificheSettings from "./components/NotificheSettings";
+import ChatAI from "./components/ai/ChatAI";
+import { AiFotoButton, PastoAIModal, SostituisciModal, RicettaModal, RiepilogoAI, BcsImport, SchedaImportModal } from "./components/ai/AiTools";
+import { chiediAI, fotoPerAI, numStr } from "./ai";
+import { pt } from "./pt";
+import Clienti from "./screens/Clienti";
+import { CambioPassword, StreakCard, AvvisiCard, ConfrontoFoto, FotoConData, scattiDa } from "./components/Progressi";
+import { suggerisciCarico } from "./insights";
+import { GRUPPI_VISITA, CHIAVI_VISITA, incoerenze } from "./visita";
+import { leggiReferti } from "./ai";
+import { esportaReportPdf } from "./exportPdf";
 
 // ─── NORME CIRCONFERENZE CORPOREE ────────────────────────
 // Vita e addome: soglie OMS sulla circonferenza (M ≥94 rischio aumentato, ≥102 alto; F ≥80 / ≥88)
@@ -120,6 +130,12 @@ export default function App() {
   const [acqua, setAcqua] = useState([]);
 
   const [subview, setSubview] = useState(null);
+  const [showChat, setShowChat] = useState(false);
+  const [ruolo, setRuolo] = useState({ trainer: null, mioTrainer: null }); // modalità PT / PT del cliente
+  // Link diretto al pannello PT: https://<sito>/#clienti (dopo il login apre la scheda Clienti)
+  useEffect(() => { if (ruolo.trainer && window.location.hash === "#clienti") setTab("clienti"); }, [ruolo.trainer]);
+  // PT: si parte sempre dalla scheda Clienti
+  useEffect(() => { if (ruolo.trainer) setTab(t => (t === "oggi" ? "clienti" : t)); }, [ruolo.trainer]);
   const [dietaTab, setDietaTab] = useState("piani");
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -148,7 +164,9 @@ export default function App() {
         setPiani(pa || []); setLogDieta(ld || []);
         setMisure(mi || []); setSpese(sp || []); setAcqua(aq || []);
         setLoaded(true);
+        pt.ruolo().then(setRuolo).catch(() => setRuolo({ trainer: null, mioTrainer: null }));
       } else {
+        setRuolo({ trainer: null, mioTrainer: null });
         setSchede([]); setSessioni([]); setPeso([]);
         setSettings({ darkMode: true });
         setPiani([]); setLogDieta([]); setMisure([]); setSpese([]); setAcqua([]);
@@ -286,7 +304,7 @@ export default function App() {
     }
   };
 
-  const saveSchede = async s => { const old = schede; setSchede(s); await salva(db.setSchede(s), "schede", () => setSchede(old)); };
+  const saveSchede = async s => { const old = schede; setSchede(s); await salva(db.setSchede(s, old), "schede", () => setSchede(old)); };
   const addSessione = async s => { setSessioni(p => [s, ...p]); await salva(db.addSessione(s), "allenamento", () => setSessioni(p => p.filter(x => x.id !== s.id))); };
   const delSessione = async id => { const old = sessioni; setSessioni(p => p.filter(s => s.id !== id)); await salva(db.delSessione(id), "eliminazione", () => setSessioni(old)); };
   const addPeso = async p => {
@@ -298,7 +316,7 @@ export default function App() {
   const saveSettings = async n => { setSettings(n); await salva(db.saveSettings(n), "impostazioni"); };
 
   // -- Nuove funzioni salvataggio Dieta --
-  const savePiani = async p => { const old = piani; setPiani(p); await salva(db.setPiani(p), "piani", () => setPiani(old)); };
+  const savePiani = async p => { const old = piani; setPiani(p); await salva(db.setPiani(p, old), "piani", () => setPiani(old)); };
   const handleAddLogDieta = async l => { setLogDieta(prev => [l, ...prev]); await salva(db.addLogDieta(l), "diario", () => setLogDieta(prev => prev.filter(x => x.id !== l.id))); };
   const handleDelLogDieta = async id => { const old = logDieta; setLogDieta(p => p.filter(x => x.id !== id)); await salva(db.delLogDieta(id), "eliminazione", () => setLogDieta(old)); };
   const onOpenDietaLog = () => setSubview({ type: "dieta-log", data: null });
@@ -323,6 +341,11 @@ export default function App() {
   const addMisura = async m => {
     setMisure(prev => [...prev, m].sort((a, b) => a.data.localeCompare(b.data)));
     await salva(db.addMisura(m), "misure", () => setMisure(prev => prev.filter(x => x.id !== m.id)));
+  };
+  const updMisura = async m => {
+    const old = misure;
+    setMisure(prev => prev.map(x => x.id === m.id ? m : x).sort((a, b) => a.data.localeCompare(b.data)));
+    await salva(db.updMisura(m), "visita", () => setMisure(old));
   };
   const delMisura = async id => { const old = misure; setMisure(p => p.filter(x => x.id !== id)); await salva(db.delMisura(id), "eliminazione", () => setMisure(old)); };
 
@@ -490,6 +513,13 @@ export default function App() {
     );
   }
 
+  // Account creato dal personal trainer con password temporanea: va cambiata al primo accesso
+  if (user?.user_metadata?.deve_cambiare_password) return (
+    <div className={cls}><style>{CSS}</style>
+      <CambioPassword onDone={u => setUser(u)} onLogout={() => auth.signOut()} />
+    </div>
+  );
+
   // CARICAMENTO NORMALE APP
   if (!loaded) return (
     <div className={cls}>
@@ -558,9 +588,10 @@ export default function App() {
   );
 
   return (
-    <div className={cls}>
+    <div className={`${cls} has-nav${tab === "clienti" ? " wide" : ""}`}>
       <style>{CSS}</style>
       <div className="content fi">
+        {tab === "clienti" && ruolo.trainer && <Clienti trainer={ruolo.trainer} SchedaEdit={SchedaEdit} PianoEdit={PianoEdit} />}
         {tab === "oggi" && (
           <Oggi
             settings={settings} schede={schede} sessioni={sessioni} peso={peso} piani={piani} logDieta={logDieta} acqua={acqua}
@@ -571,6 +602,11 @@ export default function App() {
             onGo={vaiA}
           />
         )}
+        {tab === "oggi" && <>
+          <StreakCard sessioni={sessioni} logDieta={logDieta} obiettivo={+settings.obiettivoAllenamenti || 3} />
+          <AvvisiCard peso={peso} sessioni={sessioni} logDieta={logDieta} />
+          <RiepilogoAI dati={{ settings, peso, logDieta, sessioni, misure }} />
+        </>}
 
         {tab === "allena" && (
           <>
@@ -579,7 +615,7 @@ export default function App() {
                 <button key={k} role="tab" aria-selected={allenaTab === k} className={`stab${allenaTab === k ? " on" : ""}`} onClick={() => setAllenaTab(k)}>{l}</button>
               ))}
             </div>
-            {allenaTab === "schede" && <Schede schede={schede} onNew={() => setSubview({ type: "scheda-edit", data: { nome: "", giorni: [], esercizi: [] } })} onEdit={sc => setSubview({ type: "scheda-edit", data: sc })} onDelete={id => saveSchede(schede.filter(s => s.id !== id))} onStart={sc => setSubview({ type: "allenamento", data: sc })} />}
+            {allenaTab === "schede" && <Schede schede={schede} onNew={() => setSubview({ type: "scheda-edit", data: { nome: "", giorni: [], esercizi: [] } })} onEdit={sc => setSubview({ type: "scheda-edit", data: sc })} onDelete={id => saveSchede(schede.filter(s => s.id !== id))} onStart={sc => setSubview({ type: "allenamento", data: sc })} onImport={nuove => saveSchede([...schede, ...nuove])} />}
             {allenaTab === "storico" && <Storico sessioni={sessioni} onDetail={s => setSubview({ type: "sessione", data: s })} onDelete={delSessione} />}
             {allenaTab === "stats" && <Stats sessioni={sessioni} />}
           </>
@@ -592,8 +628,8 @@ export default function App() {
                 <button key={k} role="tab" aria-selected={corpoTab === k} className={`stab${corpoTab === k ? " on" : ""}`} onClick={() => setCorpoTab(k)}>{l}</button>
               ))}
             </div>
-            {corpoTab === "peso" && <Peso peso={peso} onAdd={addPeso} onDelete={delPeso} />}
-            {corpoTab === "misure" && <StoricoCorporeo misure={misure} onAdd={addMisura} onDel={delMisura} sesso={settings.sesso || "M"} />}
+            {corpoTab === "peso" && <Peso peso={peso} misure={misure} onAdd={addPeso} onDelete={delPeso} />}
+            {corpoTab === "misure" && <StoricoCorporeo misure={misure} peso={peso} onAdd={addMisura} onUpd={updMisura} onDel={delMisura} sesso={settings.sesso || "M"} />}
           </>
         )}
 
@@ -616,10 +652,16 @@ export default function App() {
           />
         )}
 
-        {tab === "io" && <Profilo dark={dark} onToggleDark={toggleDark} notifCtx={notifCtx} settings={settings} peso={peso} piani={piani} logDieta={logDieta} misure={misure} onSave={saveSettings} onOpenDietaLog={onOpenDietaLog} onLogout={() => auth.signOut()} onAddMisura={addMisura} onDelMisura={delMisura} onEsportaDati={esportaDati} onEliminaAccount={eliminaAccount} />}
+        {tab === "io" && <Profilo dark={dark} onToggleDark={toggleDark} notifCtx={notifCtx} settings={settings} peso={peso} piani={piani} logDieta={logDieta} misure={misure} onSave={saveSettings} onOpenDietaLog={onOpenDietaLog} onLogout={() => auth.signOut()} onAddMisura={addMisura} onDelMisura={delMisura} onEsportaDati={esportaDati} onEliminaAccount={eliminaAccount}
+          mioTrainer={ruolo.mioTrainer}
+          onScollegaTrainer={async () => { try { await pt.scollega(); setRuolo(r => ({ ...r, mioTrainer: null })); } catch (e) { alert(`Impossibile scollegarsi: ${e.message}`); } }}
+          onReport={() => esportaReportPdf({ settings, peso, misure, sessioni, logDieta }).catch(e => alert(`Errore PDF: ${e.message}`))} />}
       </div>
+      <button className="chat-fab" onClick={() => setShowChat(true)} aria-label="Apri Iron Coach AI"><Ico d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" fill="currentColor" sw={0} /></button>
+      {showChat && <ChatAI dati={{ settings, peso, logDieta, sessioni, misure }} onClose={() => setShowChat(false)} />}
       <nav className="nav">
-        {[["oggi", "Oggi", <IcToday size={22} />], ["allena", "Allena", <IcDumbbell size={22} />], ["dieta", "Dieta", <IcFork size={22} />], ["corpo", "Corpo", <IcBody size={22} />], ["io", "Io", <IcUser />]].map(([t, l, ic]) => (
+        {[...(ruolo.trainer ? [["clienti", "Clienti", <Ico d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />]] : []),
+          ["oggi", "Oggi", <IcToday size={22} />], ["allena", "Allena", <IcDumbbell size={22} />], ["dieta", "Dieta", <IcFork size={22} />], ["corpo", "Corpo", <IcBody size={22} />], ["io", "Io", <IcUser />]].map(([t, l, ic]) => (
           <button key={t} className={`nb${tab === t ? " on" : ""}`} aria-current={tab === t ? "page" : undefined} onClick={() => setTab(t)}>{ic}<span>{l}</span></button>
         ))}
       </nav>
@@ -628,15 +670,20 @@ export default function App() {
 }
 
 // ─── SCHEDE ───────────────────────────────────────────────
-function Schede({ schede, onNew, onEdit, onDelete, onStart }) {
+function Schede({ schede, onNew, onEdit, onDelete, onStart, onImport }) {
   const [confirmState, setConfirmState] = useState(null);
+  const [importa, setImporta] = useState(false);
 
   return (
     <>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", paddingTop: 20, paddingBottom: 16 }}>
         <div><h1 className="pt">Schede</h1><p className="sub">{schede.length} schede</p></div>
-        <button className="btn btn-p" onClick={onNew}><IcPlus /> Nuova</button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn btn-s" onClick={() => setImporta(true)}><IcUpload /> Importa</button>
+          <button className="btn btn-p" onClick={onNew}><IcPlus /> Nuova</button>
+        </div>
       </div>
+      {importa && <SchedaImportModal onApply={onImport} onClose={() => setImporta(false)} />}
       {schede.length === 0 ? (
         <div className="emp"><div className="emp-ic"></div><div className="emp-t">Nessuna scheda</div>
           <button className="btn btn-p" style={{ marginTop: 16 }} onClick={onNew}><IcPlus /> Crea scheda</button></div>
@@ -645,6 +692,7 @@ function Schede({ schede, onNew, onEdit, onDelete, onStart }) {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontFamily: "var(--fd)", fontSize: 24, letterSpacing: ".05em" }}>{sc.nome}</div>
+              {sc.daTrainer && <span className="tag tag-a" style={{ marginTop: 4, display: "inline-block" }}>Dal tuo personal trainer</span>}
               {sc.giorni?.length > 0 && <div style={{ display: "flex", gap: 5, marginTop: 5 }}>{sc.giorni.sort((a, b) => a - b).map(g => <span key={g} className="tag tag-a">{GG[g]}</span>)}</div>}
               <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 5 }}>{sc.esercizi?.length || 0} esercizi</div>
             </div>
@@ -762,6 +810,13 @@ function Allenamento({ scheda, sessioni, onComplete, onBack }) {
   const [noteSess, setNoteSess] = useState("");
   const [rpeOpen, setRpeOpen] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
+  const [sostituisci, setSostituisci] = useState(null); // indice esercizio da sostituire
+  // Esercizio sostituito: nuovo nome, kg azzerati (attrezzo diverso), niente collegamento all'esercizio originale
+  const sostituisciEsercizio = (ei, nuovo) => setSets(p => p.map((e, i) => i !== ei ? e : {
+    ...e, esercizioId: undefined, nome: nuovo,
+    note: `Al posto di ${e.nome}${e.note ? ` · ${e.note}` : ""}`,
+    serie: e.serie.map(s => s.completata ? s : { ...s, kg: "" }),
+  }));
   const tiRef = useRef(); const reRef = useRef();
 
   useEffect(() => { tiRef.current = setInterval(() => setElapsed(p => p + 1), 1000); return () => clearInterval(tiRef.current); }, []);
@@ -820,6 +875,13 @@ function Allenamento({ scheda, sessioni, onComplete, onBack }) {
     if (!prev?.length) return null;
     return prev.filter(s => s.kg || s.reps).map(s => `${s.kg ? String(s.kg).replace(".", ",") : "—"}×${s.reps || "—"}`).join(" · ");
   };
+  // Progressione carichi: suggerimento dall'ultima seduta e dalle ripetizioni previste in scheda
+  const suggerimento = ex => {
+    const prev = lastData[ex.esercizioId] || lastData[ex.nome];
+    const target = scheda.esercizi.find(e => e.id === ex.esercizioId)?.ripetizioni;
+    return prev?.length ? suggerisciCarico(prev, target) : null;
+  };
+  const applicaSuggerimento = (ei, kg) => setSets(p => p.map((e, i) => i !== ei ? e : { ...e, serie: e.serie.map(s => s.completata ? s : { ...s, kg: String(kg) }) }));
   const dopoRecupero = useRef(null);
   useEffect(() => {
     if (!rest && dopoRecupero.current != null) { const i = dopoRecupero.current; dopoRecupero.current = null; setTimeout(() => vaiPagina(i), 250); }
@@ -861,6 +923,18 @@ function Allenamento({ scheda, sessioni, onComplete, onBack }) {
                   </div>
                   {ex.note && <div className="live-note">{ex.note}</div>}
                   {uv && <div className="live-prev"><b>Ultima volta</b> {uv}</div>}
+                  {(() => {
+                    const sg = suggerimento(ex);
+                    if (!sg) return null;
+                    const giaApplicato = ex.serie.every(s => s.completata || +s.kg === sg.kg);
+                    return (
+                      <div className="live-prev" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ flex: 1 }}><b>{sg.azione === "aumenta" ? "📈 Suggerito" : "🎯 Obiettivo"}</b> {sg.testo}</span>
+                        {sg.azione === "aumenta" && !giaApplicato && <button className="chip" style={{ fontSize: 12 }} onClick={() => applicaSuggerimento(ei, sg.kg)}>Usa {String(sg.kg).replace(".", ",")} kg</button>}
+                      </div>
+                    );
+                  })()}
+                  <button className="chip" style={{ marginTop: 8, fontSize: 12 }} onClick={() => setSostituisci(ei)}>⇄ Sostituisci con AI</button>
                   <div className="r8" />
                   <div className="live-head"><span>Serie</span><span>kg</span><span>Reps</span><span>RPE</span><span /></div>
                   {ex.serie.map((s, si) => (
@@ -928,6 +1002,10 @@ function Allenamento({ scheda, sessioni, onComplete, onBack }) {
             <button className="btn" onClick={() => setRest(null)}>Salta</button>
           </div>
         </div>
+      )}
+      {sostituisci != null && sets[sostituisci] && (
+        <SostituisciModal esercizio={sets[sostituisci].nome} schema={`${sets[sostituisci].serie.length}×${sets[sostituisci].serie[0]?.reps || ""}`}
+          onPick={nuovo => sostituisciEsercizio(sostituisci, nuovo)} onClose={() => setSostituisci(null)} />
       )}
       {confirmState && <ConfirmModal message={confirmState.msg} onConfirm={() => { confirmState.onConfirm(); setConfirmState(null); }} onCancel={() => setConfirmState(null)} />}
     </>
@@ -1220,7 +1298,7 @@ function FreqTab({ sessioni }) {
 
 
 // ─── PESO CORPOREO ────────────────────────────────────────
-function Peso({ peso, onAdd, onDelete }) {
+function Peso({ peso, misure = [], onAdd, onDelete }) {
   const blank = () => ({
     valore: "", data: fmtIso(), nota: "",
     punteggio: "", tipologia: "",
@@ -1235,6 +1313,7 @@ function Peso({ peso, onAdd, onDelete }) {
     foto_fronte: null, foto_retro: null
   });
   const [form, setForm] = useState(blank);
+  const [confronto, setConfronto] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [expanded, setExpanded] = useState(null);
@@ -1242,6 +1321,29 @@ function Peso({ peso, onAdd, onDelete }) {
   const [confirmState, setConfirmState] = useState(null);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const handlePhoto = async (key, file) => { if (!file) return; set(key, await compressImg(file)); };
+
+  // Screenshot Zepp Life / bilancia smart → l'AI compila tutti i campi
+  const [scanning, setScanning] = useState(false);
+  const [scanErr, setScanErr] = useState("");
+  const scanZepp = async (file) => {
+    setScanErr(""); setScanning(true);
+    try {
+      const d = await chiediAI("scan_zepp", { image: await fotoPerAI(file, 1200) });
+      const campi = ["punteggio", "imc", "massa_grassa", "acqua", "grasso_viscerale", "muscoli", "proteine", "metabolismo", "massa_ossea"];
+      const stati = new Set(STATUS_OPTS.filter(Boolean));
+      setForm(f => {
+        const n = { ...f };
+        if (numStr(d?.peso)) n.valore = numStr(d.peso);
+        if (d?.tipologia) n.tipologia = String(d.tipologia);
+        campi.forEach(k => {
+          if (numStr(d?.[k])) n[k] = numStr(d[k]);
+          if (stati.has(d?.[`${k}_status`])) n[`${k}_status`] = d[`${k}_status`];
+        });
+        return n;
+      });
+    } catch (e) { setScanErr(e.message); }
+    setScanning(false);
+  };
 
   const handleAdd = async () => {
     if (!form.valore) return;
@@ -1319,7 +1421,11 @@ function Peso({ peso, onAdd, onDelete }) {
         </>
       )}
 
-      <button className="btn btn-p btn-full" style={{ marginBottom: 16 }} onClick={() => setShowModal(true)}><IcPlus /> Nuova rilevazione</button>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <button className="btn btn-p" style={{ flex: 2 }} onClick={() => setShowModal(true)}><IcPlus /> Nuova rilevazione</button>
+        {scattiDa(peso, misure).length >= 1 && <button className="btn btn-s" style={{ flex: 1 }} onClick={() => setConfronto(true)}>📷 Foto</button>}
+      </div>
+      {confronto && <ConfrontoFoto scatti={scattiDa(peso, misure)} onClose={() => setConfronto(false)} />}
 
       {peso.length > 0 && (
         <>
@@ -1406,6 +1512,8 @@ function Peso({ peso, onAdd, onDelete }) {
               <div className="wt">Nuova rilevazione</div>
               <button className="bico" onClick={() => setShowModal(false)}>✕</button>
             </div>
+            <AiFotoButton titolo="Compila da screenshot della bilancia" hint="Zepp Life o simili: l'AI legge peso e composizione" busy={scanning} onFiles={f => scanZepp(f[0])} />
+            {scanErr && <div className="ai-err">{scanErr}</div>}
 
             <div className="st" style={{ marginBottom: 8 }}>Peso e data</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
@@ -1461,7 +1569,7 @@ function Peso({ peso, onAdd, onDelete }) {
 }
 
 // ─── PROFILO PERSONALE ────────────────────────────────────
-function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLogout, misure = [], onAddMisura, onDelMisura, onEsportaDati, onEliminaAccount }) {
+function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, logDieta, onOpenDietaLog, onLogout, misure = [], onAddMisura, onDelMisura, onEsportaDati, onEliminaAccount, mioTrainer, onScollegaTrainer, onReport }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(fmtIso(new Date()));
@@ -1489,6 +1597,24 @@ function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, 
   // Circonferenze corporee
   const [showCircModal, setShowCircModal] = useState(false);
   const [circForm, setCircForm] = useState({});
+  const [circScanning, setCircScanning] = useState(false);
+  const [circErr, setCircErr] = useState("");
+  // Foto delle misure del nutrizionista → l'AI compila le circonferenze
+  const scanCirc = async (file) => {
+    setCircErr(""); setCircScanning(true);
+    try {
+      const d = await chiediAI("scan_circ", { image: await fotoPerAI(file, 1200) });
+      const chiavi = ["testa", "torace", "braccio_rilassato", "braccio_flesso", "avambraccio", "polso", "vita", "addome", "fianchi", "coscia_max", "coscia_med", "polpaccio"];
+      if (!chiavi.some(k => numStr(d?.[k]))) throw new Error("Nessuna misura trovata nell'immagine");
+      setCircForm(f => {
+        const n = { ...f };
+        if (/^\d{4}-\d{2}-\d{2}$/.test(d?.data || "")) n.data = d.data;
+        chiavi.forEach(k => { if (numStr(d?.[k]) && +d[k] > 0) n[k] = numStr(d[k]); });
+        return n;
+      });
+    } catch (e) { setCircErr(e.message); }
+    setCircScanning(false);
+  };
 
 
   const CIRC_FIELDS = [
@@ -1868,6 +1994,8 @@ function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, 
               <div className="wt">Misure corporee</div>
               <button className="bico" onClick={() => setShowCircModal(false)}>✕</button>
             </div>
+            <AiFotoButton titolo="Compila da foto delle misure" hint="Scheda o screenshot del nutrizionista" busy={circScanning} onFiles={f => scanCirc(f[0])} />
+            {circErr && <div className="ai-err">{circErr}</div>}
             <div className="st" style={{ marginBottom: 8 }}>Data rilevazione</div>
             <div style={{ marginBottom: 14 }}>
               <input className="inp" type="date" value={circForm.data || ""} onChange={e => setCircForm(f => ({ ...f, data: e.target.value }))} />
@@ -1908,10 +2036,15 @@ function Profilo({ dark, onToggleDark, notifCtx, settings, peso, onSave, piani, 
       <div className="card" style={{ marginTop: 12, marginBottom: 12 }}>
         <div style={{ fontWeight: 700, marginBottom: 4 }}>Privacy e dati</div>
         <div style={{ fontSize: 13, color: "var(--dim)", marginBottom: 12 }}>
-          I tuoi dati sono visibili solo a te. <a href="privacy.html" target="_blank" rel="noopener noreferrer" style={{ color: "var(--acc)" }}>Informativa privacy</a>
+          {mioTrainer
+            ? <>I tuoi dati sono visibili a te e al tuo personal trainer <b>{mioTrainer.nome}</b>, che può anche assegnarti schede e piani alimentari. </>
+            : "I tuoi dati sono visibili solo a te. "}
+          <a href="privacy.html" target="_blank" rel="noopener noreferrer" style={{ color: "var(--acc)" }}>Informativa privacy</a>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button className="btn btn-s" onClick={onReport}><IcDownload size={16} /> Report PDF ultimi 30 giorni</button>
           <button className="btn btn-s" onClick={onEsportaDati}><IcDownload size={16} /> Scarica tutti i miei dati</button>
+          {mioTrainer && <button className="btn btn-s" onClick={() => setConfirmState({ msg: `Scollegarti da ${mioTrainer.nome}? Non vedrà più i tuoi dati e non potrà assegnarti schede. Le schede già ricevute restano tue.`, onConfirm: onScollegaTrainer })}>Scollega personal trainer</button>}
           <button className="btn btn-s" style={{ color: "var(--dan)" }}
             onClick={() => setConfirmState({ msg: "Eliminare definitivamente account e TUTTI i dati (allenamenti, diete, peso, misure)? L'operazione non si può annullare. Se vuoi una copia, scarica prima i tuoi dati.", onConfirm: onEliminaAccount })}>
             <IcTrash size={16} /> Elimina account
@@ -2025,8 +2158,12 @@ const CIRC_FIELDS_MAP = [
   { key: "polso", label: "Polso", icon: "" },
 ];
 
-function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
+function StoricoCorporeo({ misure, peso = [], onAdd, onUpd, onDel, sesso = "M" }) {
   const [showAdd, setShowAdd] = useState(false);
+  const [editVisita, setEditVisita] = useState(null);
+  const [confronto, setConfronto] = useState(false);
+  const [lightbox, setLightbox] = useState(null);
+  const scatti = scattiDa(peso, misure);
   const [expandedId, setExpandedId] = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
 
@@ -2054,6 +2191,18 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
           </button>
         </div>
       </div>
+      <BcsImport misure={misure} onAdd={onAdd} onUpd={onUpd} />
+      {scatti.length > 0 && (
+        <button className="btn btn-s btn-full" style={{ marginBottom: 12 }} onClick={() => setConfronto(true)}>
+          📷 Foto progressi ({scatti.length} date){scatti.length >= 2 ? " · confronta prima/dopo" : ""}
+        </button>
+      )}
+      {confronto && <ConfrontoFoto scatti={scatti} onClose={() => setConfronto(false)} />}
+      {lightbox && (
+        <div className="mov" style={{ alignItems: "center" }} onClick={() => setLightbox(null)}>
+          <FotoConData src={lightbox.src} data={lightbox.data} etichetta={lightbox.etichetta} style={{ maxWidth: 460, width: "92%", maxHeight: "85vh" }} />
+        </div>
+      )}
 
       {/* CHART */}
       {sorted.length >= 2 && (
@@ -2198,9 +2347,10 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
                 <div style={{ fontFamily: "var(--fd)", fontSize: 21, letterSpacing: ".05em", lineHeight: 1 }}>
                   {m.visita_label || `Visita ${sorted.length - idx}`}
                 </div>
-                <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 2 }}>{fmtDate(m.data)}</div>
+                <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 2 }}>{fmtDate(m.data)}{(m.foto_fronte || m.foto_lato || m.foto_retro) && <span className="tag tag-m" style={{ marginLeft: 6 }}>foto</span>}</div>
               </div>
               <div style={{ display: "flex", gap: 6 }}>
+                <button className="bico" onClick={() => setEditVisita(m)} aria-label="Modifica visita"><IcEdit /></button>
                 <button className="bico" style={{ fontSize: 12 }} onClick={() => setExpandedId(isExpanded ? null : m.id)}>{isExpanded ? "▲" : "▼"}</button>
                 <button className="bico d" onClick={() => setConfirmDel(m.id)}><IcTrash /></button>
               </div>
@@ -2226,6 +2376,13 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
             {/* Circonferenze espanse */}
             {isExpanded && (
               <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--bdr)" }}>
+                {(m.foto_fronte || m.foto_lato || m.foto_retro) && (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 6, marginBottom: 12 }}>
+                    {[["foto_fronte", "Fronte"], ["foto_lato", "Lato"], ["foto_retro", "Retro"]].filter(([k]) => m[k]).map(([k, l]) => (
+                      <FotoConData key={k} src={m[k]} data={m.data} etichetta={l} style={{ aspectRatio: "3/4" }} onClick={() => setLightbox({ src: m[k], data: m.data, etichetta: l })} />
+                    ))}
+                  </div>
+                )}
                 <div style={{ fontSize: 12, color: "var(--dim)", fontWeight: 700, letterSpacing: ".08em", marginBottom: 8 }}>Circonferenze</div>
                 {CIRC_FIELDS_MAP.filter(f => m[f.key] != null).length === 0 ? (
                   <div style={{ fontSize: 12, color: "var(--mut)", fontStyle: "italic" }}>Nessuna misura registrata</div>
@@ -2249,6 +2406,29 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
                     })}
                   </div>
                 )}
+                {GRUPPI_VISITA.filter(g => g.id !== "circ").map(g => {
+                  const campi = g.campi.filter(([k]) => m[k] != null && !["peso", "ffm", "fm", "bcm"].includes(k));
+                  if (!campi.length) return null;
+                  return (
+                    <div key={g.id} style={{ marginTop: 12 }}>
+                      <div style={{ fontSize: 12, color: "var(--dim)", fontWeight: 700, letterSpacing: ".08em", marginBottom: 6 }}>{g.titolo}</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                        {campi.map(([k, l, u]) => {
+                          const d = prev?.[k] != null ? +(m[k] - prev[k]).toFixed(1) : null;
+                          return (
+                            <div key={k} style={{ background: "var(--sur)", borderRadius: 8, padding: "6px 9px", border: "1px solid var(--bdr)" }}>
+                              <div style={{ fontSize: 11, color: "var(--mut)", fontWeight: 700 }}>{l}</div>
+                              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+                                <span style={{ fontFamily: "var(--fd)", fontSize: 17 }}>{m[k]}<span style={{ fontSize: 11, color: "var(--dim)", fontFamily: "inherit", fontWeight: 400, marginLeft: 2 }}>{u}</span></span>
+                                {d ? <span style={{ fontSize: 11, color: "var(--dim)", fontWeight: 700 }}>{d > 0 ? "+" : ""}{d}</span> : null}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
                 {m.note && <div style={{ marginTop: 8, fontSize: 12, color: "var(--dim)", fontStyle: "italic" }}>{m.note}</div>}
               </div>
             )}
@@ -2261,56 +2441,127 @@ function StoricoCorporeo({ misure, onAdd, onDel, sesso = "M" }) {
 
       {/* ADD MODAL */}
       {showAdd && <MisuraModal onSave={m => { onAdd(m); setShowAdd(false); }} onClose={() => setShowAdd(false)} />}
+      {editVisita && <MisuraModal init={editVisita} onSave={m => { onUpd(m); setEditVisita(null); }} onClose={() => setEditVisita(null)} />}
     </>
   );
 }
 
 // ─── MISURA MODAL ─────────────────────────────────────────
-function MisuraModal({ onSave, onClose }) {
-  const emptyForm = { data: fmtIso(), visita_label: "", peso: "", ffm: "", fm: "", bcm: "", braccio_rilassato: "", braccio_flesso: "", vita: "", addome: "", fianchi: "", coscia_med: "", coscia_max: "", polpaccio: "", testa: "", torace: "", avambraccio: "", polso: "", note: "" };
-  const [form, setForm] = useState(emptyForm);
+const MISURA_NUM = CHIAVI_VISITA;
+const FOTO_LATI = [["foto_fronte", "Fronte"], ["foto_lato", "Lato"], ["foto_retro", "Retro"]];
+
+function MisuraModal({ init, onSave, onClose }) {
+  const emptyForm = { data: fmtIso(), visita_label: "", note: "", foto_fronte: null, foto_lato: null, foto_retro: null, ...Object.fromEntries(MISURA_NUM.map(k => [k, ""])) };
+  const [form, setForm] = useState(() => init
+    ? { ...emptyForm, ...init, ...Object.fromEntries(MISURA_NUM.map(k => [k, init[k] != null ? String(init[k]) : ""])) }
+    : emptyForm);
   const [tab, setTab] = useState("corpo");
+  const [scanning, setScanning] = useState(false);
+  const [scanMsg, setScanMsg] = useState("");
+  const [dataFoto, setDataFoto] = useState(null); // data di scatto proposta dalla foto
   const sv = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const nv = v => v !== "" && v != null ? +v : null;
 
   const save = () => {
     if (!form.data) { alert("Inserisci la data"); return; }
-    onSave({ id: genId(), data: form.data, visita_label: form.visita_label, peso: nv(form.peso), ffm: nv(form.ffm), fm: nv(form.fm), bcm: nv(form.bcm), braccio_rilassato: nv(form.braccio_rilassato), braccio_flesso: nv(form.braccio_flesso), vita: nv(form.vita), addome: nv(form.addome), fianchi: nv(form.fianchi), coscia_med: nv(form.coscia_med), coscia_max: nv(form.coscia_max), polpaccio: nv(form.polpaccio), testa: nv(form.testa), torace: nv(form.torace), avambraccio: nv(form.avambraccio), polso: nv(form.polso), note: form.note });
+    onSave({
+      ...(init || {}), id: init?.id || genId(), data: form.data, visita_label: form.visita_label, note: form.note,
+      foto_fronte: form.foto_fronte || null, foto_lato: form.foto_lato || null, foto_retro: form.foto_retro || null,
+      ...Object.fromEntries(MISURA_NUM.map(k => [k, nv(form[k])])),
+    });
+  };
+
+  // Foto del corpo: compresse e associate alla data della visita
+  const aggiungiFoto = async (k, file) => {
+    if (!file) return;
+    sv(k, await compressImg(file, 1000, 0.78));
+    const scatto = file.lastModified ? fmtIso(new Date(file.lastModified)) : null;
+    if (scatto && scatto !== form.data && scatto <= fmtIso()) setDataFoto(scatto);
+  };
+
+  // Referti del nutrizionista (PDF o foto) → l'AI compila tutti i valori della visita
+  const scanReferto = async files => {
+    setScanMsg(""); setScanning(true);
+    try {
+      const visite = await leggiReferti(files);
+      // la visita con la data già impostata, altrimenti la più recente
+      const v = (init && visite.find(x => x.data === form.data)) || visite[visite.length - 1];
+      setForm(f => {
+        const n = { ...f };
+        MISURA_NUM.forEach(k => { if (v[k] != null) n[k] = String(v[k]); });
+        if (v.data && !init) n.data = v.data;
+        if (v.visita_label && !f.visita_label) n.visita_label = v.visita_label;
+        return n;
+      });
+      const warn = incoerenze(v);
+      setScanMsg(`Compilati ${MISURA_NUM.filter(k => v[k] != null).length} valori della visita del ${fmtDate(v.data)}.${visite.length > 1 ? ` Nei referti c'erano ${visite.length} visite: le altre le importi da "Importa referti" nella pagina Misure.` : ""}${warn.length ? ` ⚠️ ${warn.join("; ")}.` : ""} Controlla le schede prima di salvare.`);
+    } catch (e) { setScanMsg(`Errore: ${e.message}`); }
+    setScanning(false);
   };
 
   return (
     <div className="mov" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="mod" style={{ maxHeight: "90vh", overflowY: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <div className="wt">Nuova visita</div>
+          <div className="wt">{init ? "Modifica visita" : "Nuova visita"}</div>
           <button className="bico" onClick={onClose}>✕</button>
         </div>
+        <AiFotoButton titolo="Compila dal referto del nutrizionista" hint="PDF (Total Body, Antropometrico) o foto: l'AI legge BIA, composizione, circonferenze e pliche" multiple accept="application/pdf,.pdf,image/*" busy={scanning} onFiles={scanReferto} />
+        {scanMsg && <div className={scanMsg.startsWith("Errore") ? "ai-err" : ""} style={scanMsg.startsWith("Errore") ? undefined : { fontSize: 13, background: "var(--acc2)", borderRadius: 8, padding: 10, marginBottom: 12 }}>{scanMsg}</div>}
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
           <div><label className="lbl">Data</label><input className="inp" type="date" value={form.data} onChange={e => sv("data", e.target.value)} /></div>
           <div><label className="lbl">Etichetta</label><input className="inp" type="text" placeholder="es. Visita 4" value={form.visita_label} onChange={e => sv("visita_label", e.target.value)} /></div>
         </div>
 
-        <div className="stab-row" style={{ marginBottom: 14 }}>
-          <button className={`stab${tab === "corpo" ? " on" : ""}`} onClick={() => setTab("corpo")}>Composizione</button>
-          <button className={`stab${tab === "circ" ? " on" : ""}`} onClick={() => setTab("circ")}>Misure</button>
+        <div className="stab-row" style={{ marginBottom: 14, overflowX: "auto" }}>
+          {[...GRUPPI_VISITA.map(g => [g.id, { corpo: "Composizione", acqua: "Acqua", bia: "BIA", circ: "Misure", pliche: "Pliche" }[g.id], g.campi.filter(([k]) => form[k] !== "").length]),
+            ["foto", "Foto", FOTO_LATI.filter(([k]) => form[k]).length]].map(([id, l, num]) => (
+            <button key={id} className={`stab${tab === id ? " on" : ""}`} onClick={() => setTab(id)} style={{ whiteSpace: "nowrap" }}>{l}{num ? ` · ${num}` : ""}</button>
+          ))}
         </div>
 
-        {tab === "corpo" && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            {[{ k: "peso", l: "Peso (kg)", ph: "87.0" }, { k: "ffm", l: "FFM kg", ph: "59.4" }, { k: "fm", l: "FM kg", ph: "27.6" }, { k: "bcm", l: "BCM kg", ph: "—" }].map(({ k, l, ph }) => (
-              <div key={k}><label className="lbl" style={{ fontSize: 12 }}>{l}</label><input className="inp" type="number" step="0.1" placeholder={ph} value={form[k]} onChange={e => sv(k, e.target.value)} style={{ padding: "8px 10px" }} /></div>
-            ))}
-          </div>
+        {tab === "foto" && (
+          <>
+            <div style={{ fontSize: 12, color: "var(--dim)", marginBottom: 10 }}>Le foto vengono salvate con la data della visita ({form.data ? fmtDate(form.data) : "—"}) e le ritrovi in "Foto progressi" per il confronto prima/dopo.</div>
+            {dataFoto && (
+              <div style={{ fontSize: 13, background: "var(--acc2)", borderRadius: 8, padding: 10, marginBottom: 10, display: "flex", gap: 8, alignItems: "center" }}>
+                <span style={{ flex: 1 }}>La foto risulta scattata il <b>{fmtDate(dataFoto)}</b>.</span>
+                <button className="chip" onClick={() => { sv("data", dataFoto); setDataFoto(null); }}>Usa questa data</button>
+                <button className="chip" onClick={() => setDataFoto(null)}>No</button>
+              </div>
+            )}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
+              {FOTO_LATI.map(([k, l]) => (
+                <div key={k}>
+                  <label className="lbl" style={{ fontSize: 12 }}>{l}</label>
+                  {form[k] ? (
+                    <div style={{ position: "relative" }}>
+                      <FotoConData src={form[k]} data={form.data} style={{ aspectRatio: "3/4" }} />
+                      <button className="bico d" style={{ position: "absolute", top: 4, right: 4, width: 28, height: 28, minHeight: 28 }} onClick={() => sv(k, null)} aria-label={`Rimuovi foto ${l}`}><IcTrash /></button>
+                    </div>
+                  ) : (
+                    <label style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", aspectRatio: "3/4", border: "1px dashed var(--bdr)", borderRadius: 8, cursor: "pointer", color: "var(--dim)", fontSize: 12, gap: 4 }}>
+                      <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => { aggiungiFoto(k, e.target.files?.[0]); e.target.value = ""; }} />
+                      <IcCamera /><span>Aggiungi</span>
+                    </label>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
         )}
 
-        {tab === "circ" && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            {CIRC_FIELDS_MAP.map(({ key, label, icon }) => (
-              <div key={key}><label className="lbl" style={{ fontSize: 12 }}>{icon} {label}</label><input className="inp" type="number" step="0.1" min="0" placeholder="—" value={form[key]} onChange={e => sv(key, e.target.value)} style={{ padding: "8px 10px" }} /></div>
+        {GRUPPI_VISITA.filter(g => g.id === tab).map(g => (
+          <div key={g.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {g.campi.map(([k, l, u]) => (
+              <div key={k}>
+                <label className="lbl" style={{ fontSize: 12 }}>{l}{u ? ` (${u})` : ""}</label>
+                <input className="inp" type="number" step="0.1" min="0" inputMode="decimal" placeholder="—" value={form[k]} onChange={e => sv(k, e.target.value)} style={{ padding: "8px 10px" }} />
+              </div>
             ))}
           </div>
-        )}
+        ))}
 
         <div style={{ marginTop: 14 }}><label className="lbl">Note</label><textarea className="inp" placeholder="Osservazioni…" value={form.note} onChange={e => sv("note", e.target.value)} style={{ minHeight: 52 }} /></div>
         <button className="btn btn-p btn-full" style={{ marginTop: 14 }} onClick={save}><IcCheck /> Salva visita</button>
@@ -3058,6 +3309,9 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
   const [showAddExtra, setShowAddExtra] = useState(false);
   const [extraNome, setExtraNome] = useState("");
   const [extraKcal, setExtraKcal] = useState("");
+  const [extraCalcolo, setExtraCalcolo] = useState(false);
+  const [pastoAI, setPastoAI] = useState(null); // "foto" | "testo"
+  const [ricettaPasto, setRicettaPasto] = useState(null);
   const [saved, setSaved] = useState(false);
 
   const selectedDay = useMemo(() => {
@@ -3150,11 +3404,18 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
   const toggleExtra = id => setExtra(prev => prev.map(e => e.id === id ? { ...e, mangiato: !e.mangiato } : e));
   const delExtra = id => setExtra(prev => prev.filter(e => e.id !== id));
 
-  const addExtra = () => {
+  const addExtra = async () => {
     const nome = extraNome.trim();
-    if (!nome) return;
+    if (!nome || extraCalcolo) return;
     const manualKcal = Number(extraKcal);
-    const finalKcal = manualKcal > 0 ? manualKcal : (estimateKcalFromName(nome) || 150); // fallback
+    let finalKcal = manualKcal > 0 ? manualKcal : 0;
+    if (!finalKcal) {
+      // kcal non inserite: stima con l'AI, se non risponde usa la stima locale
+      setExtraCalcolo(true);
+      try { finalKcal = Math.max(0, +(await chiediAI("kcal_extra", { nome }))?.kcal || 0); } catch { finalKcal = 0; }
+      setExtraCalcolo(false);
+      if (!finalKcal) finalKcal = estimateKcalFromName(nome) || 150;
+    }
     setExtra(prev => [...prev, { id: genId(), nome, kcal: Math.round(finalKcal), mangiato: true }]);
     setExtraNome("");
     setExtraKcal("");
@@ -3490,6 +3751,13 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                         </div>
                       )}
 
+                      {pasto.alimenti.filter(al => al.grammi).length >= 2 && (
+                        <button onClick={() => setRicettaPasto(pasto)}
+                          style={{ padding: '4px 10px', borderRadius: 20, border: '1px solid var(--acc)', background: 'transparent', color: 'var(--acc)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 8 }}>
+                          🍳 Idea ricetta AI
+                        </button>
+                      )}
+
                       {/* Alimenti del pasto selezionato */}
                       {pasto.alimenti.map((al, ai) => {
                         const eaten = !!mangiato[`${pi}_${ai}`];
@@ -3528,11 +3796,20 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
             {/* ─── Extra ─── */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, marginTop: 4 }}>
               <div className="st" style={{ margin: 0 }}>Extra / fuori piano</div>
-              <button className="btn btn-s" style={{ fontSize: 12, padding: '7px 10px', gap: 4 }}
-                onClick={() => setShowAddExtra(v => !v)}>
-                <IcPlus /> Aggiungi
-              </button>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button className="btn btn-s" style={{ fontSize: 12, padding: '7px 10px', gap: 4 }} onClick={() => setPastoAI("foto")} aria-label="Pasto da foto con AI">📸 Foto</button>
+                <button className="btn btn-s" style={{ fontSize: 12, padding: '7px 10px', gap: 4 }} onClick={() => setPastoAI("testo")} aria-label="Descrivi il pasto con AI">✍️ Descrivi</button>
+                <button className="btn btn-s" style={{ fontSize: 12, padding: '7px 10px', gap: 4 }}
+                  onClick={() => setShowAddExtra(v => !v)}>
+                  <IcPlus /> Aggiungi
+                </button>
+              </div>
             </div>
+            {pastoAI && (
+              <PastoAIModal modoIniziale={pastoAI} onClose={() => setPastoAI(null)}
+                onAdd={alimenti => setExtra(prev => [...prev, ...alimenti.map(a => ({ id: genId(), nome: a.grammi ? `${a.nome} ${a.grammi}g` : a.nome, kcal: a.kcal, mangiato: true }))])} />
+            )}
+            {ricettaPasto && <RicettaModal pasto={ricettaPasto} onClose={() => setRicettaPasto(null)} />}
 
             {showAddExtra && (
               <div style={{ background: 'var(--sur)', border: '1px solid var(--acc)', borderRadius: 10, padding: 14, marginBottom: 12 }}>
@@ -3544,7 +3821,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                       onKeyDown={e => e.key === 'Enter' && addExtra()} />
                     {extraNome.trim() && !extraKcal && (
                       <div style={{ fontSize: 12, color: 'var(--dim)', marginTop: 6 }}>
-                        Kcal stimate: {estimateKcalFromName(extraNome.trim()) || '150'} kcal
+                        {extraCalcolo ? 'Calcolo kcal con AI…' : 'Lascia vuote le kcal: le calcola l\'AI'}
                       </div>
                     )}
                   </div>
@@ -3562,7 +3839,7 @@ function DietaLog({ piani, logDieta, onAdd, onDelete, onBack, initialDate, initi
                       ANNULLA
                     </button>
                     <button className="btn btn-p" style={{ flex: 2, fontSize: 12, background: "var(--warn)" }}
-                      onClick={addExtra} disabled={!extraNome.trim()}>
+                      onClick={addExtra} disabled={!extraNome.trim() || extraCalcolo}>
                       <IcPlus /> Aggiungi
                     </button>
                   </div>

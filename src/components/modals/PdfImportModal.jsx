@@ -2,6 +2,7 @@ import { useState } from "react";
 import { IcClose, IcCheck, IcFile, IcUpload } from "../Icons";
 import { estraiTestoPdf, genId } from "../../utils";
 import { GIORNI_LABEL } from "../../utils";
+import { chiediAI } from "../../ai";
 
 function splitTestoPerGiorno(testoRaw) {
   const testo = testoRaw.replace(/[  -​  　]/g, " ");
@@ -175,15 +176,35 @@ export default function PdfImportModal({ onApply, onClose }) {
       const nomePiano = estraiNomePiano(testoPdf);
       const giorniPasti = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: [] };
 
-      if (giorniTrovati.length === 0)
-        throw new Error("Formato PDF non riconosciuto: servono le sezioni GIORNO 1-7 con OPZIONE A/B/C.");
+      // Formato diverso (tabella, ecc.): il parser non trova GIORNO 1-7 → lo legge l'AI in un colpo solo
+      if (giorniTrovati.length === 0) {
+        setLoadingMsg("Formato non standard: analisi con AI...");
+        const res = await chiediAI("dieta_tabella", { testo: testoPdf });
+        const gp = res?.giorniPasti || {};
+        for (let d = 1; d <= 7; d++) giorniPasti[d] = Array.isArray(gp[d] || gp[String(d)]) ? (gp[d] || gp[String(d)]) : [];
+        if (!Object.values(giorniPasti).some(p => p.length)) throw new Error("Non sono riuscito a leggere pasti da questo PDF.");
+        setParsed({ nomePiano: String(res?.nomePiano || nomePiano || ""), giorniPasti, conAI: true });
+        setFase(3);
+        return;
+      }
 
+      let conAI = false;
       for (const n of giorniTrovati) {
         setLoadingMsg(`Estrazione giorno ${n}/${giorniTrovati.length}...`);
         giorniPasti[n] = parsaGiornoDet(blocchiPerGiorno[n], n);
+        // Parser deterministico insufficiente (< 2 pasti) → fallback AI solo per quel giorno
+        if (giorniPasti[n].length < 2) {
+          setLoadingMsg(`Giorno ${n}: lettura con AI...`);
+          try {
+            const res = await chiediAI("dieta_giorno", { testo: blocchiPerGiorno[n] });
+            const pasti = (res?.pasti || []).filter(p => p?.alimenti?.length)
+              .map(p => ({ ...p, altGroupId: p.altGroupId ? `g${n}-${p.altGroupId}` : null }));
+            if (pasti.length > giorniPasti[n].length) { giorniPasti[n] = pasti; conAI = true; }
+          } catch (e) { console.warn(`[PDF] G${n} fallback AI fallito:`, e.message); }
+        }
       }
 
-      setParsed({ nomePiano, giorniPasti });
+      setParsed({ nomePiano, giorniPasti, conAI });
       setFase(3);
     } catch (e) { setErrore(e.message || "Errore sconosciuto"); setFase(1); }
   };
@@ -217,8 +238,8 @@ export default function PdfImportModal({ onApply, onClose }) {
         {fase === 1 && (
           <>
             <div style={{ marginBottom: 16 }}>
-              <div className="import-step"><span className="import-num">1</span><span style={{ fontSize: 13 }}>Carica il PDF con il piano alimentare (formato GIORNO 1-7 con OPZIONE A/B/C)</span></div>
-              <div className="import-step"><span className="import-num">2</span><span style={{ fontSize: 13 }}>Il parser estrae pasti e alternative automaticamente</span></div>
+              <div className="import-step"><span className="import-num">1</span><span style={{ fontSize: 13 }}>Carica il PDF con il piano alimentare del nutrizionista</span></div>
+              <div className="import-step"><span className="import-num">2</span><span style={{ fontSize: 13 }}>Pasti e alternative vengono estratti in automatico; i formati non standard li legge l'AI</span></div>
             </div>
             <div className="ig">
               <label className="lbl">File PDF</label>
@@ -249,6 +270,7 @@ export default function PdfImportModal({ onApply, onClose }) {
             <div style={{ background: "var(--acc2)", border: "1px solid var(--ok)", borderRadius: 10, padding: 12, marginBottom: 16 }}>
               <div style={{ fontFamily: "var(--fd)", fontSize: 16, color: "var(--ok)", marginBottom: 4 }}>✓ Estratto con successo</div>
               {parsed.nomePiano && <div style={{ fontSize: 13, fontWeight: 600 }}>{parsed.nomePiano}</div>}
+              {parsed.conAI && <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 4 }}>Alcune parti lette con AI: controlla grammi e kcal.</div>}
             </div>
             <div className="st" style={{ marginBottom: 8 }}>Anteprima</div>
             {[1, 2, 3, 4, 5, 6, 7].map(d => {

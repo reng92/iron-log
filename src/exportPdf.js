@@ -186,12 +186,113 @@ export async function esportaStoricoPdf({ settings = {}, peso = [], misure = [] 
     doc.text(`Iron Log - pagina ${i} di ${tot}`, pageW - 14, doc.internal.pageSize.getHeight() - 7, { align: "right" });
   }
 
-  const filename = `iron-log-storico-${fmtIso()}.pdf`;
+  await salvaPdf(doc, `iron-log-storico-${fmtIso()}.pdf`, "Storico Iron Log");
+}
+
+async function salvaPdf(doc, filename, titolo) {
   if (Capacitor.isNativePlatform()) {
     const data = doc.output("datauristring").split(",")[1];
     const { uri } = await Filesystem.writeFile({ path: filename, data, directory: Directory.Cache });
-    await Share.share({ title: "Storico Iron Log", url: uri, dialogTitle: "Esporta storico PDF" });
+    await Share.share({ title: titolo, url: uri, dialogTitle: "Esporta PDF" });
   } else {
     doc.save(filename);
   }
+}
+
+// ─── Report del periodo (default ultimi 30 giorni) per nutrizionista / PT ───
+export async function esportaReportPdf({ settings = {}, peso = [], misure = [], sessioni = [], logDieta = [] }, giorni = 30) {
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const pageW = doc.internal.pageSize.getWidth();
+  const da = new Date(); da.setDate(da.getDate() - giorni);
+  const daIso = fmtIso(da);
+  const tableBase = {
+    theme: "grid",
+    styles: { fontSize: 8.5, cellPadding: 1.6, valign: "middle", halign: "center", lineColor: [225, 225, 230] },
+    headStyles: { fillColor: ACC, textColor: 255, fontStyle: "bold" },
+    alternateRowStyles: { fillColor: [246, 248, 252] },
+    margin: { left: 14, right: 14, top: 16 },
+  };
+
+  doc.setFillColor(...DARK); doc.rect(0, 0, pageW, 26, "F");
+  doc.setTextColor(255); doc.setFont("helvetica", "bold"); doc.setFontSize(20);
+  doc.text("IRON LOG", 14, 13);
+  doc.setFontSize(11); doc.setFont("helvetica", "normal");
+  doc.text(`Report ultimi ${giorni} giorni (${dataIt(da)} - ${dataIt(new Date())})`, 14, 20);
+  if (settings.nome) { doc.setFontSize(10); doc.text(settings.nome, pageW - 14, 13, { align: "right" }); }
+
+  // ── Riepilogo ──
+  const pesoP = [...peso].filter(p => p.data >= daIso && p.valore != null).sort((a, b) => a.data.localeCompare(b.data));
+  const sessP = sessioni.filter(s => new Date(s.data) >= da).sort((a, b) => new Date(a.data) - new Date(b.data));
+  const logP = logDieta.filter(l => l.data >= daIso).sort((a, b) => a.data.localeCompare(b.data));
+  const volume = s => (s.esercizi || []).reduce((a, e) => a + (e.serie || []).filter(x => x.completata).reduce((b, x) => b + (+x.kg || 0) * (+x.reps || 0), 0), 0);
+  const kcalMedia = logP.length ? Math.round(logP.reduce((a, l) => a + (+l.totKcalConsumate || 0), 0) / logP.length) : null;
+  const prevMedia = logP.length ? Math.round(logP.reduce((a, l) => a + (+l.totKcalPreviste || 0), 0) / logP.length) : null;
+  const nelPiano = logP.filter(l => +l.totKcalPreviste > 0 && Math.abs(l.totKcalConsumate - l.totKcalPreviste) <= l.totKcalPreviste * 0.1).length;
+  const deltaPeso = pesoP.length >= 2 ? +(pesoP[pesoP.length - 1].valore - pesoP[0].valore).toFixed(1) : null;
+
+  let y = sezione(doc, "Riepilogo", 36);
+  autoTable(doc, {
+    ...tableBase, startY: y, theme: "plain", styles: { fontSize: 10, cellPadding: 1.4 },
+    columnStyles: { 0: { fontStyle: "bold", textColor: MUT, cellWidth: 55 }, 2: { fontStyle: "bold", textColor: MUT, cellWidth: 45 } },
+    body: [
+      ["Peso inizio periodo", pesoP[0] ? `${num(pesoP[0].valore)} kg` : "-", "Allenamenti", String(sessP.length)],
+      ["Peso fine periodo", pesoP.length ? `${num(pesoP[pesoP.length - 1].valore)} kg` : "-", "Allenamenti / settimana", num(+(sessP.length / (giorni / 7)).toFixed(1))],
+      ["Variazione", deltaPeso != null ? `${deltaPeso > 0 ? "+" : ""}${num(deltaPeso)} kg` : "-", "Volume totale", `${num(Math.round(sessP.reduce((a, s) => a + volume(s), 0)))} kg`],
+      ["Giorni diario dieta", `${logP.length} su ${giorni}`, "Kcal medie", kcalMedia != null ? `${kcalMedia} / ${prevMedia} previste` : "-"],
+      ["Giorni nel piano (±10%)", logP.length ? `${nelPiano} (${Math.round(nelPiano / logP.length * 100)}%)` : "-", "", ""],
+    ],
+  });
+  y = doc.lastAutoTable.finalY + 8;
+
+  const punti = pesoP.map(p => ({ d: p.data, v: +p.valore }));
+  if (punti.length >= 2) {
+    y = sezione(doc, "Andamento peso (kg)", y);
+    graficoPeso(doc, punti, 28, y + 2, pageW - 56, 45);
+    y += 60;
+  }
+
+  if (sessP.length) {
+    y = sezione(doc, "Allenamenti", y);
+    autoTable(doc, {
+      ...tableBase, startY: y,
+      head: [["Data", "Scheda", "Durata", "Esercizi", "Serie fatte", "Volume (kg)"]],
+      body: sessP.map(s => [dataIt(s.data), s.schedaNome || "-", s.durata ? `${s.durata} min` : "-", String((s.esercizi || []).length),
+        String((s.esercizi || []).reduce((a, e) => a + (e.serie || []).filter(x => x.completata).length, 0)), num(Math.round(volume(s)))]),
+      columnStyles: { 1: { halign: "left" } },
+    });
+    y = doc.lastAutoTable.finalY + 8;
+  }
+
+  if (logP.length) {
+    y = sezione(doc, "Diario alimentare", y);
+    autoTable(doc, {
+      ...tableBase, startY: y,
+      head: [["Data", "Piano", "Kcal consumate", "Kcal previste", "Scarto"]],
+      body: logP.map(l => {
+        const d = (+l.totKcalConsumate || 0) - (+l.totKcalPreviste || 0);
+        return [dataIt(l.data), l.pianoNome || "-", String(l.totKcalConsumate ?? "-"), String(l.totKcalPreviste ?? "-"), `${d > 0 ? "+" : ""}${d}`];
+      }),
+      columnStyles: { 1: { halign: "left" } },
+    });
+    y = doc.lastAutoTable.finalY + 8;
+  }
+
+  const misP = [...misure].filter(m => m.data >= daIso).sort((a, b) => a.data.localeCompare(b.data));
+  if (misP.length) {
+    y = sezione(doc, "Visite e circonferenze", y);
+    autoTable(doc, {
+      ...tableBase, startY: y,
+      head: [["Data", "Peso", "FM", "FFM", "Vita", "Addome", "Fianchi"]],
+      body: misP.map(m => [dataIt(m.data), num(m.peso), num(m.fm), num(m.ffm), num(m.vita), num(m.addome), num(m.fianchi)]),
+    });
+  }
+
+  const tot = doc.getNumberOfPages();
+  for (let i = 1; i <= tot; i++) {
+    doc.setPage(i);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...MUT);
+    doc.text(`Iron Log - pagina ${i} di ${tot}`, pageW - 14, doc.internal.pageSize.getHeight() - 7, { align: "right" });
+  }
+  const chi = (settings.nome || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  await salvaPdf(doc, `iron-log-report${chi ? "-" + chi : ""}-${fmtIso()}.pdf`, "Report Iron Log");
 }

@@ -284,6 +284,78 @@ textarea.inp{resize:vertical;min-height:64px;}
 .hrow-v small.up{color:var(--warn);}
 .hrow-w > div{padding-bottom:12px;}
 
+/* ─── AI ─── */
+.ai-btn{display:flex;align-items:center;gap:10px;width:100%;padding:12px 14px;border:1px dashed var(--acc);border-radius:10px;background:var(--acc2);color:var(--txt);font-size:14px;cursor:pointer;text-align:left;margin-bottom:12px;}
+.ai-btn:disabled{opacity:.6;cursor:wait;}
+.ai-btn small{display:block;font-size:12px;color:var(--dim);margin-top:2px;}
+.ai-err{color:var(--dan);font-size:13px;padding:10px;background:var(--dan2);border-radius:8px;margin-bottom:12px;}
+.ai-tag{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.06em;color:var(--acc);border:1px solid var(--acc);border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:middle;}
+.chat-fab{position:fixed;right:max(16px,calc(50% - 224px));bottom:calc(84px + var(--safe-b));width:52px;height:52px;border-radius:50%;border:none;background:var(--acc);color:var(--acc-ink);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 20px -6px rgba(0,0,0,.5);cursor:pointer;z-index:120;}
+.chat-win{position:fixed;inset:0;z-index:160;display:flex;flex-direction:column;background:var(--bg);max-width:480px;margin:0 auto;animation:fade .2s ease-out;}
+.chat-h{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:2px solid var(--rule);}
+.chat-msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;}
+.msg{max-width:85%;padding:10px 13px;border-radius:12px;font-size:15px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word;}
+.msg.ai{align-self:flex-start;background:var(--card);border:1px solid var(--bdr);border-bottom-left-radius:4px;}
+.msg.user{align-self:flex-end;background:var(--acc);color:var(--acc-ink);border-bottom-right-radius:4px;}
+.chat-f{display:flex;gap:10px;flex-direction:column;padding:12px 16px calc(12px + var(--safe-b));border-top:1px solid var(--bdr);}
+
+/* ─── Modalità Personal Trainer ─── */
+.pt-row{display:flex;align-items:center;gap:12px;width:100%;cursor:pointer;color:var(--txt);font:inherit;padding:12px 14px;}
+.pt-row.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc);}
+.pt-grid .pt-detail{display:none;}
+.pt-grid.has-sel .pt-list{display:none;}
+.pt-grid.has-sel .pt-detail{display:block;}
+.pt-vuoto{color:var(--dim);font-size:14px;padding:40px 20px;text-align:center;}
+details.card summary{list-style:none;}
+details.card summary::-webkit-details-marker{display:none;}
+/* ─── Responsive: tablet ─── */
+@media (min-width:720px){
+  .app{max-width:760px;}
+  .nav{max-width:760px;}
+  .content{padding-left:24px;padding-right:24px;}
+  .pack{margin-left:-24px;margin-right:-24px;padding-left:24px;padding-right:24px;}
+  /* le finestre diventano dialog centrati invece di fogli dal basso */
+  .mov{align-items:center;padding:24px;}
+  .mod{max-width:560px;border-radius:16px;max-height:85vh;padding-bottom:22px;box-shadow:0 20px 50px -20px rgba(0,0,0,.6);}
+  /* la chat si apre come pannello laterale */
+  .chat-win{left:auto;right:0;width:420px;max-width:100vw;margin:0;border-left:1px solid var(--bdr);box-shadow:-16px 0 40px -20px rgba(0,0,0,.5);}
+  .chat-fab{right:max(16px,calc(50% - 364px));}
+}
+
+/* ─── Responsive: desktop (menu laterale) ─── */
+@media (min-width:1024px){
+  .app{max-width:860px;}
+  .app.has-nav{max-width:1180px;}
+  .app.has-nav .nav{top:0;bottom:0;left:max(0px,calc(50% - 590px));transform:none;width:210px;max-width:none;flex-direction:column;justify-content:flex-start;gap:4px;padding:calc(24px + var(--safe-t)) 10px 24px;}
+  .app.has-nav .nb{flex:0 0 auto;flex-direction:row;justify-content:flex-start;gap:12px;min-height:48px;padding:10px 14px;border-radius:10px;font-size:15px;}
+  .app.has-nav .nb::before{top:10px;bottom:10px;left:0;right:auto;width:3px;height:auto;transform:scaleY(0);}
+  .app.has-nav .nb.on{background:var(--pk2);}
+  .app.has-nav .nb.on::before{transform:scaleY(1);}
+  .app.has-nav .content{margin-left:210px;padding:calc(24px + var(--safe-t)) 32px 40px;}
+  /* testo leggibile: le pagine del cliente restano in una colonna centrata */
+  .app.has-nav:not(.wide) .content > :not(.mov){max-width:820px;margin-left:auto;margin-right:auto;}
+  .app.has-nav .content > .pack{margin-top:0;border-radius:14px;padding-top:22px;}
+  .app.has-nav .chat-fab{right:max(24px,calc(50% - 566px));bottom:28px;}
+  .app.wide{max-width:1400px;}
+  .app.wide.has-nav .nav{left:max(0px,calc(50% - 700px));}
+}
+
+/* ─── Pannello PT a due colonne ─── */
+@media (min-width:900px){
+  .app.wide{max-width:1200px;}
+  .app.wide .nav{max-width:1200px;}
+  .app.wide .content{padding-left:24px;padding-right:24px;}
+  .pt-grid{display:grid;grid-template-columns:340px 1fr;gap:24px;align-items:start;}
+  .pt-grid .pt-list,.pt-grid.has-sel .pt-list{display:block;position:sticky;top:0;max-height:calc(100vh - 100px);overflow-y:auto;}
+  .pt-grid .pt-detail{display:block;padding-top:20px;}
+  .pt-back{display:none !important;}
+}
+@media (min-width:1024px){
+  .app.wide{max-width:1400px;}
+  .app.wide.has-nav .nav{max-width:none;}
+  .app.wide.has-nav .content{padding-left:32px;padding-right:32px;}
+}
+
 @media (prefers-reduced-motion:reduce){
   .app *,.app *::before,.app *::after{animation-duration:.01ms !important;transition-duration:.01ms !important;}
 }

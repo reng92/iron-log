@@ -7,6 +7,7 @@ const builder = (table) => {
     upsert: rows => { calls.push(["upsert", table, rows]); return Promise.resolve({ error: upsertError }); },
     delete: () => { calls.push(["delete", table]); return b; },
     not: (col, op, val) => { calls.push(["not", col, op, val]); return Promise.resolve({ error: null }); },
+    in: (col, val) => { calls.push(["in", col, val]); return Promise.resolve({ error: null }); },
   };
   return b;
 };
@@ -36,6 +37,17 @@ test("lista vuota = l'utente ha eliminato tutto: cancella le sue righe", async (
   await syncList("piani_alimentari", []);
   expect(calls[0]).toEqual(["delete", "piani_alimentari"]);
   expect(calls[1]).toEqual(["not", "id", "is", null]);
+});
+
+test("con la lista precedente cancella solo gli id tolti (mai le schede assegnate dal PT)", async () => {
+  await syncList("schede", [{ id: "a" }], [{ id: "a" }, { id: "b" }]);
+  expect(calls[1]).toEqual(["delete", "schede"]);
+  expect(calls[2]).toEqual(["in", "id", ["b"]]);
+});
+
+test("con la lista precedente e niente tolto non cancella nulla", async () => {
+  await syncList("schede", [{ id: "a" }, { id: "nuova" }], [{ id: "a" }]);
+  expect(calls.some(c => c[0] === "delete")).toBe(false);
 });
 
 test("gli id con virgolette non rompono il filtro", async () => {
