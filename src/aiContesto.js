@@ -1,10 +1,35 @@
-import { fmtIso } from "./utils";
+import { fmtIso, pianoAttivo, pastiPerGiorno, targetKcalPiano, GIORNI_LABEL } from "./utils";
+
+// Piano alimentare attivo: nome, periodo, target e i pasti di oggi (con alternative), in forma compatta
+function contestoDieta(piani = [], logDieta = []) {
+  const piano = pianoAttivo(piani);
+  if (!piano) return "Piano alimentare: nessuno.";
+  const dow = ((new Date().getDay() + 6) % 7) + 1; // 1 = lunedì
+  const tipo = piano.giorniTipo?.[dow];
+  const target = targetKcalPiano(piano, tipo);
+  const pasti = pastiPerGiorno(piano, dow, tipo) || [];
+  const kcal = p => (p.alimenti || []).reduce((a, x) => a + (+x.kcal || 0), 0);
+  const righe = [`Piano alimentare attivo: "${piano.nome || "senza nome"}"${piano.dataInizio ? ` dal ${piano.dataInizio}` : ""}${piano.dataFine ? ` al ${piano.dataFine}` : ""}${target ? `, target oggi ${target} kcal` : ""}${tipo ? ` (giorno ${tipo})` : ""}.`];
+  if (piano.nota) righe.push(`Note del nutrizionista: ${String(piano.nota).slice(0, 300)}`);
+  righe.push(`Pasti previsti oggi (${GIORNI_LABEL[dow]}):`);
+  const visti = new Set();
+  pasti.forEach(p => {
+    const alt = p.altGroupId ? pasti.filter(x => x.altGroupId === p.altGroupId) : [p];
+    if (p.altGroupId) { if (visti.has(p.altGroupId)) return; visti.add(p.altGroupId); }
+    alt.slice(0, 4).forEach((a, i) => righe.push(`- ${alt.length > 1 ? `[alternativa ${i + 1}] ` : ""}${a.nome}: ${(a.alimenti || []).map(x => `${x.nome}${+x.grammi ? ` ${x.grammi}g` : ""}`).join(", ")} (${kcal(a)} kcal)`));
+  });
+  const oggi = logDieta.find(l => l.data === fmtIso());
+  if (oggi?.extra?.length) righe.push(`Extra fuori piano oggi: ${oggi.extra.filter(e => e.mangiato).map(e => `${e.nome} (${e.kcal} kcal)`).join(", ")}.`);
+  const ultimi = [...logDieta].filter(l => l.data).sort((a, b) => b.data.localeCompare(a.data)).slice(0, 7);
+  if (ultimi.length) righe.push(`Diario ultimi giorni: ${ultimi.map(l => `${l.data} ${l.totKcalConsumate}/${l.totKcalPreviste} kcal`).join("; ")}.`);
+  return righe.join("\n").slice(0, 2500);
+}
 
 // Riassunto testuale dei dati dell'utente da passare al coach AI.
 // Volutamente senza nome, email o foto: a Groq arrivano solo numeri aggregati.
 const giorniFa = n => { const d = new Date(); d.setDate(d.getDate() - n); return d; };
 
-export function contestoUtente({ settings = {}, peso = [], logDieta = [], sessioni = [], misure = [] }, giorni = 30) {
+export function contestoUtente({ settings = {}, peso = [], logDieta = [], sessioni = [], misure = [], piani = [] }, giorni = 30) {
   const da = giorniFa(giorni);
   const daIso = fmtIso(da);
   const righe = [];
@@ -49,5 +74,6 @@ export function contestoUtente({ settings = {}, peso = [], logDieta = [], sessio
     const pezzi = ["vita", "addome", "fianchi"].filter(k => l[k] != null).map(k => `${k} ${l[k]} cm${f[k] != null && f !== l ? ` (${(l[k] - f[k]).toFixed(1)} dal primo)` : ""}`);
     righe.push(`Ultima visita nutrizionista ${l.data}: ${[l.fm != null && `massa grassa ${l.fm} kg`, l.ffm != null && `massa magra ${l.ffm} kg`, ...pezzi].filter(Boolean).join(", ") || "n/d"}.`);
   }
+  righe.push(contestoDieta(piani, logDieta));
   return `--- DATI UTENTE (oggi ${fmtIso()}) ---\n${righe.join("\n")}`;
 }

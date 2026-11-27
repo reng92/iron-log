@@ -308,52 +308,57 @@ textarea.inp{resize:vertical;min-height:64px;}
 .pt-vuoto{color:var(--dim);font-size:14px;padding:40px 20px;text-align:center;}
 details.card summary{list-style:none;}
 details.card summary::-webkit-details-marker{display:none;}
-/* ─── Responsive: tablet ─── */
+/* ─── Responsive: tablet (720px+) ─── */
+/* Sempre a tutto schermo: lo sfondo occupa tutta la finestra, i contenuti stanno in una colonna centrata
+   della stessa larghezza in ogni pagina (anche nelle sotto-pagine). */
 @media (min-width:720px){
-  .app{max-width:760px;}
-  .nav{max-width:760px;}
-  .content{padding-left:24px;padding-right:24px;}
-  .pack{margin-left:-24px;margin-right:-24px;padding-left:24px;padding-right:24px;}
+  .app{max-width:none;}
+  .nav{max-width:none;}
+  .nav.desk-only{display:none;}
+  .content{padding-left:28px;padding-right:28px;}
+  .app:not(.wide) .content > :not(.mov):not([style*="position: fixed"]){max-width:760px;margin-left:auto;margin-right:auto;}
+  .content > .pack{margin-top:0;border-radius:14px;padding:22px 24px 40px;}
+  .page > *{max-width:760px;margin-left:auto;margin-right:auto;}
+  /* elementi "in linea" (pulsante indietro, bottoni sciolti): allineati al bordo sinistro della colonna */
+  .app:not(.wide) .content > button:not(.mov){display:flex;width:fit-content;margin-left:max(0px,calc((100% - 760px) / 2)) !important;margin-right:0 !important;}
+  .live-top > *{max-width:760px;margin-left:auto;margin-right:auto;}
   /* le finestre diventano dialog centrati invece di fogli dal basso */
   .mov{align-items:center;padding:24px;}
   .mod{max-width:560px;border-radius:16px;max-height:85vh;padding-bottom:22px;box-shadow:0 20px 50px -20px rgba(0,0,0,.6);}
   /* la chat si apre come pannello laterale */
   .chat-win{left:auto;right:0;width:420px;max-width:100vw;margin:0;border-left:1px solid var(--bdr);box-shadow:-16px 0 40px -20px rgba(0,0,0,.5);}
-  .chat-fab{right:max(16px,calc(50% - 364px));}
+  .chat-fab{right:24px;}
 }
 
-/* ─── Responsive: desktop (menu laterale) ─── */
+/* ─── Responsive: PC (1024px+) — menu laterale fisso ─── */
 @media (min-width:1024px){
-  .app{max-width:860px;}
-  .app.has-nav{max-width:1180px;}
-  .app.has-nav .nav{top:0;bottom:0;left:max(0px,calc(50% - 590px));transform:none;width:210px;max-width:none;flex-direction:column;justify-content:flex-start;gap:4px;padding:calc(24px + var(--safe-t)) 10px 24px;}
+  .nav.desk-only{display:flex;}
+  .app.has-nav .nav{top:0;bottom:0;left:0;transform:none;width:220px;max-width:none;flex-direction:column;justify-content:flex-start;gap:4px;padding:calc(28px + var(--safe-t)) 12px 24px;}
   .app.has-nav .nb{flex:0 0 auto;flex-direction:row;justify-content:flex-start;gap:12px;min-height:48px;padding:10px 14px;border-radius:10px;font-size:15px;}
   .app.has-nav .nb::before{top:10px;bottom:10px;left:0;right:auto;width:3px;height:auto;transform:scaleY(0);}
   .app.has-nav .nb.on{background:var(--pk2);}
   .app.has-nav .nb.on::before{transform:scaleY(1);}
-  .app.has-nav .content{margin-left:210px;padding:calc(24px + var(--safe-t)) 32px 40px;}
-  /* testo leggibile: le pagine del cliente restano in una colonna centrata */
-  .app.has-nav:not(.wide) .content > :not(.mov){max-width:820px;margin-left:auto;margin-right:auto;}
-  .app.has-nav .content > .pack{margin-top:0;border-radius:14px;padding-top:22px;}
-  .app.has-nav .chat-fab{right:max(24px,calc(50% - 566px));bottom:28px;}
-  .app.wide{max-width:1400px;}
-  .app.wide.has-nav .nav{left:max(0px,calc(50% - 700px));}
+  .app.has-nav .content{margin-left:220px;padding:calc(28px + var(--safe-t)) 40px 48px;}
+  .app:not(.wide) .content > :not(.mov):not([style*="position: fixed"]){max-width:1000px;}
+  .page > *,.live-top > *{max-width:900px;}
+  .app:not(.wide) .content > button:not(.mov){margin-left:max(0px,calc((100% - 1000px) / 2)) !important;}
+  .app.has-nav .chat-fab{right:32px;bottom:32px;}
+}
+
+/* ─── Schermi larghi: pagina Oggi su due colonne ─── */
+@media (min-width:1280px){
+  .app:not(.wide) .content.tab-oggi{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-content:start;align-items:start;}
+  .app:not(.wide) .content.tab-oggi > :not(.mov):not([style*="position: fixed"]){max-width:none;margin:0;width:100%;}
+  .content.tab-oggi > .pack,.content.tab-oggi > .lab:first-of-type{grid-column:1 / -1;}
+  .app:not(.wide) .content.tab-oggi{max-width:none;}
 }
 
 /* ─── Pannello PT a due colonne ─── */
 @media (min-width:900px){
-  .app.wide{max-width:1200px;}
-  .app.wide .nav{max-width:1200px;}
-  .app.wide .content{padding-left:24px;padding-right:24px;}
   .pt-grid{display:grid;grid-template-columns:340px 1fr;gap:24px;align-items:start;}
   .pt-grid .pt-list,.pt-grid.has-sel .pt-list{display:block;position:sticky;top:0;max-height:calc(100vh - 100px);overflow-y:auto;}
   .pt-grid .pt-detail{display:block;padding-top:20px;}
   .pt-back{display:none !important;}
-}
-@media (min-width:1024px){
-  .app.wide{max-width:1400px;}
-  .app.wide.has-nav .nav{max-width:none;}
-  .app.wide.has-nav .content{padding-left:32px;padding-right:32px;}
 }
 
 @media (prefers-reduced-motion:reduce){

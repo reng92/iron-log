@@ -560,13 +560,27 @@ export default function App() {
     </div>
   );
 
+  // Menu di navigazione: barra in basso su telefono/tablet, menu laterale su PC.
+  // Nelle sotto-pagine compare solo su PC (desk-only), così il layout resta uguale in tutte le pagine.
+  const navVoci = [...(ruolo.trainer ? [["clienti", "Clienti", <Ico d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />]] : []),
+    ["oggi", "Oggi", <IcToday size={22} />], ["allena", "Allena", <IcDumbbell size={22} />], ["dieta", "Dieta", <IcFork size={22} />], ["corpo", "Corpo", <IcBody size={22} />], ["io", "Io", <IcUser />]];
+  const navBar = (soloPc = false) => (
+    <nav className={`nav${soloPc ? " desk-only" : ""}`}>
+      {navVoci.map(([t, l, ic]) => (
+        <button key={t} className={`nb${tab === t ? " on" : ""}`} aria-current={tab === t ? "page" : undefined} onClick={() => { setSubview(null); setTab(t); }}>{ic}<span>{l}</span></button>
+      ))}
+    </nav>
+  );
+  const sub = `${cls} has-nav sub`;
+
   if (subview?.type === "scheda-edit") return (
-    <div className={cls}><style>{CSS}</style>
+    <div className={sub}><style>{CSS}</style>
       <SchedaEdit
           scheda={subview.data}
           onSave={sc => { const n = sc.id ? schede.map(s => s.id === sc.id ? sc : s) : [...schede, { ...sc, id: genId() }]; saveSchede(n); setSubview(null); }}
           onBack={() => setSubview(null)}
         />
+      {navBar(true)}
     </div>
   );
   if (subview?.type === "allenamento") return (
@@ -575,13 +589,14 @@ export default function App() {
     </div>
   );
   if (subview?.type === "sessione") return (
-    <div className={cls}><style>{CSS}</style>
+    <div className={sub}><style>{CSS}</style>
       <SessioneDetail sessione={subview.data} sessioni={sessioni} onBack={() => setSubview(null)} />
+      {navBar(true)}
     </div>
   );
 
   if (subview?.type === "piano-edit") return (
-    <div className={cls}><style>{CSS}</style>
+    <div className={sub}><style>{CSS}</style>
       <PianoEdit
         piano={subview.data}
         onSave={p => {
@@ -591,10 +606,11 @@ export default function App() {
         }}
         onBack={() => setSubview(null)}
       />
+      {navBar(true)}
     </div>
   );
   if (subview?.type === "dieta-log") return (
-    <div className={cls}><style>{CSS}</style>
+    <div className={sub}><style>{CSS}</style>
       <DietaLog
         piani={piani}
         logDieta={logDieta}
@@ -604,13 +620,14 @@ export default function App() {
         initialDate={subview.data?.date}
         initialPianoId={subview.data?.pianoId}
       />
+      {navBar(true)}
     </div>
   );
 
   return (
     <div className={`${cls} has-nav${tab === "clienti" ? " wide" : ""}`}>
       <style>{CSS}</style>
-      <div className="content fi">
+      <div className={`content fi tab-${tab}`}>
         {tab === "clienti" && ruolo.trainer && <Clienti trainer={ruolo.trainer} SchedaEdit={SchedaEdit} PianoEdit={PianoEdit} />}
         {tab === "oggi" && (
           <Oggi
@@ -625,7 +642,7 @@ export default function App() {
         {tab === "oggi" && <>
           <StreakCard sessioni={sessioni} logDieta={logDieta} obiettivo={+settings.obiettivoAllenamenti || 3} />
           <AvvisiCard peso={peso} sessioni={sessioni} logDieta={logDieta} />
-          <RiepilogoAI dati={{ settings, peso, logDieta, sessioni, misure }} />
+          <RiepilogoAI dati={{ settings, peso, logDieta, sessioni, misure, piani }} />
         </>}
 
         {tab === "allena" && (
@@ -648,7 +665,7 @@ export default function App() {
                 <button key={k} role="tab" aria-selected={corpoTab === k} className={`stab${corpoTab === k ? " on" : ""}`} onClick={() => setCorpoTab(k)}>{l}</button>
               ))}
             </div>
-            {corpoTab === "peso" && <Peso peso={peso} misure={misure} onAdd={addPeso} onDelete={delPeso} />}
+            {corpoTab === "peso" && <Peso peso={peso} misure={misure} onAdd={addPeso} onDelete={delPeso} onAddMisura={addMisura} />}
             {corpoTab === "misure" && <StoricoCorporeo misure={misure} peso={peso} onAdd={addMisura} onUpd={updMisura} onDel={delMisura} sesso={settings.sesso || "M"} />}
           </>
         )}
@@ -678,13 +695,8 @@ export default function App() {
           onReport={() => esportaReportPdf({ settings, peso, misure, sessioni, logDieta }).catch(e => alert(`Errore PDF: ${e.message}`))} />}
       </div>
       <button className="chat-fab" onClick={() => setShowChat(true)} aria-label="Apri Iron Coach AI"><Ico d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" fill="currentColor" sw={0} /></button>
-      {showChat && <ChatAI dati={{ settings, peso, logDieta, sessioni, misure }} onClose={() => setShowChat(false)} />}
-      <nav className="nav">
-        {[...(ruolo.trainer ? [["clienti", "Clienti", <Ico d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />]] : []),
-          ["oggi", "Oggi", <IcToday size={22} />], ["allena", "Allena", <IcDumbbell size={22} />], ["dieta", "Dieta", <IcFork size={22} />], ["corpo", "Corpo", <IcBody size={22} />], ["io", "Io", <IcUser />]].map(([t, l, ic]) => (
-          <button key={t} className={`nb${tab === t ? " on" : ""}`} aria-current={tab === t ? "page" : undefined} onClick={() => setTab(t)}>{ic}<span>{l}</span></button>
-        ))}
-      </nav>
+      {showChat && <ChatAI dati={{ settings, peso, logDieta, sessioni, misure, piani }} onClose={() => setShowChat(false)} />}
+      {navBar()}
     </div>
   );
 }
@@ -1318,7 +1330,7 @@ function FreqTab({ sessioni }) {
 
 
 // ─── PESO CORPOREO ────────────────────────────────────────
-function Peso({ peso, misure = [], onAdd, onDelete }) {
+function Peso({ peso, misure = [], onAdd, onDelete, onAddMisura }) {
   const blank = () => ({
     valore: "", data: fmtIso(), nota: "",
     punteggio: "", tipologia: "",
@@ -1334,6 +1346,8 @@ function Peso({ peso, misure = [], onAdd, onDelete }) {
   });
   const [form, setForm] = useState(blank);
   const [confronto, setConfronto] = useState(false);
+  const [scelta, setScelta] = useState(false);
+  const [nuovaVisita, setNuovaVisita] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [expanded, setExpanded] = useState(null);
@@ -1442,10 +1456,31 @@ function Peso({ peso, misure = [], onAdd, onDelete }) {
       )}
 
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        <button className="btn btn-p" style={{ flex: 2 }} onClick={() => setShowModal(true)}><IcPlus /> Nuova rilevazione</button>
+        <button className="btn btn-p" style={{ flex: 2 }} onClick={() => setScelta(true)}><IcPlus /> Nuova rilevazione</button>
         {scattiDa(peso, misure).length >= 1 && <button className="btn btn-s" style={{ flex: 1 }} onClick={() => setConfronto(true)}>📷 Foto</button>}
       </div>
       {confronto && <ConfrontoFoto scatti={scattiDa(peso, misure)} onClose={() => setConfronto(false)} />}
+
+      {/* Da dove arriva la rilevazione: visita dal nutrizionista (dati completi) o bilancia di casa */}
+      {scelta && (
+        <div className="mov" onClick={e => { if (e.target === e.currentTarget) setScelta(false); }}>
+          <div className="mod">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <div className="wt">Nuova rilevazione</div>
+              <button className="bico" onClick={() => setScelta(false)} aria-label="Chiudi">✕</button>
+            </div>
+            <button className="ai-btn" onClick={() => { setScelta(false); setNuovaVisita(true); }}>
+              <span style={{ fontSize: 22 }}>🩺</span>
+              <span><b>Visita dal nutrizionista</b><small>Peso, BIA, circonferenze e pliche. Puoi caricare i referti PDF e l'AI compila tutto. Il peso finisce anche qui.</small></span>
+            </button>
+            <button className="ai-btn" style={{ borderStyle: "solid", borderColor: "var(--bdr)", background: "var(--card)" }} onClick={() => { setScelta(false); setShowModal(true); }}>
+              <span style={{ fontSize: 22 }}>⚖️</span>
+              <span><b>Bilancia di casa</b><small>Peso a mano o screenshot della bilancia smart (Zepp Life o simili).</small></span>
+            </button>
+          </div>
+        </div>
+      )}
+      {nuovaVisita && <MisuraModal onSave={m => { onAddMisura?.(m); setNuovaVisita(false); }} onClose={() => setNuovaVisita(false)} />}
 
       {peso.length > 0 && (
         <>
@@ -1460,12 +1495,14 @@ function Peso({ peso, misure = [], onAdd, onDelete }) {
             const isExp = expanded === p.id;
             const prev = arr[i + 1];
             const d = prev ? +(p.valore - prev.valore).toFixed(1) : null;
+            const visita = misure.find(m => m.data === p.data); // stesso giorno della visita dal nutrizionista
             return (
               <div key={p.id} className="hrow-w">
                 <button className="hrow" aria-expanded={isExp} onClick={() => setExpanded(isExp ? null : p.id)}>
                   <span className="hrow-d">{fmtDate(p.data)}
+                    {visita && <span className="tag tag-a" style={{ marginLeft: 6 }}>nutrizionista</span>}
                     {(p.foto_fronte || p.foto_retro) && <span className="tag tag-m" style={{ marginLeft: 6 }}>foto</span>}
-                    {hasBody(p) && <span className="tag tag-m" style={{ marginLeft: 6 }}>bioimp.</span>}
+                    {!visita && hasBody(p) && <span className="tag tag-m" style={{ marginLeft: 6 }}>bioimp.</span>}
                   </span>
                   <span className="hrow-v">{String(p.valore).replace(".", ",")}
                     {d != null && <small className={d < 0 ? "dn" : d > 0 ? "up" : ""}>{d > 0 ? "+" : d < 0 ? "−" : "±"}{Math.abs(d).toLocaleString("it-IT")}</small>}
@@ -1489,7 +1526,26 @@ function Peso({ peso, misure = [], onAdd, onDelete }) {
                         </div>
                       )}
   
-                      {hasBody(p) && (
+                      {visita && (
+                        <div style={{ marginBottom: 8 }}>
+                          <div className="st" style={{ marginBottom: 6 }}>Dati del nutrizionista{visita.visita_label ? ` · ${visita.visita_label}` : ""}</div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                            {[["fm", "Massa grassa", "kg", "fm_pct"], ["ffm", "Massa magra", "kg", "ffm_pct"], ["smm", "Muscolo scheletrico", "kg", "smm_pct"], ["tbw", "Acqua totale", "lt", "tbw_pct"],
+                              ["bcm", "Massa cellulare", "kg", "bcm_pct"], ["pha", "Angolo di fase", "°"], ["bmi", "BMI", ""], ["bmr", "Metabolismo basale", "kcal"], ["dee", "Dispendio giornaliero", "kcal"],
+                              ["vita", "Vita", "cm"], ["addome", "Addome", "cm"], ["fianchi", "Fianchi", "cm"]]
+                              .filter(([k]) => visita[k] != null).map(([k, l, u, kPct]) => (
+                                <div key={k} style={{ background: "var(--sur)", border: "1px solid var(--bdr)", borderRadius: 8, padding: "6px 9px" }}>
+                                  <div style={{ fontSize: 11, color: "var(--mut)", fontWeight: 700 }}>{l}</div>
+                                  <div style={{ fontFamily: "var(--fd)", fontSize: 17 }}>{visita[k]}<span style={{ fontSize: 11, color: "var(--dim)", fontFamily: "inherit", fontWeight: 400, marginLeft: 2 }}>{u}</span>
+                                    {kPct && visita[kPct] != null && <span style={{ fontSize: 12, color: "var(--dim)", fontFamily: "inherit", fontWeight: 600, marginLeft: 6 }}>{visita[kPct]}%</span>}</div>
+                                </div>
+                              ))}
+                          </div>
+                          <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 6 }}>Tutti i valori (pliche, acqua intra/extra, foto…) in Corpo → Misure.</div>
+                        </div>
+                      )}
+
+                      {!visita && hasBody(p) && (
                         <div style={{ marginBottom: 8 }}>
                           <div className="st" style={{ marginBottom: 4 }}>Composizione corporea</div>
                           {p.imc != null && <MR icon="" label="IMC" value={p.imc} badge={p.imc_status} />}
