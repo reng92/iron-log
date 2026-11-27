@@ -64,6 +64,7 @@ export const db = {
   async delSessione(id) { ok(await sb.from("sessioni").delete().eq("id", id)); },
   async getPeso() { return ok(await mieRighe("peso", await mioId()).order("data", { ascending: true })) || []; },
   async addPeso(p) { ok(await sb.from("peso").insert(p)); },
+  async updPeso(p) { const { id, user_id, ...campi } = p; ok(await sb.from("peso").update(campi).eq("id", id)); },
   async delPeso(id) { ok(await sb.from("peso").delete().eq("id", id)); },
   async getSettings() {
     const { data: { user } } = await sb.auth.getUser();

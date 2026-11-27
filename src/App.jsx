@@ -30,7 +30,7 @@ import { pt } from "./pt";
 import Clienti from "./screens/Clienti";
 import { CambioPassword, StreakCard, AvvisiCard, ConfrontoFoto, FotoConData, scattiDa } from "./components/Progressi";
 import { suggerisciCarico } from "./insights";
-import { GRUPPI_VISITA, CHIAVI_VISITA, incoerenze } from "./visita";
+import { GRUPPI_VISITA, CHIAVI_VISITA, incoerenze, pesoDaVisita } from "./visita";
 import { leggiReferti } from "./ai";
 import { esportaReportPdf } from "./exportPdf";
 
@@ -311,6 +311,17 @@ export default function App() {
     setPeso(prev => [...prev, p].sort((a, b) => a.data.localeCompare(b.data)));
     await salva(db.addPeso(p), "peso", () => setPeso(prev => prev.filter(x => x.id !== p.id)));
   };
+  const updPeso = async p => {
+    const old = peso;
+    setPeso(prev => prev.map(x => x.id === p.id ? p : x).sort((a, b) => a.data.localeCompare(b.data)));
+    await salva(db.updPeso(p), "peso", () => setPeso(old));
+  };
+  // La pesata del nutrizionista finisce anche nella sezione Peso, con la data della visita
+  const allineaPesoDaVisita = async (m, aggiorna = true) => {
+    const azione = pesoDaVisita(m, peso.find(p => p.data === m.data), aggiorna, genId);
+    if (azione?.tipo === "add") await addPeso(azione.riga);
+    else if (azione?.tipo === "upd") await updPeso(azione.riga);
+  };
   const delPeso = async id => { const old = peso; setPeso(p => p.filter(x => x.id !== id)); await salva(db.delPeso(id), "eliminazione", () => setPeso(old)); };
   const toggleDark = async () => { const n = { ...settings, darkMode: !settings.darkMode }; setSettings(n); await salva(db.saveSettings(n), "impostazioni"); };
   const saveSettings = async n => { setSettings(n); await salva(db.saveSettings(n), "impostazioni"); };
@@ -340,13 +351,22 @@ export default function App() {
 
   const addMisura = async m => {
     setMisure(prev => [...prev, m].sort((a, b) => a.data.localeCompare(b.data)));
-    await salva(db.addMisura(m), "misure", () => setMisure(prev => prev.filter(x => x.id !== m.id)));
+    if (await salva(db.addMisura(m), "misure", () => setMisure(prev => prev.filter(x => x.id !== m.id)))) await allineaPesoDaVisita(m);
   };
   const updMisura = async m => {
     const old = misure;
     setMisure(prev => prev.map(x => x.id === m.id ? m : x).sort((a, b) => a.data.localeCompare(b.data)));
-    await salva(db.updMisura(m), "visita", () => setMisure(old));
+    if (await salva(db.updMisura(m), "visita", () => setMisure(old))) await allineaPesoDaVisita(m);
   };
+  // All'avvio: le visite già salvate con un peso ma senza pesata in quella data la creano (senza sovrascrivere nulla)
+  const allineatoRef = useRef(false);
+  useEffect(() => {
+    if (!loaded) { allineatoRef.current = false; return; } // nuovo login → riallinea
+    if (IS_DEMO || allineatoRef.current) return;
+    allineatoRef.current = true;
+    const date = new Set(peso.map(p => p.data));
+    misure.filter(m => +m.peso > 0 && !date.has(m.data)).forEach(m => allineaPesoDaVisita(m, false));
+  }, [loaded]); // eslint-disable-line
   const delMisura = async id => { const old = misure; setMisure(p => p.filter(x => x.id !== id)); await salva(db.delMisura(id), "eliminazione", () => setMisure(old)); };
 
   // GDPR: esportazione completa dei dati (diritto di accesso/portabilità)

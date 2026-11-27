@@ -63,6 +63,22 @@ export function anonimizzaReferto(t) {
 }
 export const testoRefertoAnonimo = async file => anonimizzaReferto(await estraiTestoPdf(file));
 
+// Pesata della sezione Peso ricavata da una visita del nutrizionista (stessa data).
+// esistente = pesata già presente in quella data. aggiorna=false → crea solo se manca (allineamento all'avvio).
+// Ritorna null se non serve fare nulla, altrimenti { tipo: "add" | "upd", riga }.
+const DA_VISITA = { imc: "bmi", massa_grassa: "fm_pct", acqua: "tbw_pct", metabolismo: "bmr", massa_ossea: "bonemc" };
+export function pesoDaVisita(m, esistente, aggiorna = true, nuovoId = () => `nutr_${Date.now().toString(36)}`) {
+  if (!m?.data || !(+m.peso > 0)) return null;
+  const valori = { valore: +m.peso };
+  Object.entries(DA_VISITA).forEach(([kPeso, kVisita]) => {
+    if (m[kVisita] != null) valori[kPeso] = kPeso === "metabolismo" ? Math.round(m[kVisita]) : m[kVisita];
+  });
+  if (!esistente) return { tipo: "add", riga: { id: nuovoId(), data: m.data, nota: "Visita nutrizionista", ...valori } };
+  if (!aggiorna) return null;
+  const cambia = Object.entries(valori).some(([k, v]) => esistente[k] == null || +esistente[k] !== +v);
+  return cambia ? { tipo: "upd", riga: { ...esistente, ...valori } } : null;
+}
+
 // Controllo di coerenza: FM + FFM ≈ peso (tolleranza 1,5 kg)
 export const incoerenze = v => {
   const out = [];
