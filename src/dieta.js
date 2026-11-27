@@ -58,24 +58,51 @@ export function prossimoPasto(stato, ora = new Date()) {
 }
 
 // Segna tutti gli alimenti di un pasto come mangiati; ritorna { oldId, log } nel formato di DietaLog
-export function segnaPastoMangiato(piani, logDieta, iso, idx) {
+export const segnaPastoMangiato = (piani, logDieta, iso, idx) => aggiornaLogDieta(piani, logDieta, iso, { pasti: [idx] });
+
+// Pasti del giorno in forma testuale per il coach AI: [indice] nome, alternative, alimenti, kcal, stato
+export function pastiPerCoach(piani, logDieta, iso) {
   const old = logDelGiorno(logDieta, iso);
   const piano = (old && piani.find(p => p.id === old.pianoId)) || pianoAttivo(piani, iso);
-  if (!piano) return null;
+  if (!piano) return "Nessun piano alimentare attivo: puoi registrare solo extra e acqua.";
   const dow = dowOf(iso);
   const tipo = old?.tipoGiorno || piano.giorniTipo?.[dow] || null;
   const pastiGiorno = pastiPerGiorno(piano, dow, tipo);
-  const selectedAlts = { ...(old?.selectedAlts || {}) };
-  const p = pastiGiorno[idx];
-  if (p?.altGroupId && !selectedAlts[p.altGroupId]) selectedAlts[p.altGroupId] = p.id;
+  if (!pastiGiorno.length) return "Il piano non ha pasti per oggi: puoi registrare solo extra e acqua.";
+  return pastiGiorno.map((p, idx) => {
+    const al = p.alimenti || [];
+    const mang = al.length && al.every((_, ai) => old?.pastiLog?.[idx]?.alimenti?.[ai]?.mangiato);
+    const alt = p.altGroupId ? ` (alternativa del gruppo "${p.altGroupId}")` : "";
+    return `[${idx}] ${p.nome}${alt}: ${al.map(a => `${a.nome}${+a.grammi ? ` ${a.grammi}g` : ""}`).join(", ")} — ${al.reduce((s, a) => s + (+a.kcal || 0), 0)} kcal — ${mang ? "GIÀ MANGIATO" : "da mangiare"}`;
+  }).join("\n");
+}
 
-  const mang = (pi, ai) => pi === idx || !!old?.pastiLog?.[pi]?.alimenti?.[ai]?.mangiato;
+// Aggiorna il diario di una data: segna come mangiati i pasti indicati (indici di pastiGiorno; per un'alternativa
+// diventa quella scelta) e aggiunge gli extra. Senza piano registra comunque gli extra.
+export function aggiornaLogDieta(piani, logDieta, iso, { pasti: daSegnare = [], extra: nuoviExtra = [] } = {}) {
+  const old = logDelGiorno(logDieta, iso);
+  const piano = (old && piani.find(p => p.id === old.pianoId)) || pianoAttivo(piani, iso);
+  const dow = dowOf(iso);
+  const extraNuovi = nuoviExtra.filter(e => e?.nome).map(e => ({ id: genId(), nome: String(e.nome).slice(0, 80), kcal: Math.max(0, Math.round(+e.kcal || 0)), mangiato: true, daCoach: true }));
+  if (!piano) {
+    if (!extraNuovi.length) return null;
+    const extra = [...(old?.extra || []), ...extraNuovi];
+    const tot = extra.filter(e => e.mangiato).reduce((s, e) => s + (+e.kcal || 0), 0);
+    return { oldId: old?.id || null, log: { ...(old || {}), id: genId(), data: iso, extra, totKcalConsumate: tot, kcalTotale: tot, kcal: tot, totKcalPreviste: old?.totKcalPreviste || 0 } };
+  }
+  const tipo = old?.tipoGiorno || piano.giorniTipo?.[dow] || null;
+  const pastiGiorno = pastiPerGiorno(piano, dow, tipo);
+  const selectedAlts = { ...(old?.selectedAlts || {}) };
+  const segna = new Set(daSegnare.filter(i => Number.isInteger(i) && pastiGiorno[i]));
+  segna.forEach(i => { const p = pastiGiorno[i]; if (p.altGroupId) selectedAlts[p.altGroupId] = p.id; });
+
+  const mang = (pi, ai) => segna.has(pi) || !!old?.pastiLog?.[pi]?.alimenti?.[ai]?.mangiato;
   const pastiLog = pastiGiorno.map((pa, pi) => ({
     nome: pa.nome,
     kcal: (pa.alimenti || []).reduce((s, al, ai) => s + (mang(pi, ai) ? (+al.kcal || 0) : 0), 0),
     alimenti: (pa.alimenti || []).map((al, ai) => ({ ...al, mangiato: mang(pi, ai) })),
   }));
-  const extra = old?.extra || [];
+  const extra = [...(old?.extra || []), ...extraNuovi];
   const kcalPiano = gruppi(pastiGiorno, selectedAlts).reduce((s, g) => s + pastiLog[g.idx].kcal, 0);
   const tot = kcalPiano + extra.filter(e => e.mangiato).reduce((s, e) => s + (+e.kcal || 0), 0);
   const previste = gruppi(pastiGiorno, selectedAlts).reduce((s, g) => s + (g.pasto.alimenti || []).reduce((b, al) => b + (+al.kcal || 0), 0), 0);

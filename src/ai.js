@@ -46,6 +46,18 @@ export async function leggiReferti(files) {
 const num = v => (v === null || v === undefined || v === "" || isNaN(+v) ? null : +v);
 export const numStr = v => (num(v) == null ? "" : String(num(v)));
 
+// Azioni del coach → solo valori validi e plausibili (l'AI può sbagliare: limiti prudenti)
+export function normalizzaAzioni(azioni) {
+  const out = { pasti: [], extra: [], acqua: 0 };
+  (Array.isArray(azioni) ? azioni : []).slice(0, 12).forEach(a => {
+    if (a?.tipo === "pasto" && Number.isInteger(+a.idx) && +a.idx >= 0 && !out.pasti.includes(+a.idx)) out.pasti.push(+a.idx);
+    else if (a?.tipo === "extra" && String(a.nome || "").trim()) out.extra.push({ nome: String(a.nome).trim().slice(0, 80), kcal: Math.min(4000, Math.max(0, Math.round(+a.kcal || 0))) });
+    else if (a?.tipo === "acqua" && +a.ml > 0) out.acqua += Math.min(3000, Math.round(+a.ml));
+  });
+  out.acqua = Math.min(out.acqua, 4000);
+  return out;
+}
+
 // Normalizza la lista alimenti restituita da pasto_foto / pasto_testo
 export const normalizzaAlimenti = res => (Array.isArray(res?.alimenti) ? res.alimenti : [])
   .map(a => ({

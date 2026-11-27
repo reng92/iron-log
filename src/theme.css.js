@@ -297,6 +297,23 @@ textarea.inp{resize:vertical;min-height:64px;}
 .msg{max-width:85%;padding:10px 13px;border-radius:12px;font-size:15px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word;}
 .msg.ai{align-self:flex-start;background:var(--card);border:1px solid var(--bdr);border-bottom-left-radius:4px;}
 .msg.user{align-self:flex-end;background:var(--acc);color:var(--acc-ink);border-bottom-right-radius:4px;}
+.msg.ai{white-space:normal;}
+.md{font-size:14.5px;line-height:1.5;}
+.md > * + *{margin-top:8px;}
+.md-h{font-weight:800;line-height:1.25;}
+.md-h1,.md-h2{font-size:17px;}.md-h3{font-size:16px;}.md-h4{font-size:14.5px;color:var(--dim);}
+.md-list{padding-left:20px;}.md-list li + li{margin-top:3px;}
+.md-hr{border:none;border-top:1px solid var(--bdr);}
+.md-code{font-family:ui-monospace,monospace;font-size:13px;background:var(--sur);padding:1px 5px;border-radius:4px;}
+.md-table{overflow-x:auto;margin-left:-4px;margin-right:-4px;}
+.md-table table{border-collapse:collapse;width:100%;font-size:13px;}
+.md-table th{text-align:left;font-weight:800;border-bottom:2px solid var(--bdr);padding:5px 6px;white-space:nowrap;}
+.md-table td{border-bottom:1px solid var(--bdr);padding:5px 6px;vertical-align:top;}
+.md-table td:last-child,.md-table th:last-child{text-align:right;white-space:nowrap;}
+.chat-reg{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;padding:7px 9px;border-radius:8px;background:var(--acc2);font-size:13px;font-weight:600;}
+.chat-reg.err{background:var(--dan2);color:var(--dan);}
+.chat-reg.off{background:none;border:1px dashed var(--bdr);color:var(--dim);font-weight:500;}
+.chat-reg button{border:none;background:none;color:var(--acc);font:inherit;font-weight:700;cursor:pointer;padding:4px 6px;}
 .chat-f{display:flex;gap:10px;flex-direction:column;padding:12px 16px calc(12px + var(--safe-b));border-top:1px solid var(--bdr);}
 
 /* ─── Modalità Personal Trainer ─── */

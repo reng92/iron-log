@@ -159,6 +159,33 @@ const TASKS: Record<string, Task> = {
       ];
     },
   },
+  // Chat del coach che può anche REGISTRARE: pasti del piano mangiati, extra, acqua
+  coach: {
+    json: true, max: 1200, temp: 0.4,
+    build: (p) => {
+      const msgs = Array.isArray(p.messages) ? p.messages.slice(-12) : [];
+      if (!msgs.length) throw new Errore("Nessun messaggio");
+      return [
+        { role: "system", content: `${COACH}
+Oltre a rispondere, REGISTRI nel diario di OGGI quello che l'utente dice di aver GIÀ mangiato o bevuto oggi (non piani futuri, non ipotesi, non giorni passati).
+Pasti previsti oggi dal piano (usa l'indice tra parentesi quadre):
+${String(p.pasti || "nessuno").slice(0, 3000)}
+Azioni possibili:
+- {"tipo":"pasto","idx":N} → l'utente ha mangiato quel pasto del piano così com'è (o quasi). Per i pasti con alternative scegli l'indice dell'alternativa che ha mangiato. Non segnare pasti "GIÀ MANGIATO".
+- {"tipo":"extra","nome":"Birra media 400 ml","kcal":200} → qualcosa fuori piano o diverso dal piano, con kcal stimate (se dice una quantità moltiplica). ${KCAL_RIF}
+- {"tipo":"acqua","ml":500} → acqua bevuta (un bicchiere = 200 ml, una bottiglietta = 500 ml).
+Se ha mangiato un pasto del piano ma con differenze importanti, NON segnare il pasto: registra gli alimenti come extra. Se non è chiaro cosa o quanto, chiedi invece di indovinare e non registrare nulla.
+Nella risposta conferma in breve cosa hai registrato e quante kcal mancano. Usa markdown semplice (grassetti ed elenchi, niente tabelle larghe).
+Rispondi SOLO con JSON: {"risposta":"testo markdown","azioni":[...]} ("azioni": [] se non c'è niente da registrare).
+
+${String(p.contesto || "").slice(0, 5000)}` },
+        ...msgs.map((m: { role?: string; content?: unknown }) => ({
+          role: m.role === "assistant" ? "assistant" : "user",
+          content: String(m.content || "").slice(0, 2000),
+        })),
+      ];
+    },
+  },
   riepilogo: {
     json: true, max: 700, temp: 0.5,
     build: (p) => [

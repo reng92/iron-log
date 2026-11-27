@@ -20,7 +20,7 @@ import { syncNotifiche, onNotificaAzione, cfg as notifCfg, obiettivoAcqua } from
 import { aggiornaWidget, consumaAggiunteWidget, onAppResume } from "./widget";
 import Acqua from "./components/Acqua";
 import Oggi from "./screens/Oggi";
-import { segnaPastoMangiato } from "./dieta";
+import { segnaPastoMangiato, aggiornaLogDieta } from "./dieta";
 import { IcToday, IcDumbbell, IcFork, IcBody, IcChevR } from "./components/Icons";
 import NotificheSettings from "./components/NotificheSettings";
 import ChatAI from "./components/ai/ChatAI";
@@ -336,6 +336,29 @@ export default function App() {
     if (!r) return;
     if (r.oldId) await handleDelLogDieta(r.oldId);
     await handleAddLogDieta(r.log);
+  };
+  // Iron Coach: registra nel diario di oggi pasti del piano, extra e acqua; restituisce il riepilogo e come annullare
+  const registraDaCoach = async ({ pasti = [], extra = [], acqua = 0 }) => {
+    const iso = fmtIso();
+    const fatto = [];
+    let annullaDieta = null;
+    if (pasti.length || extra.length) {
+      const r = aggiornaLogDieta(piani, logDieta, iso, { pasti, extra });
+      if (r) {
+        const vecchio = r.oldId ? logDieta.find(l => l.id === r.oldId) : null;
+        if (r.oldId) await handleDelLogDieta(r.oldId);
+        await handleAddLogDieta(r.log);
+        annullaDieta = async () => { await handleDelLogDieta(r.log.id); if (vecchio) await handleAddLogDieta(vecchio); };
+        pasti.forEach(i => { const n = r.log.pastiLog?.[i]?.nome; if (n) fatto.push(n); });
+        extra.forEach(e => fatto.push(`${e.nome} (${e.kcal} kcal)`));
+      } else if (pasti.length) fatto.push("nessun piano attivo: pasto non segnato");
+    }
+    if (acqua > 0) { addAcqua(iso, acqua); fatto.push(`acqua +${acqua} ml`); }
+    if (!fatto.length) return null;
+    return {
+      testo: fatto.join(" · "),
+      annulla: async () => { if (annullaDieta) await annullaDieta(); if (acqua > 0) undoAcqua(iso); },
+    };
   };
   const vaiA = (t, sub) => {
     setTab(t);
@@ -695,7 +718,7 @@ export default function App() {
           onReport={() => esportaReportPdf({ settings, peso, misure, sessioni, logDieta }).catch(e => alert(`Errore PDF: ${e.message}`))} />}
       </div>
       <button className="chat-fab" onClick={() => setShowChat(true)} aria-label="Apri Iron Coach AI"><Ico d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" fill="currentColor" sw={0} /></button>
-      {showChat && <ChatAI dati={{ settings, peso, logDieta, sessioni, misure, piani }} onClose={() => setShowChat(false)} />}
+      {showChat && <ChatAI dati={{ settings, peso, logDieta, sessioni, misure, piani }} onRegistra={registraDaCoach} onClose={() => setShowChat(false)} />}
       {navBar()}
     </div>
   );
